@@ -1,6 +1,9 @@
+<div align="center">
 # UofT Agent
 
 🎓🤖 An **AI agent for University of Toronto students** that uses live academic data, tool calling, and agentic workflows to answer course and grade questions in natural language.
+
+</div>
 
 ## 🚀 Live Streamlit Demo
 
@@ -158,12 +161,6 @@ Students enter their own Quercus token through the app UI, which keeps the deplo
 - MarkUs integration
 - broader academic planning workflows
 - stronger automated evaluation and testing
-
-## ⚠️ Notes
-
-- The current Quercus course filter is tied to the 2026 term logic in the client.
-- Syllabus extraction depends on the syllabus being accessible and readable as text.
-- The included `test_*.py` files are live-data scripts, not a formal unit-test suite.
 
 ## 📄 License
 

@@ -8,6 +8,8 @@ wraps the Canvas REST API endpoints needed by the agent.
 
 import os
 import re
+from datetime import datetime, timezone
+
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -21,6 +23,7 @@ class QuercusError(Exception):
 
 class QuercusClient:
     BASE_URL = "https://q.utoronto.ca/api/v1"
+    _UPCOMING_TERM_WINDOW_DAYS = 45
 
     def __init__(self, token: str = None):
         token = token or os.getenv("QUERCUS_API_TOKEN")
@@ -78,15 +81,19 @@ class QuercusClient:
         """Return the student's active academic course enrolments.
 
         Fetches /courses with enrollment_state=active and include[]=term so
-        the enrollment term name is available for filtering.  Two filters are
-        applied before returning:
+        the enrollment term metadata is available for filtering.
 
-        1. Term filter — keeps only courses whose enrollment term name contains
-           "2026" (current academic year).  Courses with no term object are
-           excluded because they are typically site-wide resource pages.
+        Filtering strategy
+        ------------------
+        1. Exclude resource pages by name.
+        2. Exclude courses whose term is missing or undated ("Default Term").
+        3. Prefer courses whose term contains the current date.
+        4. If none are current, prefer the nearest upcoming term within a short
+           window.
+        5. If neither exists, fall back to the most recent dated term.
 
-        2. Name filter — excludes courses whose name contains any keyword in
-           _RESOURCE_PAGE_KEYWORDS (e.g. "Co-op Compass", "Undergrads").
+        This keeps the selection dynamic across years and semesters instead of
+        hardcoding a specific term name like "2026 Winter".
         """
         # Pass include[] twice — requests accepts a list of tuples for this
         courses = self._get(
@@ -98,22 +105,52 @@ class QuercusClient:
             ],
         )
 
-        filtered = []
+        now = datetime.now(timezone.utc)
+        eligible = []
         for course in courses:
-            # 1. Term filter
-            term = course.get("term") or {}
-            term_name = term.get("name") or ""
-            if "2026" not in term_name:
-                continue
-
-            # 2. Resource-page name filter
+            # 1. Resource-page name filter
             name_lower = course.get("name", "").lower()
             if any(kw in name_lower for kw in self._RESOURCE_PAGE_KEYWORDS):
                 continue
 
-            filtered.append(course)
+            # 2. Ignore undated/default-term entries
+            term = course.get("term") or {}
+            start_at = self._parse_canvas_datetime(term.get("start_at"))
+            end_at = self._parse_canvas_datetime(term.get("end_at"))
+            if start_at is None or end_at is None:
+                continue
 
-        return filtered
+            eligible.append({
+                "course": course,
+                "start_at": start_at,
+                "end_at": end_at,
+            })
+
+        if not eligible:
+            return []
+
+        current = [e["course"] for e in eligible if e["start_at"] <= now <= e["end_at"]]
+        if current:
+            return current
+
+        # Prefer the nearest upcoming term if the current term has not started yet.
+        upcoming = [
+            e for e in eligible
+            if 0 <= (e["start_at"] - now).total_seconds() <= self._UPCOMING_TERM_WINDOW_DAYS * 86400
+        ]
+        if upcoming:
+            nearest_start = min(e["start_at"] for e in upcoming)
+            return [e["course"] for e in upcoming if e["start_at"] == nearest_start]
+
+        latest_end = max(e["end_at"] for e in eligible)
+        return [e["course"] for e in eligible if e["end_at"] == latest_end]
+
+    @staticmethod
+    def _parse_canvas_datetime(value: str | None) -> datetime | None:
+        """Parse Canvas ISO timestamps like '2026-05-31T04:00:00Z'."""
+        if not value:
+            return None
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
     def get_assignments(self, course_id: int | str) -> list:
         """Return all assignments for a course.
