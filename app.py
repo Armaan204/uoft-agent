@@ -65,7 +65,7 @@ _calc = GradeCalculator()
 def _risk_flag(pct: float, has_data: bool) -> tuple[str, str]:
     """Return (label, streamlit_color) based on current grade percentage."""
     if not has_data:
-        return "No data", "gray"
+        return "Could not find syllabus", "gray"
     if pct < 70:
         return "At risk", "red"
     if pct < 85:
