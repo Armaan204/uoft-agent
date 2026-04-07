@@ -64,7 +64,7 @@ class GradeCalculator:
 
         for group in assignment_groups:
             group_name = group["name"]
-            group_weight = self._match_weight(group_name, weights_lower)
+            group_weight = self._resolve_group_weight(group, weights_lower)
             if group_weight is None:
                 continue  # group not in syllabus weights — skip
 
@@ -219,7 +219,15 @@ class GradeCalculator:
         import re
         tokens = re.split(r"[\s\-_/]+", text.lower())
         tokens = [re.sub(r"[^a-z0-9]", "", t) for t in tokens]
-        return {t for t in tokens if t and t not in cls._STOP_WORDS}
+        normalised = set()
+        for token in tokens:
+            if not token or token in cls._STOP_WORDS:
+                continue
+            normalised.add(token)
+            # Light singularisation so "tests" can match "test".
+            if len(token) > 3 and token.endswith("s"):
+                normalised.add(token[:-1])
+        return normalised
 
     @classmethod
     def _match_weight(cls, group_name: str, weights_lower: dict[str, float]) -> float | None:
@@ -261,5 +269,58 @@ class GradeCalculator:
                 best_overlap, best_val = overlap, val
         if best_overlap > 0:
             return best_val
+
+        return None
+
+    @classmethod
+    def _resolve_group_weight(cls, group: dict, weights_lower: dict[str, float]) -> float | None:
+        """Resolve a Canvas group weight from either the group name or its items.
+
+        Some courses use broad Canvas group names like "Assignments" or "Tests"
+        while the syllabus lists item-level components such as
+        "Personal Listening Questionnaire" and "Midterm Test". In that case,
+        sum the distinct syllabus weights matched by assignment names inside the
+        group.
+        """
+        direct = cls._match_weight(group["name"], weights_lower)
+        if direct is not None:
+            return direct
+
+        matched_keys = set()
+        total = 0.0
+        for assignment in group.get("assignments", []):
+            matched_key = cls._match_weight_key(assignment.get("name", ""), weights_lower)
+            if matched_key is None or matched_key in matched_keys:
+                continue
+            matched_keys.add(matched_key)
+            total += weights_lower[matched_key]
+
+        return total if matched_keys else None
+
+    @classmethod
+    def _match_weight_key(cls, name: str, weights_lower: dict[str, float]) -> str | None:
+        """Return the matched syllabus weight key rather than just its value."""
+        name_lower = name.lower()
+
+        if name_lower in weights_lower:
+            return name_lower
+
+        for key in weights_lower:
+            if key in name_lower:
+                return key
+
+        candidates = [key for key in weights_lower if name_lower in key]
+        if candidates:
+            candidates.sort(key=len)
+            return candidates[0]
+
+        name_kw = cls._keywords(name)
+        best_overlap, best_key = 0, None
+        for key in weights_lower:
+            overlap = len(name_kw & cls._keywords(key))
+            if overlap > best_overlap:
+                best_overlap, best_key = overlap, key
+        if best_overlap > 0:
+            return best_key
 
         return None

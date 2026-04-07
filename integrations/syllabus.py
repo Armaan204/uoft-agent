@@ -20,11 +20,18 @@ import re
 
 import anthropic
 import requests
+import streamlit as st
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pypdf import PdfReader
+from streamlit.errors import StreamlitSecretNotFoundError
 
 load_dotenv()
+
+try:
+    ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+except StreamlitSecretNotFoundError:
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -124,7 +131,7 @@ def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
     match, or 'none' if nothing looks like a syllabus.  Returns the
     corresponding URL, or None.
     """
-    claude = anthropic.Anthropic()
+    claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     names = "\n".join(f"- {c['name']}" for c in candidates)
     prompt = (
@@ -298,7 +305,7 @@ def _extract_text(pdf_bytes: bytes) -> str:
 
 def _ask_claude(text: str) -> dict:
     """Send syllabus text to Claude Haiku and return a parsed weight dict."""
-    claude = anthropic.Anthropic()
+    claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     prompt = (
         "Below is text extracted from a university course syllabus.\n"

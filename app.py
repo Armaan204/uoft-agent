@@ -2,11 +2,13 @@
 app.py — Streamlit chat interface for uoft-agent.
 """
 
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 from dotenv import load_dotenv
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from agent.agent import run
 from calculator.grades import GradeCalculator
@@ -14,6 +16,13 @@ from integrations.quercus import QuercusClient, QuercusError
 from integrations.syllabus import parse_syllabus_weights
 
 load_dotenv()
+
+try:
+    ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+except StreamlitSecretNotFoundError:
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if ANTHROPIC_API_KEY:
+    os.environ["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY
 
 st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
 
@@ -143,7 +152,7 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
                 pdf_url  = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
                 _, weights = parse_syllabus_weights(course_id, client, pdf_url)
             except Exception:
-                weights = None  # will use total-points fallback below
+                weights = None
 
         if weights:
             grade = _calc.current_grade(groups, submissions, weights)
@@ -156,9 +165,9 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
                 result["grade"]      = grade
                 result["grade_mode"] = "weighted"
         else:
-            # Canvas total-points course with no accessible syllabus
-            result["grade"]      = _grade_from_points(groups, submissions)
-            result["grade_mode"] = "total_points"
+            # No Canvas weights and no accessible syllabus: omit overview grade.
+            result["grade"]      = None
+            result["grade_mode"] = None
     except Exception as exc:
         result["error"] = str(exc)
 
