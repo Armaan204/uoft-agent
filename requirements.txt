@@ -1,0 +1,7 @@
+# Runtime dependencies
+anthropic          # Claude API client
+streamlit          # web UI
+requests           # HTTP for Quercus / ACORN
+beautifulsoup4     # HTML scraping (ACORN, syllabus)
+pypdf              # PDF syllabus parsing
+python-dotenv      # load .env in development
