@@ -53,9 +53,34 @@ Core pipeline working end-to-end. Streamlit UI running locally.
 - Agent loop with native Claude API function calling (no LangChain)
 - Streamlit chat UI with tool-call expanders (`streamlit run app.py`)
 
+- Token onboarding screen in Streamlit — token validated via `get_courses()`
+  on connect, stored in session state only (never written to disk)
+- Token threaded from session state → `run()` → `execute_tool()` →
+  `QuercusClient(token=...)` — no hardcoded env dependency in the UI
+
+- Streamlit dashboard (loads before chat) with per-course summary cards:
+  - Parallel data loading via `concurrent.futures.ThreadPoolExecutor`
+  - Grade display uses accumulated grade: earned pts + full credit on
+    ungraded work (i.e. "start at 100%, subtract marks lost so far")
+  - Progress bar and risk flag (Safe ≥85%, On track 70–84%, At risk <70%)
+  - "Grade breakdown" expander on every card:
+    - Weighted courses: per-group earned/possible → pts contributed,
+      plus "Remaining (X%): not yet assessed → X pts assumed" row;
+      zero-weight items filtered out
+    - Total-points courses: per-group earned/possible pts with merged
+      duplicate group names, total shown explicitly
+  - Total-points fallback (`_grade_from_points`) used when Canvas has
+    no group weights and syllabus parsing is unavailable; duplicate
+    Canvas group names merged (not overwritten) so breakdown matches total
+  - Upcoming deadlines (next 14 days) across all courses, sorted by date
+  - Refresh button clears session cache and reloads
+
 **Known gap:**
 - STAC51 course outline not on Quercus (files API 403, no front page,
-  no syllabus-like files in modules) — weights must be entered manually
+  no syllabus-like files in modules) — total-points fallback used instead
+- `get_grade_scenarios` bug fixed: groups with no assignments posted yet
+  (e.g. FINAL EXAM before the assignment is created) are now correctly
+  treated as ungraded rather than skipped
 
 **Not yet started:**
 - ACORN integration (transcript, GPA)
