@@ -194,6 +194,67 @@ class GradeCalculator:
             for letter, threshold in UOFT_THRESHOLDS
         }
 
+    def build_weighted_components(
+        self,
+        assignment_groups: list[dict],
+        submissions: list[dict],
+        weights: dict[str, float],
+    ) -> dict:
+        """Build a conservative weighted component model for what-if sliders."""
+        sub_by_id = {s["assignment_id"]: s for s in submissions}
+        weights_lookup = {k.lower(): {"name": k, "weight": float(v)} for k, v in weights.items()}
+        used_keys = set()
+        components = []
+        reliable = True
+
+        for group in assignment_groups:
+            assignment_model = self._build_assignment_components(group, sub_by_id, weights_lookup, used_keys)
+            if assignment_model["complete"]:
+                components.extend(assignment_model["components"])
+                used_keys.update(assignment_model["matched_keys"])
+                continue
+
+            group_key = self._match_weight_key(
+                group["name"],
+                {k: v["weight"] for k, v in weights_lookup.items()},
+            )
+            if group_key and group_key not in used_keys:
+                component = self._build_group_component(group, sub_by_id, weights_lookup[group_key])
+                components.append(component)
+                used_keys.add(group_key)
+                if component["status"] == "partial":
+                    reliable = False
+
+        unmatched_weights = [
+            data["name"]
+            for key, data in weights_lookup.items()
+            if key not in used_keys
+        ]
+        if unmatched_weights:
+            reliable = False
+
+        return {
+            "components": components,
+            "total_weight": round(sum(c["weight"] for c in components), 2),
+            "graded_weight": round(sum(c["weight"] for c in components if c["status"] == "graded"), 2),
+            "ungraded_weight": round(sum(c["weight"] for c in components if c["status"] == "ungraded"), 2),
+            "unmatched_weights": unmatched_weights,
+            "reliable": reliable and bool(components),
+        }
+
+    def projected_grade(self, components: list[dict], slider_values: dict[str, float]) -> float:
+        """Compute a projected final grade from graded components and sliders."""
+        total = 0.0
+        for component in components:
+            if component["status"] == "graded":
+                pct = component["pct"]
+            elif component["status"] == "ungraded":
+                pct = slider_values.get(component["name"], 100.0)
+            else:
+                raise ValueError(f"Cannot project partial component: {component['name']}")
+            total += pct * component["weight"] / 100.0
+        return round(total, 2)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -324,3 +385,97 @@ class GradeCalculator:
             return best_key
 
         return None
+
+    @classmethod
+    def _build_assignment_components(
+        cls,
+        group: dict,
+        sub_by_id: dict[int, dict],
+        weights_lookup: dict[str, dict],
+        used_keys: set[str],
+    ) -> dict:
+        """Build item-level components when assignments map cleanly to weights."""
+        components_by_key = {}
+        matched_keys = set()
+        scorable_seen = 0
+
+        for assignment in group.get("assignments", []):
+            points_possible = assignment.get("points_possible") or 0
+            if points_possible <= 0:
+                continue
+            scorable_seen += 1
+
+            key = cls._match_weight_key(
+                assignment.get("name", ""),
+                {k: v["weight"] for k, v in weights_lookup.items()},
+            )
+            if key is None or key in used_keys:
+                return {"complete": False, "components": [], "matched_keys": set()}
+
+            matched_keys.add(key)
+            component = components_by_key.setdefault(key, {
+                "name": weights_lookup[key]["name"],
+                "weight": weights_lookup[key]["weight"],
+                "status": "ungraded",
+                "pct": None,
+                "earned": 0.0,
+                "possible": 0.0,
+                "source": "assignment",
+                "group_name": group["name"],
+            })
+
+            sub = sub_by_id.get(assignment["id"])
+            if sub is not None and sub.get("score") is not None:
+                component["earned"] += sub["score"]
+                component["possible"] += points_possible
+
+        if scorable_seen == 0 or not matched_keys:
+            return {"complete": False, "components": [], "matched_keys": set()}
+
+        components = []
+        for component in components_by_key.values():
+            if component["possible"] > 0:
+                component["pct"] = round((component["earned"] / component["possible"]) * 100, 2)
+                component["status"] = "graded"
+            components.append(component)
+
+        return {"complete": True, "components": components, "matched_keys": matched_keys}
+
+    @staticmethod
+    def _build_group_component(group: dict, sub_by_id: dict[int, dict], weight_info: dict) -> dict:
+        """Build a coarse group-level component when only group weights are known."""
+        earned = possible = 0.0
+        graded_count = 0
+        ungraded_count = 0
+
+        for assignment in group.get("assignments", []):
+            points_possible = assignment.get("points_possible") or 0
+            if points_possible <= 0:
+                continue
+            sub = sub_by_id.get(assignment["id"])
+            if sub is not None and sub.get("score") is not None:
+                earned += sub["score"]
+                possible += points_possible
+                graded_count += 1
+            else:
+                ungraded_count += 1
+
+        status = "ungraded"
+        pct = None
+        if graded_count and ungraded_count:
+            status = "partial"
+            pct = round((earned / possible) * 100, 2) if possible > 0 else None
+        elif graded_count:
+            status = "graded"
+            pct = round((earned / possible) * 100, 2) if possible > 0 else None
+
+        return {
+            "name": weight_info["name"],
+            "weight": weight_info["weight"],
+            "status": status,
+            "pct": pct,
+            "earned": earned,
+            "possible": possible,
+            "source": "group",
+            "group_name": group["name"],
+        }

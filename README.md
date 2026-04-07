@@ -1,4 +1,5 @@
 <div align="center">
+
 # UofT Agent
 
 🎓🤖 An **AI agent for University of Toronto students** that uses live academic data, tool calling, and agentic workflows to answer course and grade questions in natural language.

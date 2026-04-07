@@ -126,6 +126,39 @@ def _grade_from_points(groups: list, submissions: list) -> dict:
     }
 
 
+def _resolve_course_weights(course_id: int, client: QuercusClient) -> tuple[dict | None, str | None]:
+    """Resolve course weights from Canvas first, then from the syllabus."""
+    weights = client.get_canvas_weights(course_id)
+    if weights:
+        return weights, "canvas"
+
+    try:
+        syllabus = client.get_syllabus(course_id)
+        pdf_url = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
+        _, weights = parse_syllabus_weights(course_id, client, pdf_url)
+        if weights:
+            return weights, "syllabus"
+    except Exception:
+        pass
+
+    return None, None
+
+
+def _display_grade_summary(grade: dict, grade_mode: str | None) -> tuple[bool, float, str, float]:
+    """Return (has_data, displayed_pct, displayed_letter, graded_weight)."""
+    has_data = grade is not None and grade["letter"] != "N/A"
+    if not has_data:
+        return False, 0.0, "N/A", 0.0
+
+    graded_wt = grade.get("graded_weight", 0.0)
+    if grade_mode == "weighted" and graded_wt > 0:
+        earned_pts = grade["weighted_grade"] * graded_wt / 100
+        pct = round(earned_pts + (100 - graded_wt), 2)
+    else:
+        pct = grade["weighted_grade"]
+    return True, pct, GradeCalculator._to_letter(pct), graded_wt
+
+
 def _load_single_course(course: dict, client: QuercusClient) -> dict:
     """Fetch grade data and upcoming deadlines for one course."""
     course_id = course["id"]
@@ -135,6 +168,9 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
         "course_code": course.get("course_code", ""),
         "grade":       None,
         "grade_mode":  None,   # "weighted" or "total_points"
+        "weights_source": None,
+        "what_if_available": False,
+        "what_if_reason": None,
         "error":       None,
         "deadlines":   [],
     }
@@ -144,17 +180,16 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
         groups      = client.get_assignment_groups(course_id)
         submissions = client.get_submissions(course_id)
 
-        weights = client.get_canvas_weights(course_id)
-        if not weights:
-            # Try syllabus parsing — non-fatal if it fails
-            try:
-                syllabus = client.get_syllabus(course_id)
-                pdf_url  = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
-                _, weights = parse_syllabus_weights(course_id, client, pdf_url)
-            except Exception:
-                weights = None
+        weights, weights_source = _resolve_course_weights(course_id, client)
+        result["weights_source"] = weights_source
 
         if weights:
+            component_model = _calc.build_weighted_components(groups, submissions, weights)
+            if component_model["reliable"]:
+                result["what_if_available"] = True
+            else:
+                result["what_if_reason"] = "Weighted components could not be mapped reliably."
+
             grade = _calc.current_grade(groups, submissions, weights)
             # If all group names failed to match the weight keys the result is N/A;
             # fall back to raw points so the card never shows blank for a graded course.
@@ -168,6 +203,7 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
             # No Canvas weights and no accessible syllabus: omit overview grade.
             result["grade"]      = None
             result["grade_mode"] = None
+            result["what_if_reason"] = "No Canvas weights or accessible syllabus weights found."
     except Exception as exc:
         result["error"] = str(exc)
 
@@ -214,9 +250,146 @@ def _load_dashboard(token: str) -> tuple[list[dict], list[dict]]:
     return course_results, deadlines
 
 
+def _load_course_detail(course_id: int, token: str) -> dict:
+    """Load the data needed for a single course what-if page."""
+    client = QuercusClient(token=token)
+    courses = {c["id"]: c for c in client.get_courses()}
+    course = courses.get(course_id)
+    if course is None:
+        raise QuercusError(f"Course {course_id} is not available in the current course list.")
+
+    groups = client.get_assignment_groups(course_id)
+    submissions = client.get_submissions(course_id)
+    weights, weights_source = _resolve_course_weights(course_id, client)
+    if not weights:
+        return {
+            "course": course,
+            "weights_source": None,
+            "available": False,
+            "reason": "No Canvas weights or accessible syllabus weights found for this course.",
+        }
+
+    component_model = _calc.build_weighted_components(groups, submissions, weights)
+    if not component_model["reliable"]:
+        return {
+            "course": course,
+            "weights_source": weights_source,
+            "available": False,
+            "reason": "This course's weighted components could not be mapped reliably enough for sliders.",
+            "component_model": component_model,
+        }
+
+    grade = _calc.current_grade(groups, submissions, weights)
+    default_slider_values = {
+        c["name"]: 100.0
+        for c in component_model["components"]
+        if c["status"] == "ungraded"
+    }
+    projected_default = _calc.projected_grade(
+        component_model["components"],
+        default_slider_values,
+    )
+    graded_weight = component_model["graded_weight"]
+
+    return {
+        "course": course,
+        "weights_source": weights_source,
+        "available": True,
+        "grade": grade,
+        "has_data": True,
+        "current_standing": projected_default,
+        "current_letter": GradeCalculator._to_letter(projected_default),
+        "graded_weight": graded_weight,
+        "component_model": component_model,
+        "projected_default": projected_default,
+    }
+
+
+def _render_course_detail(course_id: int):
+    """Render the dedicated what-if page for one course."""
+    if st.button("Back to overview"):
+        st.session_state.pop("selected_course_id", None)
+        st.rerun()
+
+    if "course_details" not in st.session_state:
+        st.session_state.course_details = {}
+
+    if course_id not in st.session_state.course_details:
+        with st.spinner("Loading course details..."):
+            st.session_state.course_details[course_id] = _load_course_detail(course_id, st.session_state.token)
+
+    detail = st.session_state.course_details[course_id]
+    course = detail["course"]
+    code = course.get("course_code") or course.get("name")
+
+    st.title(code)
+    st.caption(course.get("name", ""))
+
+    if not detail["available"]:
+        st.warning(detail["reason"])
+        component_model = detail.get("component_model")
+        if component_model and component_model.get("unmatched_weights"):
+            st.caption("Unmatched syllabus weights: " + ", ".join(component_model["unmatched_weights"]))
+        return
+
+    components = detail["component_model"]["components"]
+    graded_components = [c for c in components if c["status"] == "graded"]
+    ungraded_components = [c for c in components if c["status"] == "ungraded"]
+
+    projected_inputs = {}
+    for component in ungraded_components:
+        key = f"what_if_{course_id}_{component['name']}"
+        projected_inputs[component["name"]] = st.slider(
+            f"{component['name']} ({component['weight']:.0f}%)",
+            min_value=0,
+            max_value=100,
+            value=100,
+            key=key,
+        )
+
+    projected_pct = _calc.projected_grade(components, projected_inputs)
+    projected_letter = GradeCalculator._to_letter(projected_pct)
+
+    metric_cols = st.columns(3)
+    with metric_cols[0]:
+        if detail["has_data"]:
+            st.metric("Current standing", f"{detail['current_standing']:.1f}%", detail["current_letter"], delta_color="off")
+        else:
+            st.metric("Current standing", "—")
+    with metric_cols[1]:
+        st.metric("Projected final", f"{projected_pct:.1f}%", projected_letter, delta_color="off")
+    with metric_cols[2]:
+        delta = projected_pct - detail["current_standing"] if detail["has_data"] else None
+        delta_text = f"{delta:+.1f} pts" if delta is not None else None
+        st.metric("Weights source", detail["weights_source"].title(), delta_text, delta_color="off")
+
+    st.subheader("Weighted Components")
+    for component in graded_components:
+        contrib = component["pct"] * component["weight"] / 100
+        st.text(
+            f"{component['name']} ({component['weight']:.0f}%): "
+            f"{component['pct']:.1f}% completed -> {contrib:.1f} pts"
+        )
+
+    if ungraded_components:
+        st.subheader("What-If Sliders")
+        for component in ungraded_components:
+            contrib = projected_inputs[component["name"]] * component["weight"] / 100
+            st.text(
+                f"{component['name']} ({component['weight']:.0f}%): "
+                f"{projected_inputs[component['name']]:.0f}% -> {contrib:.1f} pts"
+            )
+    else:
+        st.info("No ungraded weighted components remain for this course.")
+
+
 # ---------------------------------------------------------------------------
 # Dashboard UI
 # ---------------------------------------------------------------------------
+
+if "selected_course_id" in st.session_state:
+    _render_course_detail(int(st.session_state.selected_course_id))
+    st.stop()
 
 st.title("UofT Agent")
 
@@ -234,6 +407,7 @@ with hdr_col:
 with btn_col:
     if st.button("Refresh", use_container_width=True):
         del st.session_state["dashboard"]
+        st.session_state.pop("course_details", None)
         st.rerun()
 
 # Course cards
@@ -242,20 +416,7 @@ for col, cr in zip(cols, course_results):
     with col:
         code  = cr["course_code"] or cr["name"]
         grade = cr.get("grade")
-        has_data = grade is not None and grade["letter"] != "N/A"
-
-        if has_data:
-            graded_wt = grade.get("graded_weight", 0)
-            if cr.get("grade_mode") == "weighted" and graded_wt > 0:
-                # Accumulated grade: points earned so far + full credit on ungraded work.
-                # Equivalent to "start at 100%, subtract marks lost on assessed items."
-                earned_pts = grade["weighted_grade"] * graded_wt / 100
-                pct = round(earned_pts + (100 - graded_wt), 2)
-            else:
-                pct = grade["weighted_grade"]
-            letter = GradeCalculator._to_letter(pct)
-        else:
-            pct, letter, graded_wt = 0.0, "N/A", 0
+        has_data, pct, letter, graded_wt = _display_grade_summary(grade, cr.get("grade_mode"))
 
         risk_label, risk_color = _risk_flag(pct, has_data)
 
@@ -266,32 +427,10 @@ for col, cr in zip(cols, course_results):
         else:
             st.markdown("**—**")
         st.markdown(f":{risk_color}[**{risk_label}**]")
-        if has_data:
-            breakdown = grade.get("group_breakdown", {})
-            with st.expander("Grade breakdown"):
-                if cr.get("grade_mode") == "total_points":
-                    st.caption("No syllabus weights — grade = total earned ÷ total possible")
-                    for gname, g in breakdown.items():
-                        st.text(f"{gname}: {g['earned']:.1f} / {g['possible']:.1f} pts  ({g['pct']:.1f}%)")
-                    total_e = grade.get("_total_earned", 0)
-                    total_p = grade.get("_total_possible", 0)
-                    st.markdown(f"**Total: {total_e:.1f} / {total_p:.1f} = {pct:.1f}%**")
-                else:
-                    earned_pts = 0.0
-                    for gname, g in breakdown.items():
-                        if g["weight"] == 0:
-                            continue
-                        contrib = g["pct"] * g["weight"] / 100
-                        earned_pts += contrib
-                        st.text(
-                            f"{gname} ({g['weight']:.0f}%):  "
-                            f"{g['earned']:.1f}/{g['possible']:.1f}  "
-                            f"= {g['pct']:.1f}%  →  {contrib:.1f} pts"
-                        )
-                    ungraded_wt = 100 - graded_wt
-                    if ungraded_wt > 0:
-                        st.text(f"Remaining ({ungraded_wt:.0f}%):  not yet assessed  →  {ungraded_wt:.1f} pts assumed")
-                    st.markdown(f"**Current standing: {pct:.1f}%**")
+        if cr.get("what_if_available"):
+            if st.button("Grade breakdown", key=f"grade_breakdown_btn_{cr['id']}", use_container_width=True):
+                st.session_state.selected_course_id = cr["id"]
+                st.rerun()
         if cr.get("error"):
             st.caption(f"⚠ {cr['error'][:80]}")
 
