@@ -64,19 +64,56 @@ class QuercusClient:
 
         return results
 
-    def get_courses(self) -> list:
-        """Return the student's active course enrolments.
+    # Keywords whose presence in a course name marks it as a resource page,
+    # not a real academic course.
+    _RESOURCE_PAGE_KEYWORDS = [
+        "co-op compass",
+        "undergrads",
+        "community",
+        "sandbox",
+        "test course",
+    ]
 
-        Fetches /courses with enrollment_state=active and includes the
-        syllabus body so the calculator can parse grade weights from it.
+    def get_courses(self) -> list:
+        """Return the student's active academic course enrolments.
+
+        Fetches /courses with enrollment_state=active and include[]=term so
+        the enrollment term name is available for filtering.  Two filters are
+        applied before returning:
+
+        1. Term filter — keeps only courses whose enrollment term name contains
+           "2026" (current academic year).  Courses with no term object are
+           excluded because they are typically site-wide resource pages.
+
+        2. Name filter — excludes courses whose name contains any keyword in
+           _RESOURCE_PAGE_KEYWORDS (e.g. "Co-op Compass", "Undergrads").
         """
-        return self._get(
+        # Pass include[] twice — requests accepts a list of tuples for this
+        courses = self._get(
             "/courses",
-            params={
-                "enrollment_state": "active",
-                "include[]": "syllabus_body",
-            },
+            params=[
+                ("enrollment_state", "active"),
+                ("include[]", "syllabus_body"),
+                ("include[]", "term"),
+            ],
         )
+
+        filtered = []
+        for course in courses:
+            # 1. Term filter
+            term = course.get("term") or {}
+            term_name = term.get("name") or ""
+            if "2026" not in term_name:
+                continue
+
+            # 2. Resource-page name filter
+            name_lower = course.get("name", "").lower()
+            if any(kw in name_lower for kw in self._RESOURCE_PAGE_KEYWORDS):
+                continue
+
+            filtered.append(course)
+
+        return filtered
 
     def get_assignments(self, course_id: int | str) -> list:
         """Return all assignments for a course.
@@ -140,6 +177,27 @@ class QuercusClient:
                     except QuercusError:
                         pass  # skip files we can't resolve
         return {"syllabus_body": html, "pdf_urls": pdf_urls}
+
+    def get_front_page(self, course_id: int | str) -> dict:
+        """Return the course homepage (front page) wiki page.
+
+        The front page body is plain HTML and often contains links to the
+        course outline, syllabus, or schedule as named anchor tags.
+        Returns a dict with at least a 'body' key (may be None if unset).
+        """
+        return self._get(f"/courses/{course_id}/front_page")
+
+    def get_course_modules(self, course_id: int | str) -> list:
+        """Return all modules for a course, with their items inline.
+
+        Passes include[]=items so each module dict contains a nested 'items'
+        list.  Items of type 'File' carry a 'content_id' (the Canvas file ID)
+        that can be resolved to a download URL via get_file_download_url().
+        """
+        return self._get(
+            f"/courses/{course_id}/modules",
+            params={"include[]": "items"},
+        )
 
     def get_course_files(self, course_id: int | str) -> list:
         """Return all files uploaded to a course.

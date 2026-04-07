@@ -16,9 +16,11 @@ Two public entry points:
 import io
 import json
 import os
+import re
 
 import anthropic
 import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pypdf import PdfReader
 
@@ -30,6 +32,7 @@ load_dotenv()
 
 _SYLLABUS_KEYWORDS = ["syllabus", "outline", "course info", "course guide", "schedule"]
 _ALLOWED_EXTENSIONS = {".pdf", ".docx"}
+_CONFIDENCE_THRESHOLD = 0.3   # score / len(_SYLLABUS_KEYWORDS) must exceed this
 
 
 class SyllabusError(Exception):
@@ -37,22 +40,178 @@ class SyllabusError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# File discovery
+# File discovery helpers
 # ---------------------------------------------------------------------------
 
-def _score_filename(name: str) -> int:
-    """Return the number of syllabus-related keywords found in a filename."""
+def _confidence(name: str) -> float:
+    """Keyword-match confidence in [0, 1] for a filename."""
     lower = name.lower()
-    return sum(1 for kw in _SYLLABUS_KEYWORDS if kw in lower)
+    hits = sum(1 for kw in _SYLLABUS_KEYWORDS if kw in lower)
+    return hits / len(_SYLLABUS_KEYWORDS)
+
+
+def _allowed_ext(name: str) -> bool:
+    ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return ext in _ALLOWED_EXTENSIONS
+
+
+def _collect_file_candidates(course_id: int | str, client) -> list[dict]:
+    """Return all .pdf/.docx files from the course files API.
+
+    Each entry has keys: name, url, confidence.
+    Returns [] silently on 403 (restricted course).
+    """
+    try:
+        files = client.get_course_files(course_id)
+    except Exception:
+        return []
+
+    candidates = []
+    for f in files:
+        name = f.get("display_name") or f.get("filename") or ""
+        if not _allowed_ext(name):
+            continue
+        candidates.append({
+            "name":       name,
+            "url":        f.get("url"),
+            "confidence": _confidence(name),
+        })
+    return candidates
+
+
+def _collect_module_candidates(course_id: int | str, client) -> list[dict]:
+    """Return .pdf/.docx file items found inside course modules.
+
+    Walks every module's items, picks File-type items, resolves the file ID
+    to a download URL, and scores the item title.
+    Returns [] silently on error.
+    """
+    try:
+        modules = client.get_course_modules(course_id)
+    except Exception:
+        return []
+
+    seen_ids = set()
+    candidates = []
+    for module in modules:
+        for item in module.get("items", []):
+            if item.get("type") != "File":
+                continue
+            file_id = item.get("content_id")
+            if not file_id or file_id in seen_ids:
+                continue
+            # Use the item title to score; fall back to a bare URL check
+            title = item.get("title") or ""
+            if not _allowed_ext(title):
+                continue
+            seen_ids.add(file_id)
+            try:
+                url = client.get_file_download_url(file_id)
+            except Exception:
+                continue
+            candidates.append({
+                "name":       title,
+                "url":        url,
+                "confidence": _confidence(title),
+            })
+    return candidates
+
+
+def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
+    """Ask Claude Haiku which file in candidates is most likely the syllabus.
+
+    Passes the list of filenames and asks for the exact filename of the best
+    match, or 'none' if nothing looks like a syllabus.  Returns the
+    corresponding URL, or None.
+    """
+    claude = anthropic.Anthropic()
+
+    names = "\n".join(f"- {c['name']}" for c in candidates)
+    prompt = (
+        "The following files are available in a university course on Canvas LMS.\n"
+        "Which ONE file is most likely to be the course syllabus or course outline "
+        "(the document that lists grading breakdown, assessments, and policies)?\n\n"
+        f"{names}\n\n"
+        "Reply with ONLY the exact filename from the list above, or reply 'none' "
+        "if none of the files look like a syllabus. No explanation."
+    )
+
+    message = claude.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=100,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    chosen = message.content[0].text.strip().strip('"').strip("'")
+    if chosen.lower() == "none":
+        return None
+
+    # Match the chosen name back to a URL
+    for c in candidates:
+        if c["name"].lower() == chosen.lower():
+            return c["url"]
+
+    # Fuzzy fallback: substring match
+    for c in candidates:
+        if chosen.lower() in c["name"].lower() or c["name"].lower() in chosen.lower():
+            return c["url"]
+
+    return None
 
 
 def find_syllabus_file(course_id: int | str, client) -> str | None:
-    """Search a course's file list for the most likely syllabus document.
+    """Search for the most likely syllabus document in a course.
 
-    Fetches all files via GET /courses/{id}/files, filters to .pdf and .docx,
-    scores each filename against syllabus-related keywords, and returns the
-    pre-signed download URL of the best match.  Returns None if no file scores
-    above zero.
+    Strategy
+    --------
+    1. Collect .pdf/.docx candidates from the course files API.
+    2. Collect .pdf/.docx file items from course modules.
+    3. Deduplicate by URL, score each by keyword confidence (0–1).
+    4. If the best candidate confidence > _CONFIDENCE_THRESHOLD (0.3), return it.
+    5. Otherwise pass the full candidate list to Claude Haiku to pick the best.
+    6. Return None if nothing is found or Claude says 'none'.
+
+    Parameters
+    ----------
+    course_id : Canvas course ID.
+    client    : An authenticated QuercusClient instance.
+    """
+    # Collect from both sources and deduplicate by URL
+    all_candidates: list[dict] = []
+    seen_urls: set[str] = set()
+
+    for c in _collect_file_candidates(course_id, client) + _collect_module_candidates(course_id, client):
+        url = c.get("url")
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        all_candidates.append(c)
+
+    if not all_candidates:
+        return None
+
+    # Sort by confidence descending
+    all_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+    best = all_candidates[0]
+
+    if best["confidence"] > _CONFIDENCE_THRESHOLD:
+        return best["url"]
+
+    # Low confidence across the board — let Claude decide
+    return _ask_claude_pick_syllabus(all_candidates)
+
+
+def find_syllabus_frontpage(course_id: int | str, client) -> str | None:
+    """Search the course front page for a linked syllabus PDF.
+
+    Fetches the course homepage via GET /courses/{id}/front_page, parses all
+    anchor tags with BeautifulSoup, and scores each link by its *visible text*
+    (e.g. "Course Outline", "Syllabus") rather than the filename — link text is
+    far more reliable on UofT courses where files have opaque names.
+
+    Only links pointing to Canvas files (/files/ or /download in the href) are
+    considered; each is resolved to a direct download URL via the files API.
+    The highest-scoring link whose confidence > 0 is returned.
 
     Parameters
     ----------
@@ -60,28 +219,55 @@ def find_syllabus_file(course_id: int | str, client) -> str | None:
     client    : An authenticated QuercusClient instance.
     """
     try:
-        files = client.get_course_files(course_id)
+        page = client.get_front_page(course_id)
     except Exception:
-        # Canvas returns 403 on courses where file listing is restricted.
-        # Treat as "no files found" so the caller can try other strategies.
+        # 404 = no front page set; 401/403 = restricted — either way, skip
         return None
 
-    candidates = []
-    for f in files:
-        name = f.get("display_name") or f.get("filename") or ""
-        ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
-        if ext not in _ALLOWED_EXTENSIONS:
+    html = page.get("body") or ""
+    if not html:
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
+    candidates: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        # Only Canvas file links
+        if "/files/" not in href and "/download" not in href:
             continue
-        score = _score_filename(name)
-        if score > 0:
-            candidates.append((score, name, f.get("url")))
+
+        match = re.search(r"/files/(\d+)", href)
+        if not match:
+            continue
+        file_id = match.group(1)
+        if file_id in seen_ids:
+            continue
+        seen_ids.add(file_id)
+
+        # Score by visible link text, fall back to href filename
+        link_text = a.get_text(strip=True) or ""
+        score_text = link_text if link_text else href.rsplit("/", 1)[-1]
+        conf = _confidence(score_text)
+
+        try:
+            url = client.get_file_download_url(file_id)
+        except Exception:
+            continue
+
+        candidates.append({
+            "name":       score_text,
+            "url":        url,
+            "confidence": conf,
+        })
 
     if not candidates:
         return None
 
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    _score, best_name, best_url = candidates[0]
-    return best_url
+    candidates.sort(key=lambda x: x["confidence"], reverse=True)
+    best = candidates[0]
+    return best["url"] if best["confidence"] > 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -160,13 +346,14 @@ def parse_syllabus_weights(
     Resolution order
     ----------------
     1. Use pdf_url directly if provided (from syllabus_body HTML links).
-    2. Fall back to find_syllabus_file() to search the course file list.
+    2. find_syllabus_file()      — course files API + modules API + Claude picker.
+    3. find_syllabus_frontpage() — course homepage links scored by link text.
 
     Parameters
     ----------
-    course_id : Canvas course ID (used only for the fallback search).
+    course_id : Canvas course ID.
     client    : An authenticated QuercusClient instance.
-    pdf_url   : Pre-resolved download URL, or None to trigger the fallback.
+    pdf_url   : Pre-resolved download URL, or None to trigger the fallback chain.
 
     Returns
     -------
@@ -175,7 +362,7 @@ def parse_syllabus_weights(
 
     Raises
     ------
-    SyllabusError if no PDF can be found or the weights cannot be parsed.
+    SyllabusError if no PDF can be found through any strategy.
     """
     source_url = pdf_url
 
@@ -183,9 +370,12 @@ def parse_syllabus_weights(
         source_url = find_syllabus_file(course_id, client)
 
     if not source_url:
+        source_url = find_syllabus_frontpage(course_id, client)
+
+    if not source_url:
         raise SyllabusError(
             f"No syllabus PDF found for course {course_id} "
-            "(no syllabus_body links and no matching files)"
+            "(tried syllabus_body, files/modules API, and front page)"
         )
 
     pdf_bytes = _download_pdf(source_url)
