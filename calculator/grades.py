@@ -207,18 +207,31 @@ class GradeCalculator:
 
     @staticmethod
     def _match_weight(group_name: str, weights_lower: dict[str, float]) -> float | None:
-        """Find a weight for a group by case-insensitive substring matching.
+        """Find a weight for a group by case-insensitive matching.
 
-        Tries exact match first, then checks whether any weight key is a
-        substring of the group name or vice versa.
+        Priority
+        --------
+        1. Exact match.
+        2. Weight key is a substring of the group name (key is specific).
+        3. Group name is a substring of a weight key (less specific — among
+           multiple candidates pick the shortest key to avoid "Final Project"
+           matching "Final Project Proposal" instead of "Final Project").
         """
         name_lower = group_name.lower()
 
+        # 1. Exact
         if name_lower in weights_lower:
             return weights_lower[name_lower]
 
+        # 2. Key contained in name
         for key, val in weights_lower.items():
-            if key in name_lower or name_lower in key:
+            if key in name_lower:
                 return val
+
+        # 3. Name contained in key — prefer shortest key (closest match)
+        candidates = [(key, val) for key, val in weights_lower.items() if name_lower in key]
+        if candidates:
+            candidates.sort(key=lambda x: len(x[0]))
+            return candidates[0][1]
 
         return None

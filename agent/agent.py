@@ -1,0 +1,109 @@
+"""
+agent/agent.py — the main agent loop.
+
+run(user_message) drives a multi-turn conversation with Claude using
+native function calling.  Tool results are fed back into the message
+history until Claude returns a plain-text final answer.
+
+A simple CLI loop at the bottom lets you test interactively.
+"""
+
+import json
+import sys
+
+import anthropic
+from dotenv import load_dotenv
+
+from agent.prompts import SYSTEM_PROMPT  # noqa: E402  (works when run as module)
+from agent.tools import TOOL_SCHEMAS, execute_tool
+
+load_dotenv()
+
+MODEL = "claude-sonnet-4-6"
+
+
+def run(user_message: str, verbose: bool = True) -> str:
+    """Send a user message through the agent loop and return the final answer.
+
+    Parameters
+    ----------
+    user_message : the student's natural-language question.
+    verbose      : if True, print each tool call and result to stdout.
+
+    Returns
+    -------
+    The assistant's final plain-text response.
+    """
+    client   = anthropic.Anthropic()
+    messages = [{"role": "user", "content": user_message}]
+
+    while True:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            tools=TOOL_SCHEMAS,
+            messages=messages,
+        )
+
+        # Append the full assistant turn to history
+        messages.append({"role": "assistant", "content": response.content})
+
+        # If Claude is done, return the text
+        if response.stop_reason == "end_turn":
+            return _extract_text(response.content)
+
+        # Otherwise handle tool_use blocks
+        if response.stop_reason != "tool_use":
+            # Unexpected stop reason — return whatever text is there
+            return _extract_text(response.content)
+
+        tool_results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+
+            if verbose:
+                print(f"\n[tool call]  {block.name}({json.dumps(block.input, indent=2)})")
+
+            result = execute_tool(block.name, block.input)
+
+            if verbose:
+                result_preview = json.dumps(result, indent=2)
+                # Truncate long results for readability
+                if len(result_preview) > 800:
+                    result_preview = result_preview[:800] + "\n  ... (truncated)"
+                print(f"[tool result] {result_preview}")
+
+            tool_results.append({
+                "type":        "tool_result",
+                "tool_use_id": block.id,
+                "content":     json.dumps(result),
+            })
+
+        # Feed all results back in a single user turn
+        messages.append({"role": "user", "content": tool_results})
+
+
+def _extract_text(content: list) -> str:
+    """Pull plain text out of an assistant content block list."""
+    parts = [block.text for block in content if hasattr(block, "text")]
+    return "\n".join(parts).strip()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    print("UofT Academic Assistant  (type 'quit' to exit)\n")
+    while True:
+        try:
+            question = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not question or question.lower() in {"quit", "exit"}:
+            break
+        answer = run(question)
+        safe = answer.encode(sys.stdout.encoding, errors="replace").decode(sys.stdout.encoding)
+        print(f"\nAssistant: {safe}\n")

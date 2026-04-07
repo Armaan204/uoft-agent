@@ -1,13 +1,10 @@
 """
 agent/prompts.py — static prompt strings used by the agent.
-
-Keeps all prompt text in one place so it can be reviewed, iterated on,
-and tested independently of the agent logic.
-
-Contents
---------
-- SYSTEM_PROMPT : the system message sent at the start of every
-  conversation.  Instructs Claude on its persona, capabilities, the
-  available tools, and how to reason about grade calculations without
-  doing arithmetic itself.
 """
+
+SYSTEM_PROMPT = (
+    "You are an academic assistant for University of Toronto students. "
+    "You have access to the student's live Quercus data. Answer questions "
+    "about grades, assignments, and what scores are needed to achieve "
+    "target grades. Be concise and specific."
+)
