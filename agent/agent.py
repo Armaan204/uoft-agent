@@ -22,20 +22,29 @@ load_dotenv()
 MODEL = "claude-sonnet-4-6"
 
 
-def run(user_message: str, verbose: bool = True) -> str:
+def run(
+    user_message: str,
+    verbose: bool = True,
+    return_tool_calls: bool = False,
+) -> "str | tuple[str, list[dict]]":
     """Send a user message through the agent loop and return the final answer.
 
     Parameters
     ----------
-    user_message : the student's natural-language question.
-    verbose      : if True, print each tool call and result to stdout.
+    user_message      : the student's natural-language question.
+    verbose           : if True, print each tool call and result to stdout.
+    return_tool_calls : if True, return (answer, tool_calls) instead of just
+                        the answer string.  tool_calls is a list of dicts with
+                        keys 'name', 'input', and 'result'.
 
     Returns
     -------
-    The assistant's final plain-text response.
+    str when return_tool_calls is False (default).
+    (str, list[dict]) when return_tool_calls is True.
     """
-    client   = anthropic.Anthropic()
-    messages = [{"role": "user", "content": user_message}]
+    client      = anthropic.Anthropic()
+    messages    = [{"role": "user", "content": user_message}]
+    all_tool_calls: list[dict] = []
 
     while True:
         response = client.messages.create(
@@ -51,12 +60,13 @@ def run(user_message: str, verbose: bool = True) -> str:
 
         # If Claude is done, return the text
         if response.stop_reason == "end_turn":
-            return _extract_text(response.content)
+            answer = _extract_text(response.content)
+            return (answer, all_tool_calls) if return_tool_calls else answer
 
         # Otherwise handle tool_use blocks
         if response.stop_reason != "tool_use":
-            # Unexpected stop reason — return whatever text is there
-            return _extract_text(response.content)
+            answer = _extract_text(response.content)
+            return (answer, all_tool_calls) if return_tool_calls else answer
 
         tool_results = []
         for block in response.content:
@@ -70,10 +80,15 @@ def run(user_message: str, verbose: bool = True) -> str:
 
             if verbose:
                 result_preview = json.dumps(result, indent=2)
-                # Truncate long results for readability
                 if len(result_preview) > 800:
                     result_preview = result_preview[:800] + "\n  ... (truncated)"
                 print(f"[tool result] {result_preview}")
+
+            all_tool_calls.append({
+                "name":   block.name,
+                "input":  block.input,
+                "result": result,
+            })
 
             tool_results.append({
                 "type":        "tool_result",
