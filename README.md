@@ -1,57 +1,106 @@
 # UofT Agent
 
-A Streamlit-based academic assistant for University of Toronto students.
+🎓🤖 An **AI agent for University of Toronto students** that uses live academic data, tool calling, and agentic workflows to answer course and grade questions in natural language.
 
-The app connects to Quercus, reads live course data, extracts grading weights from the syllabus when needed, and answers natural-language questions such as:
+## 🚀 Live Streamlit Demo
 
-- What is my current standing in this course?
-- What do I need on the final to get an A-?
-- Which assignments are due in the next two weeks?
+**Try it here:** https://uoft-agent.streamlit.app/
 
-The project is designed as a lightweight demo application: Streamlit handles the UI, Anthropic handles reasoning and tool selection, and Python handles all grade calculations.
+This project is built around a live **Streamlit demo** that exposes the agent through a clean student-facing interface.
 
-## Streamlit Demo
+With a Quercus token, the agent can:
 
-The main product surface is the Streamlit app in [`app.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py).
+- inspect live course data
+- retrieve assignments and submissions
+- resolve grading weights from Canvas or the syllabus
+- compute current standing with deterministic Python logic
+- reason about grade outcomes and required scores
+- answer academic questions through a multi-step tool-using workflow
 
-The demo includes:
+## ✨ Why It’s Interesting
 
-- A Quercus token onboarding flow
-- A course overview dashboard
-- Per-course grade cards with weighted breakdowns
-- Upcoming deadlines across courses
-- A chat interface for grade and course questions
-- Tool-call visibility for debugging and demos
+This is not just a chatbot wrapper.
 
-### Dashboard behavior
+UofT Agent is an **agentic academic assistant**: a tool-using LLM system that decides when to gather structured data, when to call grading utilities, and when to return a final answer. Instead of relying on the model to guess numbers, the system pushes real computation into Python and uses the model for orchestration and reasoning.
 
-For each course, the dashboard tries to compute a meaningful current standing using the best available source:
+That means the workflow is:
 
-1. Canvas assignment-group weights, if the course exposes them
-2. Syllabus-derived weights, extracted from the course syllabus PDF
-3. No overview grade if neither source is available
+1. Understand the student's question
+2. Decide which tools to call
+3. Pull live data from Quercus
+4. Resolve grading weights from Canvas or syllabus files
+5. Run deterministic grade calculations
+6. Feed the tool results back into the agent loop
+7. Return a grounded natural-language answer
 
-This keeps the dashboard conservative: it only shows a weighted overview when the app can actually justify it.
+This is exactly the kind of **agent + tools + reasoning loop** that makes LLM systems feel substantially more capable than a static prompt-response app.
 
-## Demo Architecture
+## 🧠 Agentic Workflow
 
-The project is intentionally simple:
+The core agent loop lives in [`agent/agent.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/agent.py).
 
-- [`app.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py): Streamlit UI and dashboard
-- [`agent/agent.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/agent.py): Claude tool-calling loop
-- [`agent/tools.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/tools.py): tool schemas and dispatch
-- [`integrations/quercus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/quercus.py): Quercus/Canvas API client
-- [`integrations/syllabus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus.py): syllabus discovery and weight extraction
-- [`calculator/grades.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/calculator/grades.py): pure grade math
+The system uses native Anthropic tool calling to support workflows such as:
 
-Key design choices:
+- `get_courses`
+- `get_course_weights`
+- `get_current_grade`
+- `get_grade_scenarios`
 
-- No LangChain or framework-heavy orchestration
-- Native Anthropic tool calling only
-- Grade arithmetic stays in Python, not in the LLM
-- Syllabus parsing is only used when Canvas does not expose weights directly
+The model can chain these tools together as needed. For example:
 
-## Running Locally
+- If a student asks about a course by name, the agent can first resolve the course from the course list
+- If weights are missing from Canvas, the workflow can pivot to syllabus parsing
+- If the student asks what they need on the final, the agent can fetch current grade data and then run the scenario calculator
+
+This gives the app a clear **agentic execution path** rather than a single-shot completion.
+
+## 💬 Streamlit Demo Experience
+
+The Streamlit app in [`app.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py) is the main demo surface.
+
+It showcases:
+
+- 🔐 token-based onboarding for Quercus access
+- 📚 live course overview cards
+- 📈 weighted grade breakdowns
+- ⚠️ course-level academic risk signals
+- 📅 upcoming deadline aggregation
+- 💬 natural-language interaction with the AI agent
+- 🛠️ visible tool-call traces for demos, debugging, and transparency
+
+So the product is not only an agent under the hood, but also a compelling **interactive demo of agentic workflows in action**.
+
+## 🏗️ Architecture
+
+The repo is intentionally modular:
+
+- [`app.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py) - Streamlit UI and dashboard
+- [`agent/agent.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/agent.py) - main AI agent loop
+- [`agent/tools.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/tools.py) - tool schemas and dispatch layer
+- [`integrations/quercus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/quercus.py) - Quercus / Canvas integration
+- [`integrations/syllabus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus.py) - syllabus discovery and parsing workflow
+- [`calculator/grades.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/calculator/grades.py) - deterministic grade engine
+
+Core design choices:
+
+- **No LangChain**: native tool calling only
+- **LLM for reasoning, Python for arithmetic**
+- **Live data retrieval before final answers**
+- **Syllabus parsing as a fallback workflow when APIs are incomplete**
+
+## 📊 Grading Intelligence
+
+The dashboard and agent both use the same grading pipeline:
+
+1. Try Canvas assignment-group weights
+2. If unavailable, discover the syllabus PDF
+3. Extract grading components from the syllabus
+4. Match syllabus components against Canvas structure
+5. Compute weighted standing and future-grade scenarios
+
+This is especially important because many real courses do not expose clean grading metadata through the LMS. The system therefore behaves like a practical agent: it adapts, searches for alternate evidence, and continues the workflow instead of failing immediately.
+
+## 🛠️ Run Locally
 
 ### 1. Install dependencies
 
@@ -59,9 +108,7 @@ Key design choices:
 pip install -r requirements.txt
 ```
 
-### 2. Set environment variables
-
-Create a local `.env` file:
+### 2. Add a local `.env`
 
 ```env
 ANTHROPIC_API_KEY=your_anthropic_key
@@ -75,67 +122,49 @@ ACORN_USERNAME=your_utorid
 ACORN_PASSWORD=your_password
 ```
 
-### 3. Launch the Streamlit demo
+### 3. Start the Streamlit demo
 
 ```bash
 streamlit run app.py
 ```
 
-Then open the local Streamlit URL in your browser.
+## ☁️ Streamlit Cloud
 
-## Deploying on Streamlit Cloud
+The app supports **Streamlit Cloud** deployment using `st.secrets` for the Anthropic key.
 
-This project supports Streamlit Cloud secrets for the Anthropic API key.
-
-Set the following in your Streamlit Cloud app secrets:
+Set:
 
 ```toml
 ANTHROPIC_API_KEY = "your_anthropic_key"
 ```
 
-Quercus access is handled in the app UI through the student's personal access token, so the Streamlit demo does not need a shared Quercus token baked into deployment.
+Students enter their own Quercus token through the app UI, which keeps the deployed demo flexible and user-specific.
 
-## How It Works
+## ✅ Current Agent Capabilities
 
-When the user opens the app:
-
-1. They enter a Quercus personal access token
-2. The app validates the token against Quercus
-3. The dashboard loads current courses in parallel
-4. For each course, the app fetches assignments, submissions, and weights
-5. If Canvas weights are unavailable, the app attempts to find and parse the syllabus
-6. The chat interface uses Anthropic tool calling to answer questions using the same live data
-
-## Current Capabilities
-
-Implemented today:
-
-- Quercus course listing
+- Live Quercus course retrieval
 - Assignment and submission retrieval
-- Assignment-group weight support from Canvas
-- Syllabus PDF discovery from course pages, files, and modules
-- Syllabus weight extraction with Claude
-- Grade breakdowns and letter-grade scenarios
-- Streamlit chat and dashboard demo
+- Canvas weight resolution
+- Syllabus PDF discovery across multiple course surfaces
+- Syllabus-based grading extraction with Claude
+- Deterministic current-grade computation
+- Letter-grade scenario analysis
+- Streamlit-based interactive AI agent demo
 
-Planned or partial:
+## 🔜 Next Agent Workflows
 
-- ACORN integration
+- ACORN integration for transcript and GPA workflows
 - Gradescope integration
 - MarkUs integration
-- More formal automated test coverage
+- broader academic planning workflows
+- stronger automated evaluation and testing
 
-## Notes and Limitations
+## ⚠️ Notes
 
-- The app currently filters Quercus courses to the 2026 term logic implemented in the client.
-- Syllabus extraction depends on the syllabus being accessible through Quercus and readable as text.
-- Some courses use coarse Canvas groups and fine-grained syllabus labels; the calculator now attempts to reconcile those by matching assignment names inside groups.
-- The included `test_*.py` files are live-data scripts rather than a full unit test suite.
+- The current Quercus course filter is tied to the 2026 term logic in the client.
+- Syllabus extraction depends on the syllabus being accessible and readable as text.
+- The included `test_*.py` files are live-data scripts, not a formal unit-test suite.
 
-## Repository Status
-
-This repository is best understood as a polished demo and working prototype rather than a finished production system. The Streamlit app is the main deliverable and the clearest way to evaluate the project.
-
-## License
+## 📄 License
 
 MIT. See [`LICENSE`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/LICENSE).
