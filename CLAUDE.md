@@ -9,6 +9,7 @@ language.
 - Fetches live data from Quercus (Canvas API) and ACORN
 - Extracts grade weights from unstructured syllabi
 - Answers questions like "what do I need on the final to pass?"
+- Imports ACORN academic history via a user-triggered Chrome extension
 - Plans to support Gradescope and MarkUs in future
 
 ## Architecture
@@ -17,6 +18,8 @@ language.
 - `integrations/` — one file per platform (quercus, acorn, etc.)
 - `calculator/` — pure Python grade math, no LLM involved
 - `app.py` — Streamlit entry point
+- `api_server.py` — minimal ACORN import API / file-backed backend
+- `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import
 
 ## Key decisions
 
@@ -64,6 +67,8 @@ Core pipeline working end-to-end. Streamlit UI running locally.
   `QuercusClient(token=...)` — no hardcoded env dependency in the UI
 - Anthropic key resolution supports both local `.env` and Streamlit
   Cloud `st.secrets` without breaking the CLI path
+- Public privacy-policy route available in Streamlit via
+  `?page=privacy` for Chrome Web Store submission
 
 - Streamlit dashboard (loads before chat) with per-course summary cards:
   - Parallel data loading via `concurrent.futures.ThreadPoolExecutor`
@@ -88,6 +93,36 @@ Core pipeline working end-to-end. Streamlit UI running locally.
   - Enabled only when the weighted component mapping is reliable; mixed
     partial-group cases are blocked rather than approximated
 
+- ACORN import flow implemented end-to-end:
+  - Chrome extension (`uoft-acorn-extension/`) runs only on
+    `acorn.utoronto.ca`, does not handle login / credentials, and
+    extracts academic history only after the user clicks the popup button
+  - ACORN parsing rewritten for the real DOM shape — transcript data
+    extracted from `div.courses` plain-text blocks rather than tables
+  - Popup → background → content-script message passing implemented
+    cleanly, with backend POST handled in the service worker
+  - Browser extension posts parsed ACORN history to
+    `POST /api/acorn/import`
+  - Minimal backend (`api_server.py`) stores imports as JSON files on
+    disk, one file per import code, under `data/acorn_imports/`
+  - `GET /api/acorn/latest?import_code=...` and
+    `GET /api/acorn/status?import_code=...` implemented for readback
+  - Per-user import code flow added so each Streamlit session reads only
+    the ACORN payload associated with its own code
+  - Streamlit ACORN tab added:
+    - Explains the extension workflow
+    - Displays the import code to paste into the extension
+    - Refreshes by reading ACORN data back from the deployed backend
+    - Shows imported course count, timestamp, and a simple course table
+  - Backend prepared for deployment and deployed publicly (Railway);
+    Streamlit ACORN reads and extension writes now target the hosted
+    backend rather than localhost
+  - Extension prepared for Chrome Web Store submission:
+    - placeholder icons added
+    - raw academic-history console logging disabled by default
+    - privacy-policy files added
+    - popup copy made explicit about not collecting passwords
+
 **Known gap:**
 - STAC51 course outline not on Quercus (files API 403, no front page,
   no syllabus-like files in modules) — overview grade and what-if page
@@ -98,7 +133,9 @@ Core pipeline working end-to-end. Streamlit UI running locally.
 - What-if sliders currently require a fully reliable weighted component
   model; courses with partial group-level weights are intentionally
   blocked rather than estimated heuristically
+- ACORN backend currently uses import-code scoping instead of a full
+  auth / account system — simple and sufficient for now, but not a
+  long-term replacement for proper user identity if the project grows
 
 **Not yet started:**
-- ACORN integration (transcript, GPA)
 - Gradescope and MarkUs integrations

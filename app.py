@@ -28,6 +28,77 @@ if ANTHROPIC_API_KEY:
 
 st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
 
+
+def _render_privacy_policy_page():
+    """Render a standalone privacy policy page for the Chrome extension."""
+    st.title("UofT Agent Connector Privacy Policy")
+    st.caption("Last updated: 2026-04-07")
+
+    st.markdown(
+        """
+        ## Summary
+
+        UofT Agent Connector is a Chrome extension that helps a user import their
+        own ACORN academic history into UofT Agent.
+
+        The extension:
+
+        - does not collect usernames or passwords
+        - does not automate login
+        - only runs on `https://acorn.utoronto.ca/*`
+        - only imports data after the user has already logged in and manually clicks the import button
+        - sends parsed academic-history data to the UofT Agent backend only after the user initiates the import
+
+        ## What Data the Extension Processes
+
+        When the user clicks **Import Academic History**, the extension may process:
+
+        - course code
+        - course title
+        - credits / weight
+        - mark
+        - grade
+        - raw course text needed for parsing
+        - import code
+        - timestamp
+        - source page URL
+
+        ## What Data the Extension Does Not Collect
+
+        The extension does not collect:
+
+        - ACORN usernames
+        - ACORN passwords
+        - browsing data from unrelated websites
+
+        ## How Data Is Used
+
+        Imported data is used only to let the user view their own ACORN academic
+        history inside UofT Agent.
+
+        ## Storage
+
+        The extension may store:
+
+        - the most recent import code in Chrome local storage
+        - the most recent import payload for local extension flow support
+
+        The backend may store imported academic-history data so the UofT Agent app
+        can read it back using the same import code.
+
+        ## User Control
+
+        The extension only performs import when the user explicitly clicks the
+        import button.
+        """
+    )
+
+
+query_params = st.query_params
+if query_params.get("page") == "privacy":
+    _render_privacy_policy_page()
+    st.stop()
+
 # ---------------------------------------------------------------------------
 # Onboarding — shown until a valid token is stored in session state
 # ---------------------------------------------------------------------------

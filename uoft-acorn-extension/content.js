@@ -1,5 +1,16 @@
 (async () => {
+  // This content script does not handle login or credentials.
+  // It only reads the already-visible ACORN academic-history page after the
+  // user has logged in normally and clicked the popup action.
   const parser = await import(chrome.runtime.getURL("utils/parser.js"));
+  const LOG_PREFIX = "[ACORN-EXT]";
+  const DEBUG = false;
+
+  function log(...args) {
+    if (DEBUG) {
+      console.log(LOG_PREFIX, ...args);
+    }
+  }
 
   async function waitForCourses() {
     for (let i = 0; i < 10; i += 1) {
@@ -29,7 +40,7 @@
     await waitForCourses();
 
     const blocks = Array.from(document.querySelectorAll("div.courses"));
-    console.log("[ACORN-EXT] Found course blocks:", blocks.length);
+    log("Found course blocks:", blocks.length);
 
     const courses = [];
     for (const block of blocks) {
@@ -39,8 +50,7 @@
         .map((segment) => segment.trim())
         .filter(Boolean);
 
-      console.log("[ACORN-EXT] Block text:", text);
-      console.log("[ACORN-EXT] Matches:", segments);
+      log("Matches found in block:", segments.length);
 
       for (const segment of segments) {
         const course = parser.parseCourseSegment(segment);
@@ -48,18 +58,12 @@
           continue;
         }
 
-        console.log(
-          "[ACORN-EXT] Parsed:",
-          course.courseCode,
-          course.title,
-          course.credits,
-          course.grade
-        );
+        log("Parsed course:", course.courseCode, course.grade);
         courses.push(course);
       }
     }
 
-    console.log("[ACORN-EXT] Parsed courses:", courses.length);
+    log("Parsed courses:", courses.length);
 
     if (!courses.length) {
       return { error: "ACORN structure found, but no courses parsed" };
