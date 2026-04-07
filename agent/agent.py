@@ -9,13 +9,15 @@ A simple CLI loop at the bottom lets you test interactively.
 """
 
 import json
+import os
 import sys
 
 import anthropic
 from dotenv import load_dotenv
 
-from agent.prompts import SYSTEM_PROMPT  # noqa: E402  (works when run as module)
+from agent.prompts import SYSTEM_PROMPT
 from agent.tools import TOOL_SCHEMAS, execute_tool
+from integrations.quercus import QuercusClient
 
 load_dotenv()
 
@@ -24,6 +26,7 @@ MODEL = "claude-sonnet-4-6"
 
 def run(
     user_message: str,
+    token: str = None,
     verbose: bool = True,
     return_tool_calls: bool = False,
 ) -> "str | tuple[str, list[dict]]":
@@ -42,8 +45,9 @@ def run(
     str when return_tool_calls is False (default).
     (str, list[dict]) when return_tool_calls is True.
     """
-    client      = anthropic.Anthropic()
-    messages    = [{"role": "user", "content": user_message}]
+    client         = anthropic.Anthropic()
+    quercus_client = QuercusClient(token=token)
+    messages       = [{"role": "user", "content": user_message}]
     all_tool_calls: list[dict] = []
 
     while True:
@@ -76,7 +80,7 @@ def run(
             if verbose:
                 print(f"\n[tool call]  {block.name}({json.dumps(block.input, indent=2)})")
 
-            result = execute_tool(block.name, block.input)
+            result = execute_tool(block.name, block.input, quercus_client)
 
             if verbose:
                 result_preview = json.dumps(result, indent=2)
@@ -119,6 +123,6 @@ if __name__ == "__main__":
             break
         if not question or question.lower() in {"quit", "exit"}:
             break
-        answer = run(question)
+        answer = run(question, token=os.getenv("QUERCUS_API_TOKEN"))
         safe = answer.encode(sys.stdout.encoding, errors="replace").decode(sys.stdout.encoding)
         print(f"\nAssistant: {safe}\n")

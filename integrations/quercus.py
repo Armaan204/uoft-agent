@@ -22,8 +22,8 @@ class QuercusError(Exception):
 class QuercusClient:
     BASE_URL = "https://q.utoronto.ca/api/v1"
 
-    def __init__(self):
-        token = os.getenv("QUERCUS_API_TOKEN")
+    def __init__(self, token: str = None):
+        token = token or os.getenv("QUERCUS_API_TOKEN")
         if not token:
             raise QuercusError("QUERCUS_API_TOKEN is not set")
         self._headers = {"Authorization": f"Bearer {token}"}
