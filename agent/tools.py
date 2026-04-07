@@ -97,8 +97,15 @@ def _get_courses(_input: dict) -> list:
 
 def _get_course_weights(inp: dict) -> dict:
     course_id = inp["course_id"]
-    syllabus  = _client.get_syllabus(course_id)
-    pdf_url   = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
+
+    # Preferred path: Canvas group_weight — no LLM or PDF needed
+    canvas_weights = _client.get_canvas_weights(course_id)
+    if canvas_weights:
+        return canvas_weights
+
+    # Fallback: parse syllabus PDF
+    syllabus = _client.get_syllabus(course_id)
+    pdf_url  = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
     _src, weights = parse_syllabus_weights(course_id, _client, pdf_url)
     return weights
 

@@ -1,63 +1,40 @@
-"""
-Test the full syllabus discovery + weight extraction pipeline on
-STAC51 (427986), MUZA99 (425621), and EESA10 (420065).
-Shows which fallback fired and the extracted weights for each course.
-"""
+"""Test current_grade and grade_scenarios for EESA10 (420065)."""
 
 from dotenv import load_dotenv
-from integrations.quercus import QuercusClient, QuercusError
-from integrations.syllabus import (
-    find_syllabus_file,
-    find_syllabus_frontpage,
-    parse_syllabus_weights,
-    SyllabusError,
-)
+from integrations.quercus import QuercusClient
+from calculator.grades import GradeCalculator
 
 load_dotenv()
 
-COURSES = {
-    427986: "STAC51 -- Categorical Data Analysis",
-    425621: "MUZA99 -- Listening to Music",
-    420065: "EESA10 -- Human Health and the Environment",
-}
-
+COURSE_ID = 420065
 client = QuercusClient()
+calc   = GradeCalculator()
 
-for course_id, course_name in COURSES.items():
-    print(f"\n{'='*68}")
-    print(f"COURSE {course_id}: {course_name}")
-    print(f"{'='*68}")
+# --- Weights (Canvas-native, no syllabus parsing needed) ---
+weights = client.get_canvas_weights(COURSE_ID)
+print(f"Weights source: Canvas group_weight")
+for name, w in weights.items():
+    print(f"  {name:<20} {w}%")
 
-    # Show which fallback finds something
-    syllabus = client.get_syllabus(course_id)
-    pdf_url  = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
+# --- Current grade ---
+groups      = client.get_assignment_groups(COURSE_ID)
+submissions = client.get_submissions(COURSE_ID)
+result      = calc.current_grade(groups, submissions, weights)
 
-    if pdf_url:
-        print(f"  Source: syllabus_body PDF link")
+print(f"\nCurrent grade breakdown:")
+for group, g in result["group_breakdown"].items():
+    print(f"  {group:<20} {g['earned']:.1f}/{g['possible']:.1f} = {g['pct']:.1f}%  (weight: {g['weight']}%)")
+print(f"\n  Graded weight : {result['graded_weight']}%")
+print(f"  Weighted grade: {result['weighted_grade']}%  ({result['letter']})")
+
+# --- Grade scenarios (Final Exam = 40%) ---
+FINAL_WEIGHT = 0.40
+print(f"\nGrade scenarios (Final Exam = {FINAL_WEIGHT*100:.0f}%):")
+scenarios = calc.grade_scenarios(result["weighted_grade"], FINAL_WEIGHT)
+for letter, r in scenarios.items():
+    if r["status"] == "already_achieved":
+        print(f"  {letter:<3} already achieved")
+    elif r["status"] == "impossible":
+        print(f"  {letter:<3} impossible (would need {r['needed']}%)")
     else:
-        fb2 = find_syllabus_file(course_id, client)
-        if fb2:
-            print(f"  Source: files/modules search")
-            pdf_url = fb2
-        else:
-            fb3 = find_syllabus_frontpage(course_id, client)
-            if fb3:
-                print(f"  Source: front page link")
-                pdf_url = fb3
-            else:
-                print(f"  Source: none found")
-
-    if not pdf_url:
-        print("  Weights: N/A")
-        continue
-
-    print(f"  URL   : {pdf_url[:72]}...")
-    try:
-        _src, weights = parse_syllabus_weights(course_id, client, pdf_url)
-        print(f"  Weights:")
-        for component, weight in weights.items():
-            print(f"    {component:<40} {weight}%")
-        total = sum(w for w in weights.values() if isinstance(w, (int, float)))
-        print(f"    {'TOTAL':<40} {total}%")
-    except SyllabusError as e:
-        print(f"  ERROR: {e}")
+        print(f"  {letter:<3} need {r['needed']}% on final")

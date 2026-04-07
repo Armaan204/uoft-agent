@@ -205,17 +205,35 @@ class GradeCalculator:
                 return letter
         return "F"
 
-    @staticmethod
-    def _match_weight(group_name: str, weights_lower: dict[str, float]) -> float | None:
+    # Stop words excluded from fuzzy keyword matching
+    _STOP_WORDS = {"the", "and", "to", "of", "a", "an", "in", "on", "for",
+                   "with", "at", "by", "from", "or", "is", "its"}
+
+    @classmethod
+    def _keywords(cls, text: str) -> set[str]:
+        """Extract meaningful root keywords from a string.
+
+        Strips punctuation, splits on spaces and hyphens, lowercases, and
+        removes stop words.  "Mid-term Examination" → {"mid", "term", "examination"}.
+        """
+        import re
+        tokens = re.split(r"[\s\-_/]+", text.lower())
+        tokens = [re.sub(r"[^a-z0-9]", "", t) for t in tokens]
+        return {t for t in tokens if t and t not in cls._STOP_WORDS}
+
+    @classmethod
+    def _match_weight(cls, group_name: str, weights_lower: dict[str, float]) -> float | None:
         """Find a weight for a group by case-insensitive matching.
 
         Priority
         --------
         1. Exact match.
-        2. Weight key is a substring of the group name (key is specific).
-        3. Group name is a substring of a weight key (less specific — among
-           multiple candidates pick the shortest key to avoid "Final Project"
-           matching "Final Project Proposal" instead of "Final Project").
+        2. Weight key is a substring of the group name.
+        3. Group name is a substring of a weight key (prefer shortest key).
+        4. Fuzzy keyword overlap — extract root keywords from both strings
+           (split on spaces/hyphens, strip punctuation, drop stop words) and
+           return the weight key with the most keyword tokens in common.
+           Requires at least one meaningful keyword to overlap.
         """
         name_lower = group_name.lower()
 
@@ -228,10 +246,20 @@ class GradeCalculator:
             if key in name_lower:
                 return val
 
-        # 3. Name contained in key — prefer shortest key (closest match)
+        # 3. Name contained in key — prefer shortest key
         candidates = [(key, val) for key, val in weights_lower.items() if name_lower in key]
         if candidates:
             candidates.sort(key=lambda x: len(x[0]))
             return candidates[0][1]
+
+        # 4. Fuzzy keyword overlap
+        name_kw = cls._keywords(group_name)
+        best_overlap, best_val = 0, None
+        for key, val in weights_lower.items():
+            overlap = len(name_kw & cls._keywords(key))
+            if overlap > best_overlap:
+                best_overlap, best_val = overlap, val
+        if best_overlap > 0:
+            return best_val
 
         return None

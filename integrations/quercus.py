@@ -219,6 +219,26 @@ class QuercusClient:
             params={"include[]": "assignments"},
         )
 
+    def get_canvas_weights(self, course_id: int | str) -> dict[str, float] | None:
+        """Return grade weights from Canvas assignment group configuration.
+
+        Canvas lets instructors set a percentage weight directly on each
+        assignment group.  When at least one group has a non-zero weight,
+        this method returns a dict mapping group name → weight percentage
+        so the caller can skip syllabus parsing entirely.
+
+        Returns None when no groups have weights configured (all zeros),
+        indicating that syllabus parsing is required.
+        """
+        groups = self.get_assignment_groups(course_id)
+        weights = {
+            g["name"]: float(g.get("group_weight") or 0)
+            for g in groups
+        }
+        if any(w > 0 for w in weights.values()):
+            return weights
+        return None
+
     def get_grades(self, course_id: int | str) -> dict:
         """Return the student's current grade summary for a course.
 
