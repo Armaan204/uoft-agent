@@ -144,6 +144,51 @@ ANTHROPIC_API_KEY = "your_anthropic_key"
 
 Students enter their own Quercus token through the app UI, which keeps the deployed demo flexible and user-specific.
 
+## 🚂 Backend Deployment
+
+The ACORN import backend is intentionally small and can be deployed separately from Streamlit.
+
+Recommended setup:
+
+- **Streamlit app** on Streamlit Cloud
+- **ACORN backend** on Railway
+
+The backend entry point is [`api_server.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/api_server.py), and it supports:
+
+- `POST /api/acorn/import`
+- `GET /api/acorn/latest?import_code=...`
+- `GET /api/acorn/status?import_code=...`
+
+### Local backend
+
+```bash
+python api_server.py
+```
+
+### Deploying on Railway
+
+This repo now includes a minimal [`Procfile`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/Procfile):
+
+```text
+web: python api_server.py
+```
+
+The backend reads:
+
+- `HOST` (defaults to `0.0.0.0`)
+- `PORT` (defaults to `8000`)
+
+On Railway, `PORT` is injected automatically, so the same backend can run locally and in production without code changes.
+
+### After deployment
+
+You will need to update:
+
+- the Chrome extension backend URL constant
+- the Streamlit ACORN tab read path
+
+so both point at the deployed backend instead of local files.
+
 ## ✅ Current Agent Capabilities
 
 - Live Quercus course retrieval

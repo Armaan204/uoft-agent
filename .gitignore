@@ -15,6 +15,9 @@ build/
 # Streamlit
 .streamlit/secrets.toml
 
+# Local data imports
+data/
+
 # IDEs
 .vscode/
 .idea/

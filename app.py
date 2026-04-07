@@ -3,6 +3,7 @@ app.py — Streamlit chat interface for uoft-agent.
 """
 
 import os
+import secrets
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +13,7 @@ from streamlit.errors import StreamlitSecretNotFoundError
 
 from agent.agent import run
 from calculator.grades import GradeCalculator
+from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
 from integrations.quercus import QuercusClient, QuercusError
 from integrations.syllabus import parse_syllabus_weights
 
@@ -383,6 +385,96 @@ def _render_course_detail(course_id: int):
         st.info("No ungraded weighted components remain for this course.")
 
 
+def _get_acorn_import_code() -> str:
+    """Return a stable per-session ACORN import code."""
+    if "acorn_import_code" not in st.session_state:
+        st.session_state.acorn_import_code = secrets.token_hex(4).upper()
+    return st.session_state.acorn_import_code
+
+
+def _load_acorn_data(import_code: str) -> dict:
+    """Load the latest ACORN import for one import code."""
+    try:
+        return {
+            "status": get_import_status(import_code),
+            "latest": get_latest_import(import_code),
+            "error": None,
+        }
+    except AcornBackendError as exc:
+        return {
+            "status": {"exists": False, "importedAt": None, "importCode": import_code},
+            "latest": None,
+            "error": str(exc),
+        }
+
+
+def _render_acorn_tab():
+    """Render a minimal ACORN import/readback page."""
+    import_code = _get_acorn_import_code()
+
+    st.subheader("ACORN Import")
+    st.info(
+        "Use the UofT Agent Connector extension to import your ACORN academic history. "
+        "The extension writes to the backend using your import code, and this page reads the latest imported data for that same code."
+    )
+
+    st.code(import_code, language=None)
+    st.caption("Paste this import code into the extension popup before importing from ACORN.")
+
+    st.markdown(
+        "1. Install the Chrome extension from `uoft-acorn-extension/`  \n"
+        "2. Open ACORN and log in normally  \n"
+        "3. Paste the import code above into the extension popup  \n"
+        "4. Click the extension's **Import Academic History** button  \n"
+        "5. Return here and click **Refresh ACORN data**"
+    )
+
+    if "acorn_data" not in st.session_state:
+        st.session_state.acorn_data = _load_acorn_data(import_code)
+
+    if st.button("Refresh ACORN data", key="refresh_acorn_data"):
+        st.session_state.acorn_data = _load_acorn_data(import_code)
+        st.rerun()
+
+    acorn_data = st.session_state.acorn_data
+    status = acorn_data["status"]
+    latest = acorn_data["latest"]
+
+    if acorn_data.get("error"):
+        st.error(
+            "Could not load ACORN data from the backend. "
+            f"{acorn_data['error']}"
+        )
+        return
+
+    if not status.get("exists") or latest is None:
+        st.warning(
+            "No ACORN data has been imported for this code yet. If you have not installed the extension, "
+            "install it first. Otherwise, paste this code into the extension, run the import from ACORN, "
+            "then come back here and refresh."
+        )
+        return
+
+    st.metric("Courses imported", len(latest.get("courses", [])))
+    st.caption(f"Last import: {latest.get('importedAt') or 'Unknown'}")
+
+    courses = latest.get("courses", [])
+    if not courses:
+        st.info("ACORN data exists, but no parsed courses were stored.")
+        return
+
+    rows = []
+    for course in courses:
+        rows.append({
+            "Course": course.get("courseCode"),
+            "Title": course.get("title"),
+            "Credits": course.get("credits"),
+            "Mark": course.get("mark"),
+            "Grade": course.get("grade"),
+        })
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
 # ---------------------------------------------------------------------------
 # Dashboard UI
 # ---------------------------------------------------------------------------
@@ -400,103 +492,109 @@ if "dashboard" not in st.session_state:
 
 course_results, deadlines = st.session_state.dashboard
 
-# Refresh button — top-right via columns
-hdr_col, btn_col = st.columns([5, 1])
-with hdr_col:
-    st.subheader("Course Overview")
-with btn_col:
-    if st.button("Refresh", use_container_width=True):
-        del st.session_state["dashboard"]
-        st.session_state.pop("course_details", None)
-        st.rerun()
+main_tab, acorn_tab = st.tabs(["Dashboard", "ACORN"])
 
-# Course cards
-cols = st.columns(max(len(course_results), 1))
-for col, cr in zip(cols, course_results):
-    with col:
-        code  = cr["course_code"] or cr["name"]
-        grade = cr.get("grade")
-        has_data, pct, letter, graded_wt = _display_grade_summary(grade, cr.get("grade_mode"))
+with main_tab:
+    # Refresh button — top-right via columns
+    hdr_col, btn_col = st.columns([5, 1])
+    with hdr_col:
+        st.subheader("Course Overview")
+    with btn_col:
+        if st.button("Refresh", use_container_width=True):
+            del st.session_state["dashboard"]
+            st.session_state.pop("course_details", None)
+            st.rerun()
 
-        risk_label, risk_color = _risk_flag(pct, has_data)
+    # Course cards
+    cols = st.columns(max(len(course_results), 1))
+    for col, cr in zip(cols, course_results):
+        with col:
+            code  = cr["course_code"] or cr["name"]
+            grade = cr.get("grade")
+            has_data, pct, letter, graded_wt = _display_grade_summary(grade, cr.get("grade_mode"))
 
-        st.markdown(f"**{code}**")
-        if has_data:
-            st.metric(label="Grade", value=f"{pct:.1f}%", delta=letter, delta_color="off", label_visibility="collapsed")
-            st.progress(min(pct / 100.0, 1.0))
-        else:
-            st.markdown("**—**")
-        st.markdown(f":{risk_color}[**{risk_label}**]")
-        if cr.get("what_if_available"):
-            if st.button("Grade breakdown", key=f"grade_breakdown_btn_{cr['id']}", use_container_width=True):
-                st.session_state.selected_course_id = cr["id"]
-                st.rerun()
-        if cr.get("error"):
-            st.caption(f"⚠ {cr['error'][:80]}")
+            risk_label, risk_color = _risk_flag(pct, has_data)
 
-st.divider()
+            st.markdown(f"**{code}**")
+            if has_data:
+                st.metric(label="Grade", value=f"{pct:.1f}%", delta=letter, delta_color="off", label_visibility="collapsed")
+                st.progress(min(pct / 100.0, 1.0))
+            else:
+                st.markdown("**—**")
+            st.markdown(f":{risk_color}[**{risk_label}**]")
+            if cr.get("what_if_available"):
+                if st.button("Grade breakdown", key=f"grade_breakdown_btn_{cr['id']}", use_container_width=True):
+                    st.session_state.selected_course_id = cr["id"]
+                    st.rerun()
+            if cr.get("error"):
+                st.caption(f"⚠ {cr['error'][:80]}")
 
-# Upcoming deadlines
-st.subheader("Upcoming Deadlines — next 14 days")
-if deadlines:
-    for d in deadlines:
-        due_str = d["due_at"].strftime("%b %d, %Y %I:%M %p")
-        st.markdown(f"**{d['course_code']}** &nbsp; {d['name']}  \n_{due_str} UTC_")
-else:
-    st.info("No assignments due in the next 14 days.")
+    st.divider()
 
-st.divider()
+    # Upcoming deadlines
+    st.subheader("Upcoming Deadlines — next 14 days")
+    if deadlines:
+        for d in deadlines:
+            due_str = d["due_at"].strftime("%b %d, %Y %I:%M %p")
+            st.markdown(f"**{d['course_code']}** &nbsp; {d['name']}  \n_{due_str} UTC_")
+    else:
+        st.info("No assignments due in the next 14 days.")
 
-# ---------------------------------------------------------------------------
-# Chat UI
-# ---------------------------------------------------------------------------
+    st.divider()
 
-st.subheader("Ask the Agent")
-st.caption("Ask anything about your grades and courses")
+    # ---------------------------------------------------------------------------
+    # Chat UI
+    # ---------------------------------------------------------------------------
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.subheader("Ask the Agent")
+    st.caption("Ask anything about your grades and courses")
 
-# Render conversation history
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        if msg["role"] == "assistant":
-            for tc in msg.get("tool_calls", []):
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Render conversation history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            if msg["role"] == "assistant":
+                for tc in msg.get("tool_calls", []):
+                    label = "🔧 {}({})".format(
+                        tc["name"],
+                        ", ".join(f"{k}={v}" for k, v in tc["input"].items()),
+                    )
+                    with st.expander(label, expanded=False):
+                        st.json(tc["result"])
+            st.markdown(msg["content"])
+
+    # New message
+    if prompt := st.chat_input("Ask about your grades..."):
+        st.session_state.messages.append({"role": "user", "content": prompt, "tool_calls": []})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                answer, tool_calls = run(
+                    prompt,
+                    token=st.session_state.token,
+                    verbose=False,
+                    return_tool_calls=True,
+                )
+
+            for tc in tool_calls:
                 label = "🔧 {}({})".format(
                     tc["name"],
                     ", ".join(f"{k}={v}" for k, v in tc["input"].items()),
                 )
                 with st.expander(label, expanded=False):
                     st.json(tc["result"])
-        st.markdown(msg["content"])
 
-# New message
-if prompt := st.chat_input("Ask about your grades..."):
-    st.session_state.messages.append({"role": "user", "content": prompt, "tool_calls": []})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+            st.markdown(answer)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            answer, tool_calls = run(
-                prompt,
-                token=st.session_state.token,
-                verbose=False,
-                return_tool_calls=True,
-            )
+        st.session_state.messages.append({
+            "role":       "assistant",
+            "content":    answer,
+            "tool_calls": tool_calls,
+        })
 
-        for tc in tool_calls:
-            label = "🔧 {}({})".format(
-                tc["name"],
-                ", ".join(f"{k}={v}" for k, v in tc["input"].items()),
-            )
-            with st.expander(label, expanded=False):
-                st.json(tc["result"])
-
-        st.markdown(answer)
-
-    st.session_state.messages.append({
-        "role":       "assistant",
-        "content":    answer,
-        "tool_calls": tool_calls,
-    })
+with acorn_tab:
+    _render_acorn_tab()
