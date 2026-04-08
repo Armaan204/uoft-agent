@@ -5,3 +5,5 @@ requests==2.32.3        # HTTP for Quercus / ACORN
 beautifulsoup4==4.13.5  # HTML scraping (ACORN, syllabus)
 pypdf==6.1.1            # PDF syllabus parsing
 python-dotenv==1.1.1    # load .env in development
+supabase==2.15.3        # Supabase Postgres client
+cryptography==45.0.4    # Fernet token encryption

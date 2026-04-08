@@ -1,12 +1,12 @@
 """
-api_server.py — minimal local HTTP API for ACORN extension imports.
+api_server.py — minimal HTTP API for ACORN extension imports.
 
 Routes:
   POST /api/acorn/import
   GET  /api/acorn/latest
   GET  /api/acorn/status
 
-The server writes the latest imported ACORN payload to data/acorn_latest.json.
+The server stores ACORN imports in Supabase Postgres.
 """
 
 from __future__ import annotations
@@ -16,7 +16,92 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from integrations.acorn_store import AcornStoreError, get_status, read_latest, write_latest
+from supabase import Client, create_client
+
+from integrations.acorn_store import AcornStoreError, validate_payload
+
+
+class ApiStorageError(RuntimeError):
+    """Raised when the backend storage layer fails."""
+
+
+def _get_supabase() -> Client:
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        raise ApiStorageError("SUPABASE_URL and SUPABASE_KEY must be configured")
+    return create_client(url, key)
+
+
+def _insert_acorn_import(payload: dict) -> dict:
+    validated = validate_payload(payload)
+    row = {
+        "import_code": validated["importCode"],
+        "user_id": None,
+        "data": validated,
+        "imported_at": validated["importedAt"],
+    }
+    try:
+        response = (
+            _get_supabase()
+            .table("acorn_imports")
+            .insert(row)
+            .execute()
+        )
+    except Exception as exc:
+        raise ApiStorageError("Failed to store ACORN import") from exc
+
+    data = getattr(response, "data", None) or []
+    if not data:
+        raise ApiStorageError("Supabase returned no inserted ACORN import row")
+    return validated
+
+
+def _read_latest(import_code: str) -> dict | None:
+    try:
+        response = (
+            _get_supabase()
+            .table("acorn_imports")
+            .select("data")
+            .eq("import_code", import_code)
+            .order("imported_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise ApiStorageError("Failed to load latest ACORN import") from exc
+
+    rows = getattr(response, "data", None) or []
+    if not rows:
+        return None
+    return rows[0].get("data")
+
+
+def _get_status(import_code: str) -> dict:
+    try:
+        response = (
+            _get_supabase()
+            .table("acorn_imports")
+            .select("data")
+            .eq("import_code", import_code)
+            .order("imported_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise ApiStorageError("Failed to load ACORN import status") from exc
+
+    rows = getattr(response, "data", None) or []
+    if not rows:
+        return {"exists": False, "importedAt": None, "importCode": import_code}
+
+    latest = rows[0].get("data") or {}
+    return {
+        "exists": True,
+        "importedAt": latest.get("importedAt"),
+        "importCode": latest.get("importCode", import_code),
+        "courseCount": len(latest.get("courses", [])),
+    }
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -36,7 +121,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"ok": False, "error": "Missing import_code query parameter"})
                 return
 
-            latest = read_latest(import_code)
+            try:
+                latest = _read_latest(import_code)
+            except ApiStorageError as exc:
+                self._send_json(500, {"ok": False, "error": str(exc)})
+                return
+
             if latest is None:
                 self._send_json(200, {
                     "ok": True,
@@ -53,7 +143,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             if not import_code:
                 self._send_json(400, {"ok": False, "error": "Missing import_code query parameter"})
                 return
-            self._send_json(200, {"ok": True, **get_status(import_code)})
+            try:
+                status = _get_status(import_code)
+            except ApiStorageError as exc:
+                self._send_json(500, {"ok": False, "error": str(exc)})
+                return
+            self._send_json(200, {"ok": True, **status})
             return
 
         self._send_json(404, {"ok": False, "error": "Not found"})
@@ -65,12 +160,15 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         try:
             body = self._read_json_body()
-            stored = write_latest(body)
+            stored = _insert_acorn_import(body)
         except AcornStoreError as exc:
             self._send_json(400, {"ok": False, "error": str(exc)})
             return
         except json.JSONDecodeError:
             self._send_json(400, {"ok": False, "error": "Request body must be valid JSON"})
+            return
+        except ApiStorageError as exc:
+            self._send_json(500, {"ok": False, "error": str(exc)})
             return
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})

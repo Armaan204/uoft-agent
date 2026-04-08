@@ -18,7 +18,7 @@ language.
 - `integrations/` — one file per platform (quercus, acorn, etc.)
 - `calculator/` — pure Python grade math, no LLM involved
 - `app.py` — Streamlit entry point
-- `api_server.py` — minimal ACORN import API / file-backed backend
+- `api_server.py` — minimal ACORN import API backed by Supabase Postgres
 - `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import
 
 ## Key decisions
@@ -103,8 +103,8 @@ Core pipeline working end-to-end. Streamlit UI running locally.
     cleanly, with backend POST handled in the service worker
   - Browser extension posts parsed ACORN history to
     `POST /api/acorn/import`
-  - Minimal backend (`api_server.py`) stores imports as JSON files on
-    disk, one file per import code, under `data/acorn_imports/`
+  - Minimal backend (`api_server.py`) stores imports in Supabase
+    Postgres, keyed by import code
   - `GET /api/acorn/latest?import_code=...` and
     `GET /api/acorn/status?import_code=...` implemented for readback
   - Per-user import code flow added so each Streamlit session reads only
@@ -124,9 +124,6 @@ Core pipeline working end-to-end. Streamlit UI running locally.
     - popup copy made explicit about not collecting passwords
 
 **Known gap:**
-- STAC51 course outline not on Quercus (files API 403, no front page,
-  no syllabus-like files in modules) — overview grade and what-if page
-  are unavailable because no defensible weights can be resolved
 - `get_grade_scenarios` bug fixed: groups with no assignments posted yet
   (e.g. FINAL EXAM before the assignment is created) are now correctly
   treated as ungraded rather than skipped

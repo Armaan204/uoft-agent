@@ -159,6 +159,10 @@ The backend entry point is [`api_server.py`](/C:/Users/armaa/OneDrive/Documents/
 - `GET /api/acorn/latest?import_code=...`
 - `GET /api/acorn/status?import_code=...`
 
+The backend now stores ACORN imports in **Supabase Postgres** rather than
+disk-backed JSON files. Railway hosts the API, while Supabase stores the
+imported payloads.
+
 ### Local backend
 
 ```bash
@@ -177,17 +181,15 @@ The backend reads:
 
 - `HOST` (defaults to `0.0.0.0`)
 - `PORT` (defaults to `8000`)
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `ENCRYPTION_KEY`
 
 On Railway, `PORT` is injected automatically, so the same backend can run locally and in production without code changes.
 
-### After deployment
-
-You will need to update:
-
-- the Chrome extension backend URL constant
-- the Streamlit ACORN tab read path
-
-so both point at the deployed backend instead of local files.
+On Railway, `PORT` is injected automatically, so the same backend can run
+locally and in production without code changes. The Supabase credentials and
+Fernet key should be configured as Railway environment variables.
 
 ## ✅ Current Agent Capabilities
 
