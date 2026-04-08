@@ -57,8 +57,18 @@ def init_google_auth() -> None:
 
     code = st.query_params.get("code")
     if code:
+        try:
+            params_snapshot = {k: st.query_params.get_all(k) for k in st.query_params}
+        except Exception:
+            params_snapshot = {"error": "Could not read query params"}
+        print(f"Google OAuth callback query params: {params_snapshot}", flush=True)
         state = st.query_params.get("state")
-        _handle_callback(str(code), str(state) if state else None)
+        try:
+            _handle_callback(str(code), str(state) if state else None)
+        except Exception:
+            print("Google OAuth callback handling failed", flush=True)
+            traceback.print_exc()
+            raise
         return
 
     client_id, client_secret = _get_google_credentials()
@@ -72,6 +82,7 @@ def init_google_auth() -> None:
         prompt="select_account",
         state=signed_state,
     )
+    print(f"Google OAuth authorization URL: {authorization_url}", flush=True)
     st.session_state[_AUTH_URL_KEY] = authorization_url
 
 
