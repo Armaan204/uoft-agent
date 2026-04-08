@@ -71,12 +71,10 @@ def init_google_auth() -> None:
             raise
         return
 
-    client_id, client_secret = _get_google_credentials()
+    _, client_secret = _get_google_credentials()
     flow = _build_flow()
-    code_verifier = _generate_code_verifier()
-    flow.code_verifier = code_verifier
-    signed_state = _build_signed_state(code_verifier, client_secret)
     print(f"Google OAuth Flow redirect_uri: {flow.redirect_uri}", flush=True)
+    signed_state = _build_signed_state(client_secret)
     authorization_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -123,8 +121,7 @@ def get_resolved_redirect_uri() -> str:
 
 def _handle_callback(code: str, signed_state: str | None) -> None:
     _, client_secret = _get_google_credentials()
-    code_verifier = _parse_signed_state(signed_state, client_secret)
-    if not code_verifier:
+    if not _is_valid_signed_state(signed_state, client_secret):
         st.session_state["_google_auth_error"] = (
             "OAuth callback state could not be verified before token exchange. "
             "Please try signing in again."
@@ -134,7 +131,6 @@ def _handle_callback(code: str, signed_state: str | None) -> None:
 
     try:
         flow = _build_flow()
-        flow.code_verifier = code_verifier
         flow.fetch_token(code=code)
         user_info = (
             build("oauth2", "v2", credentials=flow.credentials)
@@ -176,6 +172,7 @@ def _build_flow(state: str | None = None) -> Flow:
         scopes=_SCOPES,
         redirect_uri=_get_redirect_uri(),
         state=state,
+        autogenerate_code_verifier=False,
     )
 
 
@@ -214,14 +211,9 @@ def _get_redirect_uri() -> str:
     return "http://localhost:8501"
 
 
-def _generate_code_verifier() -> str:
-    return secrets.token_urlsafe(96)[:128]
-
-
-def _build_signed_state(code_verifier: str, secret: str) -> str:
+def _build_signed_state(secret: str) -> str:
     payload = {
         "nonce": secrets.token_urlsafe(24),
-        "code_verifier": code_verifier,
     }
     payload_json = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     payload_b64 = base64.urlsafe_b64encode(payload_json).decode("utf-8").rstrip("=")
@@ -230,9 +222,9 @@ def _build_signed_state(code_verifier: str, secret: str) -> str:
     return f"{payload_b64}.{signature_b64}"
 
 
-def _parse_signed_state(signed_state: str | None, secret: str) -> str | None:
+def _is_valid_signed_state(signed_state: str | None, secret: str) -> bool:
     if not signed_state or "." not in signed_state:
-        return None
+        return False
     payload_b64, signature_b64 = signed_state.split(".", 1)
     expected_signature = hmac.new(
         secret.encode("utf-8"),
@@ -241,11 +233,11 @@ def _parse_signed_state(signed_state: str | None, secret: str) -> str | None:
     ).digest()
     expected_signature_b64 = base64.urlsafe_b64encode(expected_signature).decode("utf-8").rstrip("=")
     if not hmac.compare_digest(signature_b64, expected_signature_b64):
-        return None
+        return False
 
     try:
         padded = payload_b64 + "=" * (-len(payload_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
     except Exception:
-        return None
-    return payload.get("code_verifier")
+        return False
+    return bool(payload.get("nonce"))
