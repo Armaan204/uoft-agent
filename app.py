@@ -138,7 +138,7 @@ _calc = GradeCalculator()
 def _risk_flag(pct: float, has_data: bool) -> tuple[str, str]:
     """Return (label, streamlit_color) based on current grade percentage."""
     if not has_data:
-        return "Could not find syllabus", "gray"
+        return "No breakdown", "gray"
     if pct < 70:
         return "At risk", "red"
     if pct < 85:
@@ -260,18 +260,11 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
             component_model = _calc.build_weighted_components(groups, submissions, weights)
             if component_model["reliable"]:
                 result["what_if_available"] = True
-            else:
-                result["what_if_reason"] = "Weighted components could not be mapped reliably."
-
-            grade = _calc.current_grade(groups, submissions, weights)
-            # If all group names failed to match the weight keys the result is N/A;
-            # fall back to raw points so the card never shows blank for a graded course.
-            if grade["letter"] == "N/A":
-                result["grade"]      = _grade_from_points(groups, submissions)
-                result["grade_mode"] = "total_points"
-            else:
+                grade = _calc.current_grade(groups, submissions, weights)
                 result["grade"]      = grade
                 result["grade_mode"] = "weighted"
+            else:
+                result["what_if_reason"] = "Weighted components could not be mapped reliably."
         else:
             # No Canvas weights and no accessible syllabus: omit overview grade.
             result["grade"]      = None
