@@ -41,10 +41,21 @@ def init_google_auth() -> None:
     """Initialise the Google OAuth flow and process any callback."""
     _ensure_auth_session_state()
     st.session_state.pop(_AUTH_ERROR_KEY, None)
+    auth_code = st.query_params.get("code")
+    if auth_code:
+        auth_code = str(auth_code)
+        if st.session_state.get("_last_google_auth_code") == auth_code:
+            print("Skipping replayed Google OAuth callback code", flush=True)
+            st.query_params.clear()
+            return
+        st.session_state["_last_google_auth_code"] = auth_code
     try:
         auth = _build_authenticator()
         auth.check_authentification()
     except Exception as exc:
+        if auth_code:
+            print("Google OAuth callback failed; clearing callback query params", flush=True)
+            st.query_params.clear()
         st.session_state[_AUTH_ERROR_KEY] = str(exc)
         print("Google OAuth initialisation failed", flush=True)
         traceback.print_exc()
@@ -101,6 +112,7 @@ def logout() -> None:
         for key in [
             _AUTH_ERROR_KEY,
             "_google_authenticator",
+            "_last_google_auth_code",
             "connected",
             "user_info",
             "oauth_id",
