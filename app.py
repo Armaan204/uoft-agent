@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
 
@@ -323,8 +324,17 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
     return result
 
 
-def _load_dashboard(token: str) -> tuple[list[dict], list[dict]]:
-    """Fetch all course data in parallel. Returns (course_results, deadlines)."""
+def _announcement_preview(html: str | None, limit: int = 180) -> str:
+    """Convert announcement HTML into a compact plain-text preview."""
+    text = BeautifulSoup(html or "", "html.parser").get_text(" ", strip=True)
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _load_dashboard(token: str) -> tuple[list[dict], list[dict], list[dict]]:
+    """Fetch all course data in parallel. Returns (course_results, deadlines, announcements)."""
     client  = QuercusClient(token=token)
     courses = client.get_courses()
     n       = len(courses)
@@ -342,7 +352,43 @@ def _load_dashboard(token: str) -> tuple[list[dict], list[dict]]:
         [d for cr in course_results if cr for d in cr["deadlines"]],
         key=lambda d: d["due_at"],
     )
-    return course_results, deadlines
+
+    announcements = []
+    course_lookup = {c["id"]: c for c in courses}
+    try:
+        raw_announcements = client.get_latest_announcements(list(course_lookup.keys()))
+        for announcement in raw_announcements:
+            context_code = announcement.get("context_code", "")
+            if not context_code.startswith("course_"):
+                continue
+            try:
+                course_id = int(context_code.split("_", 1)[1])
+            except ValueError:
+                continue
+            course = course_lookup.get(course_id)
+            if course is None:
+                continue
+            posted_at = announcement.get("posted_at")
+            try:
+                posted_dt = datetime.fromisoformat(posted_at.replace("Z", "+00:00")) if posted_at else None
+            except ValueError:
+                posted_dt = None
+            announcements.append({
+                "course_id": course_id,
+                "course_code": course.get("course_code") or course.get("name"),
+                "title": announcement.get("title") or "Untitled announcement",
+                "preview": _announcement_preview(announcement.get("message")),
+                "url": announcement.get("html_url") or announcement.get("url"),
+                "posted_at": posted_dt,
+            })
+    except Exception:
+        announcements = []
+
+    announcements.sort(
+        key=lambda a: a["posted_at"] or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return course_results, deadlines, announcements
 
 
 def _load_course_detail(course_id: int, token: str) -> dict:
@@ -591,7 +637,7 @@ if "dashboard" not in st.session_state:
     with st.spinner("Loading your courses..."):
         st.session_state.dashboard = _load_dashboard(st.session_state.token)
 
-course_results, deadlines = st.session_state.dashboard
+course_results, deadlines, announcements = st.session_state.dashboard
 
 main_tab, acorn_tab = st.tabs(["Dashboard", "ACORN"])
 
@@ -640,6 +686,21 @@ with main_tab:
             st.markdown(f"**{d['course_code']}** &nbsp; {d['name']}  \n_{due_str} UTC_")
     else:
         st.info("No assignments due in the next 14 days.")
+
+    st.divider()
+
+    st.subheader("Recent Announcements")
+    if announcements:
+        for announcement in announcements:
+            posted = announcement["posted_at"].strftime("%b %d, %Y") if announcement["posted_at"] else "Unknown date"
+            title = announcement["title"]
+            if announcement["url"]:
+                title = f"[{title}]({announcement['url']})"
+            st.markdown(f"**{announcement['course_code']}** · {posted}  \n{title}")
+            if announcement["preview"]:
+                st.caption(announcement["preview"])
+    else:
+        st.info("No recent announcements found.")
 
     st.divider()
 

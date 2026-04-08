@@ -8,7 +8,7 @@ wraps the Canvas REST API endpoints needed by the agent.
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -293,3 +293,22 @@ class QuercusClient:
         if not enrollments:
             raise QuercusError(f"No student enrollment found for course {course_id}")
         return enrollments[0]
+
+    def get_latest_announcements(self, course_ids: list[int | str], days_back: int = 180) -> list[dict]:
+        """Return the most recent published announcement for each course."""
+        if not course_ids:
+            return []
+
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=days_back)).date().isoformat()
+        end_date = now.date().isoformat()
+        params = [
+            ("latest_only", "true"),
+            ("active_only", "true"),
+            ("start_date", start_date),
+            ("end_date", end_date),
+        ]
+        for course_id in course_ids:
+            params.append(("context_codes[]", f"course_{course_id}"))
+
+        return self._get("/announcements", params=params)
