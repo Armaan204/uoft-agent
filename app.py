@@ -104,7 +104,7 @@ except Exception:
     raise
 
 
-def _render_login_page():
+def _render_login_page(auth):
     """Render a centered Google login screen."""
     st.markdown(
         """
@@ -143,7 +143,7 @@ def _render_login_page():
     if auth_error:
         st.error(f"Google OAuth failed: {auth_error}")
     st.markdown('<div style="margin-top:-88px;">', unsafe_allow_html=True)
-    render_google_login_button()
+    render_google_login_button(auth)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -752,7 +752,7 @@ def main():
         st.stop()
 
     try:
-        init_google_auth()
+        auth = init_google_auth()
     except Exception as exc:
         print(f"Google OAuth setup failed during app startup: {exc}", flush=True)
         traceback.print_exc()
@@ -766,7 +766,7 @@ def main():
 
     user = get_logged_in_user()
     if user is None:
-        _render_login_page()
+        _render_login_page(auth)
         st.stop()
 
     with st.sidebar:

@@ -37,7 +37,7 @@ _AUTH_ERROR_KEY = "_google_auth_error"
 _FLOW_PATCHED = False
 
 
-def init_google_auth() -> None:
+def init_google_auth() -> Authenticate:
     """Initialise the Google OAuth flow and process any callback."""
     _ensure_auth_session_state()
     st.session_state.pop(_AUTH_ERROR_KEY, None)
@@ -52,6 +52,7 @@ def init_google_auth() -> None:
     try:
         auth = _build_authenticator()
         auth.check_authentification()
+        return auth
     except Exception as exc:
         if auth_code:
             print("Google OAuth callback failed; clearing callback query params", flush=True)
@@ -62,11 +63,10 @@ def init_google_auth() -> None:
         raise
 
 
-def render_google_login_button() -> None:
+def render_google_login_button(auth: Authenticate) -> None:
     """Render the Google login button using streamlit-google-auth."""
     _ensure_auth_session_state()
     try:
-        auth = _build_authenticator()
         auth.login()
     except Exception as exc:
         st.session_state[_AUTH_ERROR_KEY] = str(exc)
@@ -111,7 +111,6 @@ def logout() -> None:
     finally:
         for key in [
             _AUTH_ERROR_KEY,
-            "_google_authenticator",
             "_last_google_auth_code",
             "connected",
             "user_info",
@@ -131,10 +130,6 @@ def get_resolved_redirect_uri() -> str:
 
 def _build_authenticator() -> Authenticate:
     _ensure_auth_session_state()
-    existing = st.session_state.get("_google_authenticator")
-    if isinstance(existing, Authenticate):
-        return existing
-
     _patch_streamlit_google_auth_flow()
     client_id, client_secret = _get_google_credentials()
     cookie_secret = _get_cookie_secret()
@@ -147,7 +142,6 @@ def _build_authenticator() -> Authenticate:
         cookie_key=cookie_secret,
         redirect_uri=redirect_uri,
     )
-    st.session_state["_google_authenticator"] = auth
     return auth
 
 
