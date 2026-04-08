@@ -432,14 +432,39 @@ def _render_course_detail(course_id: int):
     ungraded_components = [c for c in components if c["status"] == "ungraded"]
 
     projected_inputs = {}
+    if graded_components:
+        st.subheader("Marked Components")
+        for component in graded_components:
+            key = f"what_if_{course_id}_{component['name']}"
+            projected_inputs[component["name"]] = st.slider(
+                f"{component['name']} ({component['weight']:.2f}%)",
+                min_value=0,
+                max_value=100,
+                value=int(round(component["pct"])),
+                key=key,
+            )
+            detected = component["pct"]
+            contrib = projected_inputs[component["name"]] * component["weight"] / 100
+            st.caption(
+                f"Detected {detected:.1f}% -> using {projected_inputs[component['name']]:.0f}% "
+                f"({contrib:.1f} pts)"
+            )
+
+    if ungraded_components:
+        st.subheader("Remaining Components")
     for component in ungraded_components:
         key = f"what_if_{course_id}_{component['name']}"
         projected_inputs[component["name"]] = st.slider(
-            f"{component['name']} ({component['weight']:.0f}%)",
+            f"{component['name']} ({component['weight']:.2f}%)",
             min_value=0,
             max_value=100,
             value=100,
             key=key,
+        )
+        contrib = projected_inputs[component["name"]] * component["weight"] / 100
+        st.caption(
+            f"Using {projected_inputs[component['name']]:.0f}% "
+            f"({contrib:.1f} pts)"
         )
 
     projected_pct = _calc.projected_grade(components, projected_inputs)
@@ -457,25 +482,8 @@ def _render_course_detail(course_id: int):
         delta = projected_pct - detail["current_standing"] if detail["has_data"] else None
         delta_text = f"{delta:+.1f} pts" if delta is not None else None
         st.metric("Weights source", detail["weights_source"].title(), delta_text, delta_color="off")
-
-    st.subheader("Weighted Components")
-    for component in graded_components:
-        contrib = component["pct"] * component["weight"] / 100
-        st.text(
-            f"{component['name']} ({component['weight']:.0f}%): "
-            f"{component['pct']:.1f}% completed -> {contrib:.1f} pts"
-        )
-
-    if ungraded_components:
-        st.subheader("What-If Sliders")
-        for component in ungraded_components:
-            contrib = projected_inputs[component["name"]] * component["weight"] / 100
-            st.text(
-                f"{component['name']} ({component['weight']:.0f}%): "
-                f"{projected_inputs[component['name']]:.0f}% -> {contrib:.1f} pts"
-            )
-    else:
-        st.info("No ungraded weighted components remain for this course.")
+    if not ungraded_components:
+        st.info("No remaining weighted components for this course.")
 
 
 def _get_acorn_import_code() -> str:

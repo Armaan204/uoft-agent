@@ -274,10 +274,9 @@ class GradeCalculator:
         """Compute a projected final grade from graded components and sliders."""
         total = 0.0
         for component in components:
-            if component["status"] == "graded":
-                pct = component["pct"]
-            elif component["status"] == "ungraded":
-                pct = slider_values.get(component["name"], 100.0)
+            if component["status"] in {"graded", "ungraded"}:
+                default_pct = component["pct"] if component["status"] == "graded" else 100.0
+                pct = slider_values.get(component["name"], default_pct)
             else:
                 raise ValueError(f"Cannot project partial component: {component['name']}")
             total += pct * component["weight"] / 100.0
