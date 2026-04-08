@@ -76,6 +76,7 @@ def init_google_auth() -> None:
     code_verifier = _generate_code_verifier()
     flow.code_verifier = code_verifier
     signed_state = _build_signed_state(code_verifier, client_secret)
+    print(f"Google OAuth Flow redirect_uri: {flow.redirect_uri}", flush=True)
     authorization_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -201,7 +202,7 @@ def _get_redirect_uri() -> str:
 
     redirect_uri = redirect_uri or os.getenv("REDIRECT_URI")
     if redirect_uri:
-        return redirect_uri
+        return redirect_uri.rstrip("/")
 
     try:
         has_secrets = bool(st.secrets.get("GOOGLE_CLIENT_ID"))
