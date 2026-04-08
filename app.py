@@ -21,6 +21,30 @@ from integrations.syllabus import parse_syllabus_weights
 
 load_dotenv()
 
+
+def _env_present(name: str) -> bool:
+    try:
+        secret_value = st.secrets.get(name)
+    except StreamlitSecretNotFoundError:
+        secret_value = None
+    return bool(secret_value or os.getenv(name))
+
+
+def _print_startup_env_debug() -> dict[str, bool]:
+    status = {
+        "ANTHROPIC_API_KEY": _env_present("ANTHROPIC_API_KEY"),
+        "GOOGLE_CLIENT_ID": _env_present("GOOGLE_CLIENT_ID"),
+        "GOOGLE_CLIENT_SECRET": _env_present("GOOGLE_CLIENT_SECRET"),
+        "SUPABASE_URL": _env_present("SUPABASE_URL"),
+        "SUPABASE_KEY": _env_present("SUPABASE_KEY"),
+        "ENCRYPTION_KEY": _env_present("ENCRYPTION_KEY"),
+    }
+    print(f"Startup env presence: {status}", flush=True)
+    return status
+
+
+STARTUP_ENV_STATUS = _print_startup_env_debug()
+
 try:
     ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
 except StreamlitSecretNotFoundError:
@@ -156,7 +180,13 @@ if query_params.get("page") == "privacy":
 try:
     init_google_auth()
 except Exception as exc:
-    st.error(f"Google OAuth setup failed: {exc}")
+    print(f"Google OAuth setup failed during app startup: {exc}", flush=True)
+    print(f"Startup env presence at auth failure: {STARTUP_ENV_STATUS}", flush=True)
+    st.error(
+        "Google OAuth setup failed. "
+        f"Error: {exc}. "
+        f"Env present: {STARTUP_ENV_STATUS}"
+    )
     st.stop()
 
 user = get_logged_in_user()
