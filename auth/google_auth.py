@@ -10,11 +10,35 @@ import hmac
 import json
 import os
 import secrets
+import traceback
 
-import streamlit as st
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import Flow
-from streamlit.errors import StreamlitSecretNotFoundError
+try:
+    import streamlit as st
+except Exception:
+    print("Failed to import streamlit in auth.google_auth", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from googleapiclient.discovery import build
+except Exception:
+    print("Failed to import googleapiclient.discovery in auth.google_auth", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from google_auth_oauthlib.flow import Flow
+except Exception:
+    print("Failed to import google_auth_oauthlib.flow in auth.google_auth", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from streamlit.errors import StreamlitSecretNotFoundError
+except Exception:
+    print("Failed to import StreamlitSecretNotFoundError in auth.google_auth", flush=True)
+    traceback.print_exc()
+    raise
 
 _SCOPES = [
     "openid",

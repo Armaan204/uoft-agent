@@ -2,24 +2,88 @@
 app.py — Streamlit chat interface for uoft-agent.
 """
 
+import traceback
 import os
 import secrets
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-import streamlit as st
-from bs4 import BeautifulSoup
-from dotenv import load_dotenv
-from streamlit.errors import StreamlitSecretNotFoundError
+try:
+    import streamlit as st
+except Exception:
+    print("Failed to import streamlit in app.py", flush=True)
+    traceback.print_exc()
+    raise
 
-from auth.google_auth import get_logged_in_user, get_login_url, init_google_auth, logout
-from agent.agent import run
-from calculator.grades import GradeCalculator
-from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
-from integrations.quercus import QuercusClient, QuercusError
-from integrations.syllabus import parse_syllabus_weights
+try:
+    from bs4 import BeautifulSoup
+except Exception:
+    print("Failed to import BeautifulSoup in app.py", flush=True)
+    traceback.print_exc()
+    raise
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+except Exception:
+    print("Failed to import load_dotenv in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from streamlit.errors import StreamlitSecretNotFoundError
+except Exception:
+    print("Failed to import StreamlitSecretNotFoundError in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from auth.google_auth import get_logged_in_user, get_login_url, init_google_auth, logout
+except Exception:
+    print("Failed to import auth.google_auth in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from agent.agent import run
+except Exception:
+    print("Failed to import agent.agent in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from calculator.grades import GradeCalculator
+except Exception:
+    print("Failed to import calculator.grades in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
+except Exception:
+    print("Failed to import integrations.acorn in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from integrations.quercus import QuercusClient, QuercusError
+except Exception:
+    print("Failed to import integrations.quercus in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    from integrations.syllabus import parse_syllabus_weights
+except Exception:
+    print("Failed to import integrations.syllabus in app.py", flush=True)
+    traceback.print_exc()
+    raise
+
+try:
+    load_dotenv()
+except Exception:
+    print("Failed during load_dotenv() in app.py", flush=True)
+    traceback.print_exc()
+    raise
 
 
 def _env_present(name: str) -> bool:
@@ -43,16 +107,30 @@ def _print_startup_env_debug() -> dict[str, bool]:
     return status
 
 
-STARTUP_ENV_STATUS = _print_startup_env_debug()
+try:
+    STARTUP_ENV_STATUS = _print_startup_env_debug()
+except Exception:
+    print("Failed during startup env debug in app.py", flush=True)
+    traceback.print_exc()
+    raise
 
 try:
     ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
 except StreamlitSecretNotFoundError:
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+except Exception:
+    print("Failed while resolving ANTHROPIC_API_KEY in app.py", flush=True)
+    traceback.print_exc()
+    raise
 if ANTHROPIC_API_KEY:
     os.environ["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY
 
-st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
+try:
+    st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
+except Exception:
+    print("Failed during st.set_page_config() in app.py", flush=True)
+    traceback.print_exc()
+    raise
 
 
 def _render_login_page():

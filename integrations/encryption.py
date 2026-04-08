@@ -5,8 +5,14 @@ integrations/encryption.py — Fernet helpers for encrypting stored tokens.
 from __future__ import annotations
 
 import os
+import traceback
 
-from cryptography.fernet import Fernet
+try:
+    from cryptography.fernet import Fernet
+except Exception:
+    print("Failed to import Fernet in integrations.encryption", flush=True)
+    traceback.print_exc()
+    raise
 
 
 class EncryptionError(RuntimeError):
