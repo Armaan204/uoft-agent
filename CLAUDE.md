@@ -34,6 +34,13 @@ ANTHROPIC_API_KEY
 QUERCUS_API_TOKEN
 ACORN_USERNAME
 ACORN_PASSWORD
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+
+## Google OAuth redirect URIs
+
+- Local: `http://localhost:8501`
+- Production: `https://uoft-agent.streamlit.app`
 
 ## Current status
 

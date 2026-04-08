@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
 
+from auth.google_auth import get_logged_in_user, get_login_url, init_google_auth, logout
 from agent.agent import run
 from calculator.grades import GradeCalculator
 from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
@@ -28,6 +29,58 @@ if ANTHROPIC_API_KEY:
     os.environ["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY
 
 st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
+
+
+def _render_login_page():
+    """Render a centered Google login screen."""
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none; }
+        .login-shell {
+            min-height: 72vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            width: min(460px, 100%);
+            text-align: center;
+            padding: 40px 32px;
+        }
+        .login-card h1 {
+            margin-bottom: 12px;
+        }
+        .login-card p {
+            margin-bottom: 28px;
+            color: #94a3b8;
+            font-size: 1.05rem;
+        }
+        </style>
+        <div class="login-shell">
+          <div class="login-card">
+            <h1>UofT Agent</h1>
+            <p>Sign in with Google to continue</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.session_state.get("_google_auth_error"):
+        st.error(f"Google OAuth failed: {st.session_state['_google_auth_error']}")
+    login_url = get_login_url()
+    if login_url:
+        st.markdown(
+            f"""
+            <div style="display:flex; justify-content:center; margin-top:-88px;">
+              <a href="{login_url}" target="_self" style="background-color:#4285f4;color:#fff;text-decoration:none;text-align:center;font-size:16px;cursor:pointer;padding:10px 14px;border-radius:6px;display:flex;align-items:center;font-weight:600;">
+                <img src="https://lh3.googleusercontent.com/COxitqgJr1sJnIDe8-jiKhxDx1FrYbtRHKJ9z_hELisAlapwE9LUPh6fcXIfb5vwpbMl4xl9H9TRFPc5NOO8Sb3VSgIBrfRYvW6cUA" alt="Google logo" style="margin-right:8px;width:26px;height:26px;background-color:white;border:2px solid white;border-radius:4px;">
+                Sign in with Google
+              </a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def _render_privacy_policy_page():
@@ -99,6 +152,24 @@ query_params = st.query_params
 if query_params.get("page") == "privacy":
     _render_privacy_policy_page()
     st.stop()
+
+try:
+    init_google_auth()
+except Exception as exc:
+    st.error(f"Google OAuth setup failed: {exc}")
+    st.stop()
+
+user = get_logged_in_user()
+if user is None:
+    _render_login_page()
+    st.stop()
+
+with st.sidebar:
+    st.markdown(f"**{user['name']}**")
+    st.caption(user["email"])
+    if st.button("Log out", use_container_width=True):
+        logout()
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Onboarding — shown until a valid token is stored in session state
