@@ -104,6 +104,11 @@ def get_login_url() -> str | None:
     return st.session_state.get(_AUTH_URL_KEY)
 
 
+def get_resolved_redirect_uri() -> str:
+    """Return the resolved redirect URI used for Google OAuth."""
+    return _get_redirect_uri()
+
+
 def _handle_callback(code: str, signed_state: str | None) -> None:
     _, client_secret = _get_google_credentials()
     code_verifier = _parse_signed_state(signed_state, client_secret)
@@ -178,6 +183,15 @@ def _get_google_credentials() -> tuple[str, str]:
 
 
 def _get_redirect_uri() -> str:
+    try:
+        redirect_uri = st.secrets.get("REDIRECT_URI")
+    except StreamlitSecretNotFoundError:
+        redirect_uri = None
+
+    redirect_uri = redirect_uri or os.getenv("REDIRECT_URI")
+    if redirect_uri:
+        return redirect_uri
+
     try:
         has_secrets = bool(st.secrets.get("GOOGLE_CLIENT_ID"))
     except StreamlitSecretNotFoundError:

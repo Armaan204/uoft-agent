@@ -37,7 +37,7 @@ except Exception:
     raise
 
 try:
-    from auth.google_auth import get_logged_in_user, get_login_url, init_google_auth, logout
+    from auth.google_auth import get_logged_in_user, get_login_url, get_resolved_redirect_uri, init_google_auth, logout
 except Exception:
     print("Failed to import auth.google_auth in app.py", flush=True)
     traceback.print_exc()
@@ -69,6 +69,11 @@ def _print_startup_env_debug() -> dict[str, bool]:
         "ENCRYPTION_KEY": _env_present("ENCRYPTION_KEY"),
     }
     print(f"Startup env presence: {status}", flush=True)
+    try:
+        print(f"Resolved REDIRECT_URI: {get_resolved_redirect_uri()}", flush=True)
+    except Exception:
+        print("Failed to resolve REDIRECT_URI during startup debug", flush=True)
+        traceback.print_exc()
     return status
 
 
