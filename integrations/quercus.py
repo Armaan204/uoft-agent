@@ -184,6 +184,10 @@ class QuercusClient:
             raise QuercusError(f"Files API returned no download URL for file {file_id}")
         return url
 
+    def get_file_metadata(self, file_id: int | str) -> dict:
+        """Return Canvas metadata for one file ID."""
+        return self._get(f"/files/{file_id}")
+
     def get_syllabus(self, course_id: int | str) -> dict:
         """Return the syllabus body and resolved PDF download URLs for a course.
 

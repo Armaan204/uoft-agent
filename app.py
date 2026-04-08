@@ -199,6 +199,36 @@ def _grade_from_points(groups: list, submissions: list) -> dict:
     }
 
 
+def _grade_from_components(components: list[dict]) -> dict:
+    """Build a grade summary from a reliable weighted component model."""
+    graded_components = [c for c in components if c["status"] == "graded"]
+    graded_weight = sum(c["weight"] for c in graded_components)
+    if graded_weight <= 0:
+        return {
+            "weighted_grade": 0.0,
+            "letter": "N/A",
+            "group_breakdown": {},
+            "graded_weight": 0.0,
+        }
+
+    weighted_sum = sum(c["pct"] * c["weight"] for c in graded_components)
+    weighted_grade = weighted_sum / graded_weight
+    return {
+        "weighted_grade": round(weighted_grade, 2),
+        "letter": GradeCalculator._to_letter(weighted_grade),
+        "group_breakdown": {
+            c["name"]: {
+                "earned": c["earned"],
+                "possible": c["possible"],
+                "pct": c["pct"],
+                "weight": c["weight"],
+            }
+            for c in graded_components
+        },
+        "graded_weight": round(graded_weight, 2),
+    }
+
+
 def _resolve_course_weights(course_id: int, client: QuercusClient) -> tuple[dict | None, str | None]:
     """Resolve course weights from Canvas first, then from the syllabus."""
     weights = client.get_canvas_weights(course_id)
@@ -260,8 +290,7 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
             component_model = _calc.build_weighted_components(groups, submissions, weights)
             if component_model["reliable"]:
                 result["what_if_available"] = True
-                grade = _calc.current_grade(groups, submissions, weights)
-                result["grade"]      = grade
+                result["grade"]      = _grade_from_components(component_model["components"])
                 result["grade_mode"] = "weighted"
             else:
                 result["what_if_reason"] = "Weighted components could not be mapped reliably."

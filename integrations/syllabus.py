@@ -107,19 +107,25 @@ def _collect_module_candidates(course_id: int | str, client) -> list[dict]:
             file_id = item.get("content_id")
             if not file_id or file_id in seen_ids:
                 continue
-            # Use the item title to score; fall back to a bare URL check
             title = item.get("title") or ""
-            if not _allowed_ext(title):
-                continue
             seen_ids.add(file_id)
             try:
-                url = client.get_file_download_url(file_id)
+                file_meta = client.get_file_metadata(file_id)
             except Exception:
                 continue
+
+            filename = file_meta.get("display_name") or file_meta.get("filename") or ""
+            if not _allowed_ext(filename):
+                continue
+
+            url = file_meta.get("url")
+            if not url:
+                continue
+
             candidates.append({
-                "name":       title,
+                "name":       title or filename,
                 "url":        url,
-                "confidence": _confidence(title),
+                "confidence": _confidence(title or filename),
             })
     return candidates
 

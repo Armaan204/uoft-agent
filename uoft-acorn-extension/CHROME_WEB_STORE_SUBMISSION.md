@@ -36,7 +36,6 @@ The extension does not collect passwords or automate login. It only runs on ACOR
 ## Permissions Justification
 
 - `activeTab`: used to communicate with the currently active ACORN tab
-- `scripting`: required for extension scripting flow
 - `storage`: used to store the last import code and recent import payload locally
 - host permissions for `acorn.utoronto.ca`: needed to read the logged-in academic-history page
 - host permissions for the UofT Agent backend: needed to send the import payload
