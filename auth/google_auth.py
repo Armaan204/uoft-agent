@@ -47,8 +47,8 @@ def init_google_auth() -> None:
         if st.session_state.get("_last_google_auth_code") == auth_code:
             print("Skipping replayed Google OAuth callback code", flush=True)
             st.query_params.clear()
-            return
-        st.session_state["_last_google_auth_code"] = auth_code
+        else:
+            st.session_state["_last_google_auth_code"] = auth_code
     try:
         auth = _build_authenticator()
         auth.check_authentification()
