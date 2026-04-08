@@ -44,41 +44,6 @@ except Exception:
     raise
 
 try:
-    from agent.agent import run
-except Exception:
-    print("Failed to import agent.agent in app.py", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
-    from calculator.grades import GradeCalculator
-except Exception:
-    print("Failed to import calculator.grades in app.py", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
-    from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
-except Exception:
-    print("Failed to import integrations.acorn in app.py", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
-    from integrations.quercus import QuercusClient, QuercusError
-except Exception:
-    print("Failed to import integrations.quercus in app.py", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
-    from integrations.syllabus import parse_syllabus_weights
-except Exception:
-    print("Failed to import integrations.syllabus in app.py", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
     load_dotenv()
 except Exception:
     print("Failed during load_dotenv() in app.py", flush=True)
@@ -250,69 +215,44 @@ def _render_privacy_policy_page():
     )
 
 
-query_params = st.query_params
-if query_params.get("page") == "privacy":
-    _render_privacy_policy_page()
-    st.stop()
-
-try:
-    init_google_auth()
-except Exception as exc:
-    print(f"Google OAuth setup failed during app startup: {exc}", flush=True)
-    print(f"Startup env presence at auth failure: {STARTUP_ENV_STATUS}", flush=True)
-    st.error(
-        "Google OAuth setup failed. "
-        f"Error: {exc}. "
-        f"Env present: {STARTUP_ENV_STATUS}"
-    )
-    st.stop()
-
-user = get_logged_in_user()
-if user is None:
-    _render_login_page()
-    st.stop()
-
-with st.sidebar:
-    st.markdown(f"**{user['name']}**")
-    st.caption(user["email"])
-    if st.button("Log out", use_container_width=True):
-        logout()
-        st.rerun()
-
 # ---------------------------------------------------------------------------
-# Onboarding — shown until a valid token is stored in session state
+# Deferred imports
 # ---------------------------------------------------------------------------
 
-if "token" not in st.session_state:
-    st.title("Welcome to UofT Agent")
-    st.markdown(
-        "Enter your Quercus personal access token to get started.  \n"
-        "You can generate one at **q.utoronto.ca → Account → Settings → "
-        "Under Approved Integrations → New Access Token**."
-    )
+_calc = None
 
-    token_input = st.text_input("Quercus access token", type="password")
 
-    if st.button("Connect"):
-        if not token_input.strip():
-            st.error("Please enter a token.")
-        else:
-            with st.spinner("Validating token..."):
-                try:
-                    QuercusClient(token=token_input.strip()).get_courses()
-                    st.session_state.token = token_input.strip()
-                    st.session_state.messages = []
-                    st.rerun()
-                except QuercusError:
-                    st.error("Invalid token — please check and try again.")
+def _get_grade_calculator():
+    global _calc
+    if _calc is None:
+        from calculator.grades import GradeCalculator
+        _calc = GradeCalculator()
+    return _calc
 
-    st.stop()
 
-# ---------------------------------------------------------------------------
-# Dashboard helpers
-# ---------------------------------------------------------------------------
+def _to_letter(pct: float) -> str:
+    from calculator.grades import GradeCalculator
+    return GradeCalculator._to_letter(pct)
 
-_calc = GradeCalculator()
+
+def _get_quercus_types():
+    from integrations.quercus import QuercusClient, QuercusError
+    return QuercusClient, QuercusError
+
+
+def _parse_syllabus_weights_lazy(course_id, client, pdf_url=None):
+    from integrations.syllabus import parse_syllabus_weights
+    return parse_syllabus_weights(course_id, client, pdf_url)
+
+
+def _get_acorn_helpers():
+    from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
+    return AcornBackendError, get_import_status, get_latest_import
+
+
+def _run_agent(*args, **kwargs):
+    from agent.agent import run
+    return run(*args, **kwargs)
 
 
 def _risk_flag(pct: float, has_data: bool) -> tuple[str, str]:
@@ -371,7 +311,7 @@ def _grade_from_points(groups: list, submissions: list) -> dict:
     pct = (total_earned / total_possible) * 100
     return {
         "weighted_grade":  round(pct, 2),
-        "letter":          GradeCalculator._to_letter(pct),
+        "letter":          _to_letter(pct),
         "group_breakdown": group_breakdown,
         "graded_weight":   100.0,
         "_total_earned":   total_earned,
@@ -395,7 +335,7 @@ def _grade_from_components(components: list[dict]) -> dict:
     weighted_grade = weighted_sum / graded_weight
     return {
         "weighted_grade": round(weighted_grade, 2),
-        "letter": GradeCalculator._to_letter(weighted_grade),
+        "letter": _to_letter(weighted_grade),
         "group_breakdown": {
             c["name"]: {
                 "earned": c["earned"],
@@ -409,7 +349,7 @@ def _grade_from_components(components: list[dict]) -> dict:
     }
 
 
-def _resolve_course_weights(course_id: int, client: QuercusClient) -> tuple[dict | None, str | None]:
+def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | None]:
     """Resolve course weights from Canvas first, then from the syllabus."""
     weights = client.get_canvas_weights(course_id)
     if weights:
@@ -418,7 +358,7 @@ def _resolve_course_weights(course_id: int, client: QuercusClient) -> tuple[dict
     try:
         syllabus = client.get_syllabus(course_id)
         pdf_url = syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None
-        _, weights = parse_syllabus_weights(course_id, client, pdf_url)
+        _, weights = _parse_syllabus_weights_lazy(course_id, client, pdf_url)
         if weights:
             return weights, "syllabus"
     except Exception:
@@ -439,11 +379,12 @@ def _display_grade_summary(grade: dict, grade_mode: str | None) -> tuple[bool, f
         pct = round(earned_pts + (100 - graded_wt), 2)
     else:
         pct = grade["weighted_grade"]
-    return True, pct, GradeCalculator._to_letter(pct), graded_wt
+    return True, pct, _to_letter(pct), graded_wt
 
 
-def _load_single_course(course: dict, client: QuercusClient) -> dict:
+def _load_single_course(course: dict, client) -> dict:
     """Fetch grade data and upcoming deadlines for one course."""
+    calc = _get_grade_calculator()
     course_id = course["id"]
     result = {
         "id":          course_id,
@@ -467,7 +408,7 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
         result["weights_source"] = weights_source
 
         if weights:
-            component_model = _calc.build_weighted_components(groups, submissions, weights)
+            component_model = calc.build_weighted_components(groups, submissions, weights)
             if component_model["reliable"]:
                 result["what_if_available"] = True
                 result["grade"]      = _grade_from_components(component_model["components"])
@@ -515,6 +456,7 @@ def _announcement_preview(html: str | None, limit: int = 180) -> str:
 
 def _load_dashboard(token: str) -> tuple[list[dict], list[dict], list[dict]]:
     """Fetch all course data in parallel. Returns (course_results, deadlines, announcements)."""
+    QuercusClient, _ = _get_quercus_types()
     client  = QuercusClient(token=token)
     courses = client.get_courses()
     n       = len(courses)
@@ -573,6 +515,8 @@ def _load_dashboard(token: str) -> tuple[list[dict], list[dict], list[dict]]:
 
 def _load_course_detail(course_id: int, token: str) -> dict:
     """Load the data needed for a single course what-if page."""
+    calc = _get_grade_calculator()
+    QuercusClient, QuercusError = _get_quercus_types()
     client = QuercusClient(token=token)
     courses = {c["id"]: c for c in client.get_courses()}
     course = courses.get(course_id)
@@ -590,7 +534,7 @@ def _load_course_detail(course_id: int, token: str) -> dict:
             "reason": "No Canvas weights or accessible syllabus weights found for this course.",
         }
 
-    component_model = _calc.build_weighted_components(groups, submissions, weights)
+    component_model = calc.build_weighted_components(groups, submissions, weights)
     if not component_model["reliable"]:
         return {
             "course": course,
@@ -600,13 +544,13 @@ def _load_course_detail(course_id: int, token: str) -> dict:
             "component_model": component_model,
         }
 
-    grade = _calc.current_grade(groups, submissions, weights)
+    grade = calc.current_grade(groups, submissions, weights)
     default_slider_values = {
         c["name"]: 100.0
         for c in component_model["components"]
         if c["status"] == "ungraded"
     }
-    projected_default = _calc.projected_grade(
+    projected_default = calc.projected_grade(
         component_model["components"],
         default_slider_values,
     )
@@ -619,7 +563,7 @@ def _load_course_detail(course_id: int, token: str) -> dict:
         "grade": grade,
         "has_data": True,
         "current_standing": projected_default,
-        "current_letter": GradeCalculator._to_letter(projected_default),
+        "current_letter": _to_letter(projected_default),
         "graded_weight": graded_weight,
         "component_model": component_model,
         "projected_default": projected_default,
@@ -628,6 +572,7 @@ def _load_course_detail(course_id: int, token: str) -> dict:
 
 def _render_course_detail(course_id: int):
     """Render the dedicated what-if page for one course."""
+    calc = _get_grade_calculator()
     if st.button("Back to overview"):
         st.session_state.pop("selected_course_id", None)
         st.rerun()
@@ -693,8 +638,8 @@ def _render_course_detail(course_id: int):
             f"({contrib:.1f} pts)"
         )
 
-    projected_pct = _calc.projected_grade(components, projected_inputs)
-    projected_letter = GradeCalculator._to_letter(projected_pct)
+    projected_pct = calc.projected_grade(components, projected_inputs)
+    projected_letter = _to_letter(projected_pct)
 
     metric_cols = st.columns(3)
     with metric_cols[0]:
@@ -721,6 +666,7 @@ def _get_acorn_import_code() -> str:
 
 def _load_acorn_data(import_code: str) -> dict:
     """Load the latest ACORN import for one import code."""
+    AcornBackendError, get_import_status, get_latest_import = _get_acorn_helpers()
     try:
         return {
             "status": get_import_status(import_code),
@@ -802,144 +748,196 @@ def _render_acorn_tab():
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
 
-# ---------------------------------------------------------------------------
-# Dashboard UI
-# ---------------------------------------------------------------------------
+def main():
+    query_params = st.query_params
+    if query_params.get("page") == "privacy":
+        _render_privacy_policy_page()
+        st.stop()
 
-if "selected_course_id" in st.session_state:
-    _render_course_detail(int(st.session_state.selected_course_id))
-    st.stop()
+    try:
+        init_google_auth()
+    except Exception as exc:
+        print(f"Google OAuth setup failed during app startup: {exc}", flush=True)
+        traceback.print_exc()
+        print(f"Startup env presence at auth failure: {STARTUP_ENV_STATUS}", flush=True)
+        st.error(
+            "Google OAuth setup failed. "
+            f"Error: {exc}. "
+            f"Env present: {STARTUP_ENV_STATUS}"
+        )
+        st.stop()
 
-st.title("UofT Agent")
+    user = get_logged_in_user()
+    if user is None:
+        _render_login_page()
+        st.stop()
 
-# Load (or retrieve cached) dashboard data
-if "dashboard" not in st.session_state:
-    with st.spinner("Loading your courses..."):
-        st.session_state.dashboard = _load_dashboard(st.session_state.token)
-
-course_results, deadlines, announcements = st.session_state.dashboard
-
-main_tab, acorn_tab = st.tabs(["Dashboard", "ACORN"])
-
-with main_tab:
-    # Refresh button — top-right via columns
-    hdr_col, btn_col = st.columns([5, 1])
-    with hdr_col:
-        st.subheader("Course Overview")
-    with btn_col:
-        if st.button("Refresh", use_container_width=True):
-            del st.session_state["dashboard"]
-            st.session_state.pop("course_details", None)
+    with st.sidebar:
+        st.markdown(f"**{user['name']}**")
+        st.caption(user["email"])
+        if st.button("Log out", use_container_width=True):
+            logout()
             st.rerun()
 
-    # Course cards
-    cols = st.columns(max(len(course_results), 1))
-    for col, cr in zip(cols, course_results):
-        with col:
-            code  = cr["course_code"] or cr["name"]
-            grade = cr.get("grade")
-            has_data, pct, letter, graded_wt = _display_grade_summary(grade, cr.get("grade_mode"))
+    # -----------------------------------------------------------------------
+    # Onboarding — shown until a valid token is stored in session state
+    # -----------------------------------------------------------------------
+    if "token" not in st.session_state:
+        QuercusClient, QuercusError = _get_quercus_types()
+        st.title("Welcome to UofT Agent")
+        st.markdown(
+            "Enter your Quercus personal access token to get started.  \n"
+            "You can generate one at **q.utoronto.ca → Account → Settings → "
+            "Under Approved Integrations → New Access Token**."
+        )
 
-            risk_label, risk_color = _risk_flag(pct, has_data)
+        token_input = st.text_input("Quercus access token", type="password")
 
-            st.markdown(f"**{code}**")
-            if has_data:
-                st.metric(label="Grade", value=f"{pct:.1f}%", delta=letter, delta_color="off", label_visibility="collapsed")
-                st.progress(min(pct / 100.0, 1.0))
+        if st.button("Connect"):
+            if not token_input.strip():
+                st.error("Please enter a token.")
             else:
-                st.markdown("**—**")
-            st.markdown(f":{risk_color}[**{risk_label}**]")
-            if cr.get("what_if_available"):
-                if st.button("Grade breakdown", key=f"grade_breakdown_btn_{cr['id']}", use_container_width=True):
-                    st.session_state.selected_course_id = cr["id"]
-                    st.rerun()
-            if cr.get("error"):
-                st.caption(f"⚠ {cr['error'][:80]}")
+                with st.spinner("Validating token..."):
+                    try:
+                        QuercusClient(token=token_input.strip()).get_courses()
+                        st.session_state.token = token_input.strip()
+                        st.session_state.messages = []
+                        st.rerun()
+                    except QuercusError:
+                        st.error("Invalid token — please check and try again.")
 
-    st.divider()
+        st.stop()
 
-    # Upcoming deadlines
-    st.subheader("Upcoming Deadlines — next 14 days")
-    if deadlines:
-        for d in deadlines:
-            due_str = d["due_at"].strftime("%b %d, %Y %I:%M %p")
-            title = d["name"]
-            if d.get("url"):
-                title = f"[{title}]({d['url']})"
-            st.markdown(f"- **{d['course_code']}** &nbsp; {title}  \n  _{due_str} UTC_")
-    else:
-        st.info("No assignments due in the next 14 days.")
+    # -----------------------------------------------------------------------
+    # Dashboard UI
+    # -----------------------------------------------------------------------
+    if "selected_course_id" in st.session_state:
+        _render_course_detail(int(st.session_state.selected_course_id))
+        st.stop()
 
-    st.divider()
+    st.title("UofT Agent")
 
-    st.subheader("Recent Announcements")
-    if announcements:
-        for announcement in announcements:
-            posted = announcement["posted_at"].strftime("%b %d, %Y") if announcement["posted_at"] else "Unknown date"
-            title = announcement["title"]
-            if announcement["url"]:
-                title = f"[{title}]({announcement['url']})"
-            st.markdown(f"- **{announcement['course_code']}** · {posted}  \n  {title}")
-            if announcement["preview"]:
-                st.caption(announcement["preview"])
-    else:
-        st.info("No recent announcements found.")
+    if "dashboard" not in st.session_state:
+        with st.spinner("Loading your courses..."):
+            st.session_state.dashboard = _load_dashboard(st.session_state.token)
 
-    st.divider()
+    course_results, deadlines, announcements = st.session_state.dashboard
 
-    # ---------------------------------------------------------------------------
-    # Chat UI
-    # ---------------------------------------------------------------------------
+    main_tab, acorn_tab = st.tabs(["Dashboard", "ACORN"])
 
-    st.subheader("Ask the Agent")
-    st.caption("Ask anything about your grades and courses")
+    with main_tab:
+        hdr_col, btn_col = st.columns([5, 1])
+        with hdr_col:
+            st.subheader("Course Overview")
+        with btn_col:
+            if st.button("Refresh", use_container_width=True):
+                del st.session_state["dashboard"]
+                st.session_state.pop("course_details", None)
+                st.rerun()
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+        cols = st.columns(max(len(course_results), 1))
+        for col, cr in zip(cols, course_results):
+            with col:
+                code = cr["course_code"] or cr["name"]
+                grade = cr.get("grade")
+                has_data, pct, letter, graded_wt = _display_grade_summary(grade, cr.get("grade_mode"))
 
-    # Render conversation history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            if msg["role"] == "assistant":
-                for tc in msg.get("tool_calls", []):
+                risk_label, risk_color = _risk_flag(pct, has_data)
+
+                st.markdown(f"**{code}**")
+                if has_data:
+                    st.metric(label="Grade", value=f"{pct:.1f}%", delta=letter, delta_color="off", label_visibility="collapsed")
+                    st.progress(min(pct / 100.0, 1.0))
+                else:
+                    st.markdown("**—**")
+                st.markdown(f":{risk_color}[**{risk_label}**]")
+                if cr.get("what_if_available"):
+                    if st.button("Grade breakdown", key=f"grade_breakdown_btn_{cr['id']}", use_container_width=True):
+                        st.session_state.selected_course_id = cr["id"]
+                        st.rerun()
+                if cr.get("error"):
+                    st.caption(f"⚠ {cr['error'][:80]}")
+
+        st.divider()
+
+        st.subheader("Upcoming Deadlines — next 14 days")
+        if deadlines:
+            for d in deadlines:
+                due_str = d["due_at"].strftime("%b %d, %Y %I:%M %p")
+                title = d["name"]
+                if d.get("url"):
+                    title = f"[{title}]({d['url']})"
+                st.markdown(f"- **{d['course_code']}** &nbsp; {title}  \n  _{due_str} UTC_")
+        else:
+            st.info("No assignments due in the next 14 days.")
+
+        st.divider()
+
+        st.subheader("Recent Announcements")
+        if announcements:
+            for announcement in announcements:
+                posted = announcement["posted_at"].strftime("%b %d, %Y") if announcement["posted_at"] else "Unknown date"
+                title = announcement["title"]
+                if announcement["url"]:
+                    title = f"[{title}]({announcement['url']})"
+                st.markdown(f"- **{announcement['course_code']}** · {posted}  \n  {title}")
+                if announcement["preview"]:
+                    st.caption(announcement["preview"])
+        else:
+            st.info("No recent announcements found.")
+
+        st.divider()
+
+        st.subheader("Ask the Agent")
+        st.caption("Ask anything about your grades and courses")
+
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                if msg["role"] == "assistant":
+                    for tc in msg.get("tool_calls", []):
+                        label = "🔧 {}({})".format(
+                            tc["name"],
+                            ", ".join(f"{k}={v}" for k, v in tc["input"].items()),
+                        )
+                        with st.expander(label, expanded=False):
+                            st.json(tc["result"])
+                st.markdown(msg["content"])
+
+        if prompt := st.chat_input("Ask about your grades..."):
+            st.session_state.messages.append({"role": "user", "content": prompt, "tool_calls": []})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    answer, tool_calls = run(
+                        prompt,
+                        token=st.session_state.token,
+                        verbose=False,
+                        return_tool_calls=True,
+                    )
+
+                for tc in tool_calls:
                     label = "🔧 {}({})".format(
                         tc["name"],
                         ", ".join(f"{k}={v}" for k, v in tc["input"].items()),
                     )
                     with st.expander(label, expanded=False):
                         st.json(tc["result"])
-            st.markdown(msg["content"])
 
-    # New message
-    if prompt := st.chat_input("Ask about your grades..."):
-        st.session_state.messages.append({"role": "user", "content": prompt, "tool_calls": []})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+                st.markdown(answer)
 
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                answer, tool_calls = run(
-                    prompt,
-                    token=st.session_state.token,
-                    verbose=False,
-                    return_tool_calls=True,
-                )
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": answer,
+                "tool_calls": tool_calls,
+            })
 
-            for tc in tool_calls:
-                label = "🔧 {}({})".format(
-                    tc["name"],
-                    ", ".join(f"{k}={v}" for k, v in tc["input"].items()),
-                )
-                with st.expander(label, expanded=False):
-                    st.json(tc["result"])
+    with acorn_tab:
+        _render_acorn_tab()
 
-            st.markdown(answer)
 
-        st.session_state.messages.append({
-            "role":       "assistant",
-            "content":    answer,
-            "tool_calls": tool_calls,
-        })
-
-with acorn_tab:
-    _render_acorn_tab()
+main()
