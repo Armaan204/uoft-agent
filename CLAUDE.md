@@ -34,13 +34,30 @@ ANTHROPIC_API_KEY
 QUERCUS_API_TOKEN
 ACORN_USERNAME
 ACORN_PASSWORD
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
+SUPABASE_URL
+SUPABASE_KEY
+ENCRYPTION_KEY
+REDIRECT_URI           # optional override for the OAuth redirect URL
 
-## Google OAuth redirect URIs
+## Auth
 
+Google OAuth is handled by Supabase Auth (not directly by the app).
+Configure Google as a provider in the Supabase dashboard and add the
+allowed redirect URLs there. The app only needs SUPABASE_URL and
+SUPABASE_KEY — no Google client credentials in the app environment.
+
+Redirect URLs (must be added to Supabase dashboard → URL Configuration):
 - Local: `http://localhost:8501`
 - Production: `https://uoft-agent.streamlit.app`
+
+Auth flow (`auth/supabase_auth.py`):
+1. `get_google_login_url()` calls `supabase.auth.sign_in_with_oauth`,
+   caches the URL + PKCE verifier in session state, returns the URL.
+2. `st.link_button` sends the user to Supabase → Google → back to app.
+3. `init_auth()` (called at top of `main()`) reads `?code=` from query
+   params, calls `exchange_code_for_session`, stores the user in session
+   state, and clears the query param.
+4. `get_logged_in_user()` / `logout()` read/clear session state.
 
 ## Current status
 
@@ -82,23 +99,43 @@ Core pipeline working end-to-end. Streamlit UI running locally.
   - Grade display uses accumulated grade: earned pts + full credit on
     ungraded work (i.e. "start at 100%, subtract marks lost so far")
   - Progress bar and risk flag (Safe ≥85%, On track 70–84%, At risk <70%)
-  - Overview grade shown only when Canvas weights or syllabus weights
-    are available; courses with no accessible weights are left blank
-    rather than falling back to raw total points
+  - Overview grade shown only when the weighted component model is
+    reliable enough to support the dedicated breakdown page; courses
+    with unresolved weights are left blank rather than falling back to
+    raw total points
   - Single "Grade breakdown" button on eligible cards opens a dedicated
     per-course breakdown page instead of duplicating the same logic in
     an inline expander
   - Upcoming deadlines (next 14 days) across all courses, sorted by date
+  - Recent announcements section added, showing the latest announcement
+    per course with direct Quercus links
   - Refresh button clears session cache and reloads
 
 - Dedicated per-course breakdown / what-if page for reliably weighted
   courses:
   - Shows weighted components already completed, with contribution in pts
-  - Renders one slider for each missing weighted syllabus component,
-    with the component's percentage weight in the label
-  - Recomputes projected final grade live as the sliders move
+  - Separates Marked Components and Remaining Components
+  - Marked components can be overridden with sliders when Quercus
+    mapping is slightly off; remaining components still default to 100
+  - Recomputes projected final grade live as the sliders move, while
+    current standing stays system-derived
   - Enabled only when the weighted component mapping is reliable; mixed
     partial-group cases are blocked rather than approximated
+
+- Syllabus retrieval / weighting accuracy improved:
+  - Module file discovery now resolves Canvas file metadata before
+    filtering on extension, so module items titled generically
+    ("Course outline") still lead to the underlying PDF
+  - Weighted-component matching can split broad Canvas groups into
+    item-level syllabus components when assignment names support it
+    (e.g. proposal items inside a broader final-project group)
+  - Repeated assignments can accumulate into one syllabus component
+    instead of being treated as separate unmatched items
+  - Future-only syllabus weights such as a not-yet-posted final exam
+    are carried as ungraded components instead of making the course
+    ineligible immediately
+  - STAD68H3 and STAC51H3 are now handled correctly by the course
+    overview / breakdown flow after these fixes
 
 - ACORN import flow implemented end-to-end:
   - Chrome extension (`uoft-acorn-extension/`) runs only on
@@ -124,11 +161,27 @@ Core pipeline working end-to-end. Streamlit UI running locally.
   - Backend prepared for deployment and deployed publicly (Railway);
     Streamlit ACORN reads and extension writes now target the hosted
     backend rather than localhost
+  - Backend no longer depends on local disk JSON storage; `.env`
+    loading and Supabase error handling were tightened for local and
+    deployed debugging
   - Extension prepared for Chrome Web Store submission:
     - placeholder icons added
     - raw academic-history console logging disabled by default
     - privacy-policy files added
     - popup copy made explicit about not collecting passwords
+    - unused `scripting` permission removed from the manifest
+
+- GitHub Pages landing site added under `docs/` for Chrome Web Store /
+  verification needs:
+  - `docs/index.html` landing page
+  - `docs/privacy.html` privacy policy page
+  - Google verification file support and `.nojekyll`
+
+- Google OAuth login gate implemented via Supabase Auth (`auth/supabase_auth.py`):
+  - Supabase owns the OAuth redirect; the app generates a link_button URL
+    and processes the ?code= callback via exchange_code_for_session (PKCE)
+  - No streamlit-google-auth dependency; no cookie management in the app
+  - Works correctly with Streamlit's rerun model on Cloud
 
 **Known gap:**
 - `get_grade_scenarios` bug fixed: groups with no assignments posted yet
@@ -140,6 +193,8 @@ Core pipeline working end-to-end. Streamlit UI running locally.
 - ACORN backend currently uses import-code scoping instead of a full
   auth / account system — simple and sufficient for now, but not a
   long-term replacement for proper user identity if the project grows
+- Auth is now Supabase Auth (PKCE flow); session persists in Streamlit
+  session state only (no server-side cookies or token storage)
 
 **Not yet started:**
 - Gradescope and MarkUs integrations

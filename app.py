@@ -37,9 +37,9 @@ except Exception:
     raise
 
 try:
-    from auth.google_auth import get_auth_error, get_logged_in_user, get_resolved_redirect_uri, init_google_auth, logout, render_google_login_button
+    from auth.supabase_auth import get_auth_error, get_google_login_url, get_logged_in_user, init_auth, logout
 except Exception:
-    print("Failed to import auth.google_auth in app.py", flush=True)
+    print("Failed to import auth.supabase_auth in app.py", flush=True)
     traceback.print_exc()
     raise
 
@@ -62,19 +62,11 @@ def _env_present(name: str) -> bool:
 def _print_startup_env_debug() -> dict[str, bool]:
     status = {
         "ANTHROPIC_API_KEY": _env_present("ANTHROPIC_API_KEY"),
-        "GOOGLE_CLIENT_ID": _env_present("GOOGLE_CLIENT_ID"),
-        "GOOGLE_CLIENT_SECRET": _env_present("GOOGLE_CLIENT_SECRET"),
-        "COOKIE_SECRET": _env_present("COOKIE_SECRET"),
         "SUPABASE_URL": _env_present("SUPABASE_URL"),
         "SUPABASE_KEY": _env_present("SUPABASE_KEY"),
         "ENCRYPTION_KEY": _env_present("ENCRYPTION_KEY"),
     }
     print(f"Startup env presence: {status}", flush=True)
-    try:
-        print(f"Resolved REDIRECT_URI: {get_resolved_redirect_uri()}", flush=True)
-    except Exception:
-        print("Failed to resolve REDIRECT_URI during startup debug", flush=True)
-        traceback.print_exc()
     return status
 
 
@@ -104,7 +96,7 @@ except Exception:
     raise
 
 
-def _render_login_page(auth):
+def _render_login_page():
     """Render a centered Google login screen."""
     st.markdown(
         """
@@ -141,10 +133,26 @@ def _render_login_page(auth):
     )
     auth_error = get_auth_error()
     if auth_error:
-        st.error(f"Google OAuth failed: {auth_error}")
-    st.markdown('<div style="margin-top:-88px;">', unsafe_allow_html=True)
-    render_google_login_button(auth)
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.error(f"Sign-in failed: {auth_error}")
+    login_url = get_google_login_url()
+    st.markdown(
+        f"""
+        <div style="margin-top:-88px;text-align:center;">
+          <a href="{login_url}" target="_self" style="
+            display:inline-block;
+            padding:0.45rem 1.2rem;
+            background:#4285f4;
+            color:#fff;
+            border-radius:6px;
+            text-decoration:none;
+            font-size:1rem;
+            font-weight:600;
+            letter-spacing:.01em;
+          ">Sign in with Google</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _render_privacy_policy_page():
@@ -751,22 +759,11 @@ def main():
         _render_privacy_policy_page()
         st.stop()
 
-    try:
-        auth = init_google_auth()
-    except Exception as exc:
-        print(f"Google OAuth setup failed during app startup: {exc}", flush=True)
-        traceback.print_exc()
-        print(f"Startup env presence at auth failure: {STARTUP_ENV_STATUS}", flush=True)
-        st.error(
-            "Google OAuth setup failed. "
-            f"Error: {exc}. "
-            f"Env present: {STARTUP_ENV_STATUS}"
-        )
-        st.stop()
+    init_auth()
 
     user = get_logged_in_user()
     if user is None:
-        _render_login_page(auth)
+        _render_login_page()
         st.stop()
 
     with st.sidebar:
