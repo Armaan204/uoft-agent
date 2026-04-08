@@ -13,12 +13,16 @@ from __future__ import annotations
 
 import json
 import os
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from dotenv import load_dotenv
 from supabase import Client, create_client
 
 from integrations.acorn_store import AcornStoreError, validate_payload
+
+load_dotenv()
 
 
 class ApiStorageError(RuntimeError):
@@ -146,7 +150,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 status = _get_status(import_code)
             except ApiStorageError as exc:
+                traceback.print_exc()
                 self._send_json(500, {"ok": False, "error": str(exc)})
+                return
+            except Exception:
+                traceback.print_exc()
+                self._send_json(500, {"ok": False, "error": "Failed to load ACORN import status"})
                 return
             self._send_json(200, {"ok": True, **status})
             return
