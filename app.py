@@ -317,6 +317,7 @@ def _load_single_course(course: dict, client: QuercusClient) -> dict:
                     "name":        a["name"],
                     "due_at":      due_dt,
                     "course_code": result["course_code"],
+                    "url":         a.get("html_url"),
                 })
     except Exception:
         pass
@@ -683,7 +684,10 @@ with main_tab:
     if deadlines:
         for d in deadlines:
             due_str = d["due_at"].strftime("%b %d, %Y %I:%M %p")
-            st.markdown(f"**{d['course_code']}** &nbsp; {d['name']}  \n_{due_str} UTC_")
+            title = d["name"]
+            if d.get("url"):
+                title = f"[{title}]({d['url']})"
+            st.markdown(f"- **{d['course_code']}** &nbsp; {title}  \n  _{due_str} UTC_")
     else:
         st.info("No assignments due in the next 14 days.")
 
@@ -696,7 +700,7 @@ with main_tab:
             title = announcement["title"]
             if announcement["url"]:
                 title = f"[{title}]({announcement['url']})"
-            st.markdown(f"**{announcement['course_code']}** · {posted}  \n{title}")
+            st.markdown(f"- **{announcement['course_code']}** · {posted}  \n  {title}")
             if announcement["preview"]:
                 st.caption(announcement["preview"])
     else:
