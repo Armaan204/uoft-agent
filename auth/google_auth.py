@@ -34,7 +34,6 @@ except Exception:
 
 _COOKIE_NAME = "uoft_agent_auth"
 _AUTH_ERROR_KEY = "_google_auth_error"
-_AUTH_INSTANCE: Authenticate | None = None
 _FLOW_PATCHED = False
 
 
@@ -101,6 +100,7 @@ def logout() -> None:
     finally:
         for key in [
             _AUTH_ERROR_KEY,
+            "_google_authenticator",
             "connected",
             "user_info",
             "oauth_id",
@@ -118,10 +118,10 @@ def get_resolved_redirect_uri() -> str:
 
 
 def _build_authenticator() -> Authenticate:
-    global _AUTH_INSTANCE
     _ensure_auth_session_state()
-    if _AUTH_INSTANCE is not None:
-        return _AUTH_INSTANCE
+    existing = st.session_state.get("_google_authenticator")
+    if isinstance(existing, Authenticate):
+        return existing
 
     _patch_streamlit_google_auth_flow()
     client_id, client_secret = _get_google_credentials()
@@ -129,13 +129,14 @@ def _build_authenticator() -> Authenticate:
     redirect_uri = _get_redirect_uri()
     credentials_path = _write_client_secrets_file(client_id, client_secret)
     print(f"Google OAuth redirect_uri: {redirect_uri}", flush=True)
-    _AUTH_INSTANCE = Authenticate(
+    auth = Authenticate(
         secret_credentials_path=str(credentials_path),
         cookie_name=_COOKIE_NAME,
         cookie_key=cookie_secret,
         redirect_uri=redirect_uri,
     )
-    return _AUTH_INSTANCE
+    st.session_state["_google_authenticator"] = auth
+    return auth
 
 
 def _ensure_auth_session_state() -> None:
