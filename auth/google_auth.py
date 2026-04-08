@@ -4,12 +4,7 @@ auth/google_auth.py — Google OAuth helpers for Streamlit.
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
-import json
 import os
-import secrets
 import traceback
 
 try:
@@ -62,24 +57,20 @@ def init_google_auth() -> None:
         except Exception:
             params_snapshot = {"error": "Could not read query params"}
         print(f"Google OAuth callback query params: {params_snapshot}", flush=True)
-        state = st.query_params.get("state")
         try:
-            _handle_callback(str(code), str(state) if state else None)
+            _handle_callback(str(code))
         except Exception:
             print("Google OAuth callback handling failed", flush=True)
             traceback.print_exc()
             raise
         return
 
-    _, client_secret = _get_google_credentials()
     flow = _build_flow()
     print(f"Google OAuth Flow redirect_uri: {flow.redirect_uri}", flush=True)
-    signed_state = _build_signed_state(client_secret)
-    authorization_url, state = flow.authorization_url(
+    authorization_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="select_account",
-        state=signed_state,
     )
     print(f"Google OAuth authorization URL: {authorization_url}", flush=True)
     st.session_state[_AUTH_URL_KEY] = authorization_url
@@ -119,16 +110,7 @@ def get_resolved_redirect_uri() -> str:
     return _get_redirect_uri()
 
 
-def _handle_callback(code: str, signed_state: str | None) -> None:
-    _, client_secret = _get_google_credentials()
-    if not _is_valid_signed_state(signed_state, client_secret):
-        st.session_state["_google_auth_error"] = (
-            "OAuth callback state could not be verified before token exchange. "
-            "Please try signing in again."
-        )
-        st.query_params.clear()
-        return
-
+def _handle_callback(code: str) -> None:
     try:
         flow = _build_flow()
         flow.fetch_token(code=code)
@@ -153,7 +135,7 @@ def _handle_callback(code: str, signed_state: str | None) -> None:
     st.rerun()
 
 
-def _build_flow(state: str | None = None) -> Flow:
+def _build_flow() -> Flow:
     client_id, client_secret = _get_google_credentials()
     return Flow.from_client_config(
         client_config={
@@ -171,7 +153,6 @@ def _build_flow(state: str | None = None) -> Flow:
         },
         scopes=_SCOPES,
         redirect_uri=_get_redirect_uri(),
-        state=state,
         autogenerate_code_verifier=False,
     )
 
@@ -209,35 +190,3 @@ def _get_redirect_uri() -> str:
     if has_secrets:
         return "https://uoft-agent.streamlit.app"
     return "http://localhost:8501"
-
-
-def _build_signed_state(secret: str) -> str:
-    payload = {
-        "nonce": secrets.token_urlsafe(24),
-    }
-    payload_json = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    payload_b64 = base64.urlsafe_b64encode(payload_json).decode("utf-8").rstrip("=")
-    signature = hmac.new(secret.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
-    signature_b64 = base64.urlsafe_b64encode(signature).decode("utf-8").rstrip("=")
-    return f"{payload_b64}.{signature_b64}"
-
-
-def _is_valid_signed_state(signed_state: str | None, secret: str) -> bool:
-    if not signed_state or "." not in signed_state:
-        return False
-    payload_b64, signature_b64 = signed_state.split(".", 1)
-    expected_signature = hmac.new(
-        secret.encode("utf-8"),
-        payload_b64.encode("utf-8"),
-        hashlib.sha256,
-    ).digest()
-    expected_signature_b64 = base64.urlsafe_b64encode(expected_signature).decode("utf-8").rstrip("=")
-    if not hmac.compare_digest(signature_b64, expected_signature_b64):
-        return False
-
-    try:
-        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
-    except Exception:
-        return False
-    return bool(payload.get("nonce"))
