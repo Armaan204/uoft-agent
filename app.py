@@ -37,7 +37,7 @@ except Exception:
     raise
 
 try:
-    from auth.google_auth import get_logged_in_user, get_login_url, get_resolved_redirect_uri, init_google_auth, logout
+    from auth.google_auth import get_auth_error, get_logged_in_user, get_resolved_redirect_uri, init_google_auth, logout, render_google_login_button
 except Exception:
     print("Failed to import auth.google_auth in app.py", flush=True)
     traceback.print_exc()
@@ -64,6 +64,7 @@ def _print_startup_env_debug() -> dict[str, bool]:
         "ANTHROPIC_API_KEY": _env_present("ANTHROPIC_API_KEY"),
         "GOOGLE_CLIENT_ID": _env_present("GOOGLE_CLIENT_ID"),
         "GOOGLE_CLIENT_SECRET": _env_present("GOOGLE_CLIENT_SECRET"),
+        "COOKIE_SECRET": _env_present("COOKIE_SECRET"),
         "SUPABASE_URL": _env_present("SUPABASE_URL"),
         "SUPABASE_KEY": _env_present("SUPABASE_KEY"),
         "ENCRYPTION_KEY": _env_present("ENCRYPTION_KEY"),
@@ -138,21 +139,12 @@ def _render_login_page():
         """,
         unsafe_allow_html=True,
     )
-    if st.session_state.get("_google_auth_error"):
-        st.error(f"Google OAuth failed: {st.session_state['_google_auth_error']}")
-    login_url = get_login_url()
-    if login_url:
-        st.markdown(
-            f"""
-            <div style="display:flex; justify-content:center; margin-top:-88px;">
-              <a href="{login_url}" target="_self" style="background-color:#4285f4;color:#fff;text-decoration:none;text-align:center;font-size:16px;cursor:pointer;padding:10px 14px;border-radius:6px;display:flex;align-items:center;font-weight:600;">
-                <img src="https://lh3.googleusercontent.com/COxitqgJr1sJnIDe8-jiKhxDx1FrYbtRHKJ9z_hELisAlapwE9LUPh6fcXIfb5vwpbMl4xl9H9TRFPc5NOO8Sb3VSgIBrfRYvW6cUA" alt="Google logo" style="margin-right:8px;width:26px;height:26px;background-color:white;border:2px solid white;border-radius:4px;">
-                Sign in with Google
-              </a>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    auth_error = get_auth_error()
+    if auth_error:
+        st.error(f"Google OAuth failed: {auth_error}")
+    st.markdown('<div style="margin-top:-88px;">', unsafe_allow_html=True)
+    render_google_login_button()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_privacy_policy_page():

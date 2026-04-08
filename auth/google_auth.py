@@ -4,27 +4,16 @@ auth/google_auth.py — Google OAuth helpers for Streamlit.
 
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 import traceback
+from pathlib import Path
 
 try:
     import streamlit as st
 except Exception:
     print("Failed to import streamlit in auth.google_auth", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
-    from googleapiclient.discovery import build
-except Exception:
-    print("Failed to import googleapiclient.discovery in auth.google_auth", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
-    from google_auth_oauthlib.flow import Flow
-except Exception:
-    print("Failed to import google_auth_oauthlib.flow in auth.google_auth", flush=True)
     traceback.print_exc()
     raise
 
@@ -35,74 +24,92 @@ except Exception:
     traceback.print_exc()
     raise
 
-_SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/userinfo.email",
-]
-_AUTH_URL_KEY = "_google_auth_url"
+try:
+    import streamlit_google_auth
+    from streamlit_google_auth import Authenticate
+except Exception:
+    print("Failed to import streamlit_google_auth.Authenticate in auth.google_auth", flush=True)
+    traceback.print_exc()
+    raise
+
+_COOKIE_NAME = "uoft_agent_auth"
+_AUTH_ERROR_KEY = "_google_auth_error"
+_AUTH_INSTANCE: Authenticate | None = None
+_FLOW_PATCHED = False
 
 
 def init_google_auth() -> None:
     """Initialise the Google OAuth flow and process any callback."""
-    st.session_state.pop("_google_auth_error", None)
+    _ensure_auth_session_state()
+    st.session_state.pop(_AUTH_ERROR_KEY, None)
+    try:
+        auth = _build_authenticator()
+        auth.check_authentification()
+    except Exception as exc:
+        st.session_state[_AUTH_ERROR_KEY] = str(exc)
+        print("Google OAuth initialisation failed", flush=True)
+        traceback.print_exc()
+        raise
 
-    if st.session_state.get("google_user"):
-        return
 
-    code = st.query_params.get("code")
-    if code:
-        try:
-            params_snapshot = {k: st.query_params.get_all(k) for k in st.query_params}
-        except Exception:
-            params_snapshot = {"error": "Could not read query params"}
-        print(f"Google OAuth callback query params: {params_snapshot}", flush=True)
-        try:
-            _handle_callback(str(code))
-        except Exception:
-            print("Google OAuth callback handling failed", flush=True)
-            traceback.print_exc()
-            raise
-        return
-
-    flow = _build_flow()
-    print(f"Google OAuth Flow redirect_uri: {flow.redirect_uri}", flush=True)
-    authorization_url, _ = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="select_account",
-    )
-    print(f"Google OAuth authorization URL: {authorization_url}", flush=True)
-    st.session_state[_AUTH_URL_KEY] = authorization_url
+def render_google_login_button() -> None:
+    """Render the Google login button using streamlit-google-auth."""
+    _ensure_auth_session_state()
+    try:
+        auth = _build_authenticator()
+        auth.login()
+    except Exception as exc:
+        st.session_state[_AUTH_ERROR_KEY] = str(exc)
+        print("Google OAuth login button rendering failed", flush=True)
+        traceback.print_exc()
+        raise
 
 
 def get_logged_in_user() -> dict | None:
     """Return the logged-in Google user from session state, if any."""
-    user = st.session_state.get("google_user")
-    if not isinstance(user, dict):
+    if not st.session_state.get("connected"):
         return None
-    email = user.get("email")
-    name = user.get("name")
-    google_id = user.get("google_id")
+
+    user_info = st.session_state.get("user_info")
+    if not isinstance(user_info, dict):
+        return None
+
+    email = user_info.get("email")
+    name = user_info.get("name")
+    google_id = user_info.get("id") or st.session_state.get("oauth_id")
     if not email or not name or not google_id:
         return None
-    return user
+
+    return {
+        "email": email,
+        "name": name,
+        "google_id": google_id,
+    }
+
+
+def get_auth_error() -> str | None:
+    """Return the latest auth error, if any."""
+    error = st.session_state.get(_AUTH_ERROR_KEY)
+    return str(error) if error else None
 
 
 def logout() -> None:
-    """Clear auth-related session state."""
-    for key in [
-        "google_user",
-        "_google_auth_error",
-        _AUTH_URL_KEY,
-    ]:
-        st.session_state.pop(key, None)
-    st.query_params.clear()
-
-
-def get_login_url() -> str | None:
-    """Return the Google authorization URL for the current session."""
-    return st.session_state.get(_AUTH_URL_KEY)
+    """Clear auth-related session state and cookies."""
+    auth = _build_authenticator()
+    try:
+        auth.logout()
+    finally:
+        for key in [
+            _AUTH_ERROR_KEY,
+            "connected",
+            "user_info",
+            "oauth_id",
+            "logout",
+            "name",
+            "username",
+        ]:
+            st.session_state.pop(key, None)
+        st.query_params.clear()
 
 
 def get_resolved_redirect_uri() -> str:
@@ -110,51 +117,48 @@ def get_resolved_redirect_uri() -> str:
     return _get_redirect_uri()
 
 
-def _handle_callback(code: str) -> None:
-    try:
-        flow = _build_flow()
-        flow.fetch_token(code=code)
-        user_info = (
-            build("oauth2", "v2", credentials=flow.credentials)
-            .userinfo()
-            .get()
-            .execute()
-        )
-    except Exception as exc:
-        st.session_state["_google_auth_error"] = str(exc)
-        st.query_params.clear()
+def _build_authenticator() -> Authenticate:
+    global _AUTH_INSTANCE
+    _ensure_auth_session_state()
+    if _AUTH_INSTANCE is not None:
+        return _AUTH_INSTANCE
+
+    _patch_streamlit_google_auth_flow()
+    client_id, client_secret = _get_google_credentials()
+    cookie_secret = _get_cookie_secret()
+    redirect_uri = _get_redirect_uri()
+    credentials_path = _write_client_secrets_file(client_id, client_secret)
+    print(f"Google OAuth redirect_uri: {redirect_uri}", flush=True)
+    _AUTH_INSTANCE = Authenticate(
+        secret_credentials_path=str(credentials_path),
+        cookie_name=_COOKIE_NAME,
+        cookie_key=cookie_secret,
+        redirect_uri=redirect_uri,
+    )
+    return _AUTH_INSTANCE
+
+
+def _ensure_auth_session_state() -> None:
+    st.session_state.setdefault("connected", False)
+    st.session_state.setdefault("user_info", None)
+    st.session_state.setdefault("oauth_id", None)
+
+
+def _patch_streamlit_google_auth_flow() -> None:
+    global _FLOW_PATCHED
+    if _FLOW_PATCHED:
         return
 
-    st.session_state["google_user"] = {
-        "email": user_info.get("email"),
-        "name": user_info.get("name"),
-        "google_id": user_info.get("id"),
-    }
-    st.session_state.pop("_google_auth_error", None)
-    st.query_params.clear()
-    st.rerun()
+    flow_cls = streamlit_google_auth.google_auth_oauthlib.flow.Flow
+    original = flow_cls.from_client_secrets_file
 
+    def _from_client_secrets_file_no_pkce(*args, **kwargs):
+        kwargs.setdefault("autogenerate_code_verifier", False)
+        return original(*args, **kwargs)
 
-def _build_flow() -> Flow:
-    client_id, client_secret = _get_google_credentials()
-    return Flow.from_client_config(
-        client_config={
-            "web": {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "redirect_uris": [
-                    "http://localhost:8501",
-                    "https://uoft-agent.streamlit.app",
-                ],
-            }
-        },
-        scopes=_SCOPES,
-        redirect_uri=_get_redirect_uri(),
-        autogenerate_code_verifier=False,
-    )
+    flow_cls.from_client_secrets_file = _from_client_secrets_file_no_pkce
+    _FLOW_PATCHED = True
+    print("Patched streamlit-google-auth Flow to disable PKCE", flush=True)
 
 
 def _get_google_credentials() -> tuple[str, str]:
@@ -172,6 +176,18 @@ def _get_google_credentials() -> tuple[str, str]:
     return client_id, client_secret
 
 
+def _get_cookie_secret() -> str:
+    try:
+        cookie_secret = st.secrets.get("COOKIE_SECRET")
+    except StreamlitSecretNotFoundError:
+        cookie_secret = None
+
+    cookie_secret = cookie_secret or os.getenv("COOKIE_SECRET")
+    if not cookie_secret:
+        raise RuntimeError("COOKIE_SECRET must be configured")
+    return str(cookie_secret)
+
+
 def _get_redirect_uri() -> str:
     try:
         redirect_uri = st.secrets.get("REDIRECT_URI")
@@ -180,7 +196,7 @@ def _get_redirect_uri() -> str:
 
     redirect_uri = redirect_uri or os.getenv("REDIRECT_URI")
     if redirect_uri:
-        return redirect_uri.rstrip("/")
+        return str(redirect_uri).rstrip("/")
 
     try:
         has_secrets = bool(st.secrets.get("GOOGLE_CLIENT_ID"))
@@ -190,3 +206,23 @@ def _get_redirect_uri() -> str:
     if has_secrets:
         return "https://uoft-agent.streamlit.app"
     return "http://localhost:8501"
+
+
+def _write_client_secrets_file(client_id: str, client_secret: str) -> Path:
+    payload = {
+        "web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "redirect_uris": [
+                "http://localhost:8501",
+                "https://uoft-agent.streamlit.app",
+            ],
+        }
+    }
+
+    path = Path(tempfile.gettempdir()) / "uoft_agent_google_oauth_client.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
