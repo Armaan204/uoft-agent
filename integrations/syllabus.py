@@ -20,18 +20,11 @@ import re
 
 import anthropic
 import requests
-import streamlit as st
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pypdf import PdfReader
-from streamlit.errors import StreamlitSecretNotFoundError
 
 load_dotenv()
-
-try:
-    ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-except StreamlitSecretNotFoundError:
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -44,6 +37,19 @@ _CONFIDENCE_THRESHOLD = 0.3   # score / len(_SYLLABUS_KEYWORDS) must exceed this
 
 class SyllabusError(Exception):
     """Raised when a syllabus cannot be found, downloaded, or parsed."""
+
+
+def _get_anthropic_client() -> anthropic.Anthropic:
+    """Build an Anthropic client from the runtime environment.
+
+    The Streamlit app resolves secrets on the main thread during startup and
+    mirrors ANTHROPIC_API_KEY into os.environ. Syllabus parsing may run in a
+    worker thread, so this module avoids reading st.secrets at import time.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise SyllabusError("ANTHROPIC_API_KEY is not configured")
+    return anthropic.Anthropic(api_key=api_key)
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +143,7 @@ def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
     match, or 'none' if nothing looks like a syllabus.  Returns the
     corresponding URL, or None.
     """
-    claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    claude = _get_anthropic_client()
 
     names = "\n".join(f"- {c['name']}" for c in candidates)
     prompt = (
@@ -311,7 +317,7 @@ def _extract_text(pdf_bytes: bytes) -> str:
 
 def _ask_claude(text: str) -> dict:
     """Send syllabus text to Claude Haiku and return a parsed weight dict."""
-    claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    claude = _get_anthropic_client()
 
     prompt = (
         "Below is text extracted from a university course syllabus.\n"
