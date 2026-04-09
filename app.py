@@ -81,6 +81,18 @@ except Exception:
 if ANTHROPIC_API_KEY:
     os.environ["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY
 
+for env_name in ("SUPABASE_URL", "SUPABASE_KEY", "ENCRYPTION_KEY", "ACORN_BACKEND_URL"):
+    try:
+        env_value = st.secrets.get(env_name) or os.getenv(env_name)
+    except StreamlitSecretNotFoundError:
+        env_value = os.getenv(env_name)
+    except Exception:
+        print(f"Failed while resolving {env_name} in app.py", flush=True)
+        traceback.print_exc()
+        raise
+    if env_value:
+        os.environ[env_name] = str(env_value)
+
 try:
     st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
 except Exception:
@@ -192,6 +204,88 @@ def _get_acorn_helpers():
 def _run_agent(*args, **kwargs):
     from agent.agent import run
     return run(*args, **kwargs)
+
+
+def _get_user_store():
+    from auth.user_store import (
+        UserStoreError,
+        delete_quercus_token,
+        get_or_create_user,
+        get_quercus_token,
+        save_quercus_token,
+    )
+    return UserStoreError, get_or_create_user, get_quercus_token, save_quercus_token, delete_quercus_token
+
+
+def _clear_quercus_session_state():
+    """Clear cached state derived from the current Quercus token."""
+    for key in [
+        "token",
+        "dashboard",
+        "course_details",
+        "selected_course_id",
+        "messages",
+    ]:
+        st.session_state.pop(key, None)
+
+
+def _ensure_app_user() -> dict:
+    """Ensure the Streamlit-authenticated user exists in Supabase."""
+    if "app_user" in st.session_state:
+        return st.session_state.app_user
+
+    UserStoreError, get_or_create_user, _, _, _ = _get_user_store()
+    google_id = getattr(st.user, "sub", None)
+    email = getattr(st.user, "email", None)
+    if not google_id:
+        raise UserStoreError("Logged-in user is missing st.user.sub")
+
+    user = get_or_create_user(google_id, email)
+    st.session_state.app_user = user
+    st.session_state.user_id = user["id"]
+    return user
+
+
+def _restore_persisted_quercus_token() -> None:
+    """Load a persisted token from Supabase into session state if present."""
+    if "token" in st.session_state:
+        return
+
+    user = _ensure_app_user()
+    _, _, get_quercus_token, _, _ = _get_user_store()
+    token = get_quercus_token(user["id"])
+    if token:
+        st.session_state.token = token
+
+
+def _disconnect_quercus() -> None:
+    """Delete the persisted token and clear all local Quercus-derived state."""
+    _, _, _, _, delete_quercus_token = _get_user_store()
+    user_id = st.session_state.get("user_id")
+    if user_id is not None:
+        delete_quercus_token(user_id)
+    _clear_quercus_session_state()
+
+
+def _is_invalid_quercus_token_error(exc: Exception) -> bool:
+    """Return True when a Quercus error indicates an expired/revoked token."""
+    message = str(exc).lower()
+    return "401" in message or "revoked access token" in message or "unauthorized" in message
+
+
+def _expire_quercus_token(message: str) -> None:
+    """Clear the persisted/session token and return the user to onboarding."""
+    user_id = st.session_state.get("user_id")
+    if user_id is not None:
+        try:
+            _, _, _, _, delete_quercus_token = _get_user_store()
+            delete_quercus_token(user_id)
+        except Exception:
+            pass
+    _clear_quercus_session_state()
+    if "app_user" in st.session_state:
+        st.session_state.user_id = st.session_state.app_user["id"]
+    st.session_state.token_error = message
 
 
 def _risk_flag(pct: float, has_data: bool) -> tuple[str, str]:
@@ -744,10 +838,27 @@ def main():
             st.button("Sign in with Google", on_click=st.login, args=("google",))
         st.stop()
 
+    try:
+        _ensure_app_user()
+        _restore_persisted_quercus_token()
+    except Exception as exc:
+        st.error(f"Could not load your account data. {exc}")
+        st.stop()
+
     with st.sidebar:
         st.markdown(f"**{st.user.name}**")
         st.caption(st.user.email)
+        if "token" in st.session_state:
+            if st.button("Disconnect Quercus", use_container_width=True):
+                try:
+                    _disconnect_quercus()
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Could not disconnect Quercus. {exc}")
         if st.button("Log out", use_container_width=True):
+            _clear_quercus_session_state()
+            st.session_state.pop("app_user", None)
+            st.session_state.pop("user_id", None)
             st.logout()
 
     # -----------------------------------------------------------------------
@@ -756,6 +867,8 @@ def main():
     if "token" not in st.session_state:
         QuercusClient, QuercusError = _get_quercus_types()
         st.title("Welcome to UofT Agent")
+        if st.session_state.get("token_error"):
+            st.error(st.session_state.pop("token_error"))
         st.markdown(
             "Enter your Quercus personal access token to get started.  \n"
             "You can generate one at **q.utoronto.ca → Account → Settings → "
@@ -771,11 +884,18 @@ def main():
                 with st.spinner("Validating token..."):
                     try:
                         QuercusClient(token=token_input.strip()).get_courses()
+                        _, _, _, save_quercus_token, _ = _get_user_store()
+                        save_quercus_token(st.session_state.user_id, token_input.strip())
+                        _clear_quercus_session_state()
+                        st.session_state.app_user = _ensure_app_user()
+                        st.session_state.user_id = st.session_state.app_user["id"]
                         st.session_state.token = token_input.strip()
                         st.session_state.messages = []
                         st.rerun()
                     except QuercusError:
                         st.error("Invalid token — please check and try again.")
+                    except Exception as exc:
+                        st.error(f"Could not save token. {exc}")
 
         st.stop()
 
@@ -783,14 +903,30 @@ def main():
     # Dashboard UI
     # -----------------------------------------------------------------------
     if "selected_course_id" in st.session_state:
-        _render_course_detail(int(st.session_state.selected_course_id))
+        try:
+            _render_course_detail(int(st.session_state.selected_course_id))
+        except Exception as exc:
+            if _is_invalid_quercus_token_error(exc):
+                _expire_quercus_token(
+                    "Your Quercus token expired or was revoked. Please enter a new token."
+                )
+                st.rerun()
+            raise
         st.stop()
 
     st.title("UofT Agent")
 
     if "dashboard" not in st.session_state:
-        with st.spinner("Loading your courses..."):
-            st.session_state.dashboard = _load_dashboard(st.session_state.token)
+        try:
+            with st.spinner("Loading your courses..."):
+                st.session_state.dashboard = _load_dashboard(st.session_state.token)
+        except Exception as exc:
+            if _is_invalid_quercus_token_error(exc):
+                _expire_quercus_token(
+                    "Your Quercus token expired or was revoked. Please enter a new token."
+                )
+                st.rerun()
+            raise
 
     course_results, deadlines, announcements = st.session_state.dashboard
 
@@ -908,7 +1044,20 @@ def main():
             })
 
     with acorn_tab:
-        _render_acorn_tab()
+        st.markdown(
+            """
+            <div style="text-align: center; padding: 3rem 1rem 4rem; color: #8a8f98;">
+              <div style="font-size: 3rem; line-height: 1;">🔒</div>
+              <div style="margin-top: 1rem; font-size: 1.5rem; font-weight: 600; color: #7a7f87;">
+                ACORN Integration — Coming Soon
+              </div>
+              <div style="margin-top: 0.75rem; font-size: 1rem; color: #9aa0a8;">
+                Import your academic history directly from ACORN. Currently in review.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 main()

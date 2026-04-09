@@ -19,6 +19,7 @@ UofT Agent combines live academic data, deterministic grade math, and an Anthrop
 Current capabilities:
 
 - Quercus course retrieval
+- Encrypted Quercus-token persistence per logged-in user
 - Assignment and submission retrieval
 - Canvas assignment-group weight resolution
 - Syllabus PDF discovery and weight extraction when Canvas weights are missing
@@ -29,15 +30,18 @@ Current capabilities:
 ## Core Flow
 
 1. The student signs in with Google using Streamlit's native auth.
-2. The student enters a Quercus personal access token.
-3. The app loads current courses and grade data from Quercus.
-4. If Canvas weights are missing, the app searches for a syllabus and extracts weights with Anthropic.
-5. Deterministic Python code computes grades and scenarios.
-6. The chat agent can call the same tools to answer natural-language questions.
+2. On first use, the student enters a Quercus personal access token.
+3. The app validates the token, encrypts it, and stores it in Supabase for that logged-in user.
+4. On later visits, the app restores the saved token automatically and skips the token prompt.
+5. The app loads current courses and grade data from Quercus.
+6. If Canvas weights are missing, the app searches for a syllabus and extracts weights with Anthropic.
+7. Deterministic Python code computes grades and scenarios.
+8. The chat agent can call the same tools to answer natural-language questions.
 
 ## Project Structure
 
 - [`app.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py) — Streamlit UI, dashboard, chat, ACORN tab
+- [`auth/user_store.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/auth/user_store.py) — Supabase-backed user lookup and encrypted Quercus-token persistence
 - [`agent/agent.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/agent.py) — Anthropic agent loop
 - [`agent/tools.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/tools.py) — tool schemas and dispatch
 - [`calculator/grades.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/calculator/grades.py) — deterministic grade engine
@@ -78,6 +82,7 @@ Important:
 
 - App secrets such as `ANTHROPIC_API_KEY` must stay at the top level
 - Do not place them under `[auth]` or `[auth.google]`
+- The app also uses `SUPABASE_URL`, `SUPABASE_KEY`, and `ENCRYPTION_KEY` to persist encrypted Quercus tokens
 
 ## Local Development
 
@@ -116,6 +121,7 @@ Recommended split:
 - Streamlit app on Streamlit Cloud
 - ACORN backend on Railway
 - ACORN import storage in Supabase Postgres
+- User records and encrypted Quercus tokens in Supabase Postgres
 
 The backend supports:
 
@@ -141,6 +147,7 @@ web: python api_server.py
 - Gradescope and MarkUs integrations are still placeholders
 - Some courses intentionally show no weighted overview grade when syllabus-to-assignment mapping is too ambiguous
 - ACORN import currently uses import codes rather than a full user account model
+- If a saved Quercus token is revoked or expires, the app clears it and asks the user to enter a new one
 
 ## License
 

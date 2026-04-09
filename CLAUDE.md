@@ -5,6 +5,7 @@ An AI academic assistant for University of Toronto students.
 ## What It Does
 
 - Connects to Quercus with a student-provided personal access token
+- Persists the Quercus token per logged-in user in Supabase after encrypting it with Fernet
 - Computes current standing and target-grade scenarios with deterministic Python math
 - Resolves course weights from Canvas assignment groups when available
 - Falls back to syllabus discovery and Anthropic-based weight extraction when Canvas weights are missing
@@ -13,6 +14,7 @@ An AI academic assistant for University of Toronto students.
 ## Architecture
 
 - `app.py` — main Streamlit app and dashboard
+- `auth/user_store.py` — Supabase-backed user lookup and encrypted Quercus token persistence
 - `agent/` — Anthropic tool-calling loop, tool schemas, prompt
 - `calculator/` — deterministic grade calculations and weighted-component modeling
 - `integrations/quercus.py` — Canvas / Quercus API client
@@ -26,7 +28,8 @@ An AI academic assistant for University of Toronto students.
 - No LangChain; native Anthropic tool calling only
 - LLM handles orchestration and syllabus extraction, Python handles arithmetic
 - The UI shows weighted grades only when the weighted component model is reliable enough
-- Students provide their own Quercus token in the app; it is stored only in Streamlit session state
+- Students provide their own Quercus token in the app; the validated token is encrypted and persisted in Supabase per user
+- Session state still caches the active token and derived dashboard data for the current run
 
 ## Auth
 
@@ -60,7 +63,8 @@ Important:
 
 - Keep flat app secrets such as `ANTHROPIC_API_KEY` at the top level
 - Do not place them under `[auth]` or `[auth.google]`
-- `app.py` reads `ANTHROPIC_API_KEY` from `st.secrets` on the main thread and mirrors it into `os.environ` so worker-thread syllabus parsing can still access it
+- `app.py` reads flat app secrets on the main thread and mirrors runtime values such as `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, and `ENCRYPTION_KEY` into `os.environ` for helper modules
+- The app upserts the logged-in user by `st.user.sub` and stores encrypted Quercus tokens in the `quercus_tokens` table keyed by `user_id`
 
 ## Environment Variables
 
@@ -81,12 +85,14 @@ Common variables:
 Implemented:
 
 - Quercus integration for courses, assignments, submissions, assignment groups, syllabus body, modules, files, grades, and announcements
+- Persisted Quercus-token flow: load saved token on login, skip onboarding when present, allow manual disconnect, and clear revoked tokens automatically
 - Dynamic current-term filtering using Canvas term metadata
 - Dashboard with course cards, deadlines, announcements, chat, and ACORN tab
 - Weighted grade calculations and dedicated per-course what-if pages
 - Syllabus fallback that can discover files from syllabus HTML, modules, course files, or the front page
 - More reliable module-based syllabus selection by preferring real file metadata and deterministically picking a unique best candidate before calling the LLM chooser
 - ACORN import flow from Chrome extension to Railway-hosted backend to Streamlit readback
+- ACORN backend/import implementation remains in the repo, but the Streamlit ACORN tab is currently replaced with a muted "Coming Soon" placeholder while the extension flow is under review
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
 
 Not implemented yet:
@@ -100,6 +106,7 @@ Not implemented yet:
 - Courses with unresolved or only partially reliable syllabus-to-Canvas mappings intentionally show no weighted overview grade
 - What-if sliders are only enabled when the weighted component model is reliable
 - The ACORN backend uses import-code scoping rather than a full user account model
+- Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
 
 ## Local Usage
 
