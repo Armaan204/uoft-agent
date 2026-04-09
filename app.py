@@ -309,12 +309,6 @@ def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | 
 
     return None, None
 
-
-def _get_syllabus_debug(course_id: int, client) -> dict:
-    from integrations.syllabus import debug_syllabus_resolution
-    return debug_syllabus_resolution(course_id, client)
-
-
 def _display_grade_summary(grade: dict, grade_mode: str | None) -> tuple[bool, float, str, float]:
     """Return (has_data, displayed_pct, displayed_letter, graded_weight)."""
     has_data = grade is not None and grade["letter"] != "N/A"
@@ -343,7 +337,6 @@ def _load_single_course(course: dict, client) -> dict:
         "weights_source": None,
         "what_if_available": False,
         "what_if_reason": None,
-        "debug_details": [],
         "error":       None,
         "deadlines":   [],
     }
@@ -364,43 +357,11 @@ def _load_single_course(course: dict, client) -> dict:
                 result["grade_mode"] = "weighted"
             else:
                 result["what_if_reason"] = "Weighted components could not be mapped reliably."
-                result["debug_details"] = [
-                    f"Weights source: {weights_source}",
-                    f"Unmatched weights: {', '.join(component_model['unmatched_weights'])}"
-                    if component_model["unmatched_weights"]
-                    else "Unmatched weights: none",
-                    f"Graded weight: {component_model['graded_weight']:.2f}%",
-                    f"Total resolved weight: {component_model['total_weight']:.2f}%",
-                ]
         else:
             # No Canvas weights and no accessible syllabus: omit overview grade.
             result["grade"]      = None
             result["grade_mode"] = None
             result["what_if_reason"] = "No Canvas weights or accessible syllabus weights found."
-            syllabus_debug = _get_syllabus_debug(course_id, client)
-            result["debug_details"] = [
-                "Weights source: none",
-                f"Syllabus-body PDF links: {syllabus_debug['syllabus_body_pdf_urls']}",
-                f"Course files candidates: {syllabus_debug['files_candidates']}",
-                f"Module file candidates: {syllabus_debug['modules_candidates']}",
-                f"Front-page syllabus link found: {'yes' if syllabus_debug['front_page_found'] else 'no'}",
-                f"Selected path: {syllabus_debug['selected_path'] or 'none'}",
-                f"Selected candidate: {syllabus_debug['selected_candidate'] or 'none'}",
-                f"Parsed weights count: {syllabus_debug['parsed_weights_count'] if syllabus_debug['parsed_weights_count'] is not None else 'none'}",
-            ]
-            if syllabus_debug.get("parse_error"):
-                result["debug_details"].append(f"Parse error: {syllabus_debug['parse_error']}")
-            for idx, candidate in enumerate(syllabus_debug.get("top_module_candidates", []), start=1):
-                label = candidate["filename"]
-                if candidate.get("title") and candidate["title"] != candidate["filename"]:
-                    label = f"{label} (module: {candidate['title']})"
-                result["debug_details"].append(
-                    f"Top module candidate {idx}: {label} [score={candidate['confidence']:.2f}]"
-                )
-            if syllabus_debug["errors"]:
-                result["debug_details"].extend(
-                    [f"Discovery error: {error}" for error in syllabus_debug["errors"]]
-                )
     except Exception as exc:
         result["error"] = str(exc)
 
@@ -822,10 +783,6 @@ def main():
                     if st.button("Grade breakdown", key=f"grade_breakdown_btn_{cr['id']}", use_container_width=True):
                         st.session_state.selected_course_id = cr["id"]
                         st.rerun()
-                elif cr.get("what_if_reason"):
-                    st.caption(cr["what_if_reason"])
-                    for detail in cr.get("debug_details", []):
-                        st.caption(detail)
                 if cr.get("error"):
                     st.caption(f"⚠ {cr['error'][:80]}")
 
