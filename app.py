@@ -37,13 +37,6 @@ except Exception:
     raise
 
 try:
-    from auth.supabase_auth import get_auth_error, get_google_login_url, get_logged_in_user, init_auth, logout
-except Exception:
-    print("Failed to import auth.supabase_auth in app.py", flush=True)
-    traceback.print_exc()
-    raise
-
-try:
     load_dotenv()
 except Exception:
     print("Failed during load_dotenv() in app.py", flush=True)
@@ -94,65 +87,6 @@ except Exception:
     print("Failed during st.set_page_config() in app.py", flush=True)
     traceback.print_exc()
     raise
-
-
-def _render_login_page():
-    """Render a centered Google login screen."""
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"] { display: none; }
-        .login-shell {
-            min-height: 72vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .login-card {
-            width: min(460px, 100%);
-            text-align: center;
-            padding: 40px 32px;
-        }
-        .login-card h1 {
-            margin-bottom: 12px;
-        }
-        .login-card p {
-            margin-bottom: 28px;
-            color: #94a3b8;
-            font-size: 1.05rem;
-        }
-        </style>
-        <div class="login-shell">
-          <div class="login-card">
-            <h1>UofT Agent</h1>
-            <p>Sign in with Google to continue</p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    auth_error = get_auth_error()
-    if auth_error:
-        st.error(f"Sign-in failed: {auth_error}")
-    login_url = get_google_login_url()
-    st.markdown(
-        f"""
-        <div style="margin-top:-88px;text-align:center;">
-          <a href="{login_url}" target="_self" style="
-            display:inline-block;
-            padding:0.45rem 1.2rem;
-            background:#4285f4;
-            color:#fff;
-            border-radius:6px;
-            text-decoration:none;
-            font-size:1rem;
-            font-weight:600;
-            letter-spacing:.01em;
-          ">Sign in with Google</a>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _render_privacy_policy_page():
@@ -759,19 +693,16 @@ def main():
         _render_privacy_policy_page()
         st.stop()
 
-    init_auth()
-
-    user = get_logged_in_user()
-    if user is None:
-        _render_login_page()
+    if not st.user.is_logged_in:
+        st.title("UofT Agent")
+        st.button("Sign in with Google", on_click=st.login, args=("google",))
         st.stop()
 
     with st.sidebar:
-        st.markdown(f"**{user['name']}**")
-        st.caption(user["email"])
+        st.markdown(f"**{st.user.name}**")
+        st.caption(st.user.email)
         if st.button("Log out", use_container_width=True):
-            logout()
-            st.rerun()
+            st.logout()
 
     # -----------------------------------------------------------------------
     # Onboarding — shown until a valid token is stored in session state

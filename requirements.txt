@@ -1,6 +1,7 @@
 # Runtime dependencies
 anthropic==0.89.0       # Claude API client
 streamlit==1.56.0       # web UI
+Authlib>=1.3.2          # required for st.login() native auth
 requests==2.32.3        # HTTP for Quercus / ACORN
 beautifulsoup4==4.13.5  # HTML scraping (ACORN, syllabus)
 pypdf==6.1.1            # PDF syllabus parsing
