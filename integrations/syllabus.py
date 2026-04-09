@@ -92,6 +92,14 @@ def _collect_file_candidates(course_id: int | str, client) -> list[dict]:
     return candidates
 
 
+def _collect_file_candidates_debug(course_id: int | str, client) -> tuple[list[dict], str | None]:
+    """Debug wrapper for course files discovery."""
+    try:
+        return _collect_file_candidates(course_id, client), None
+    except Exception as exc:
+        return [], str(exc)
+
+
 def _collect_module_candidates(course_id: int | str, client) -> list[dict]:
     """Return .pdf/.docx file items found inside course modules.
 
@@ -134,6 +142,14 @@ def _collect_module_candidates(course_id: int | str, client) -> list[dict]:
                 "confidence": _confidence(title or filename),
             })
     return candidates
+
+
+def _collect_module_candidates_debug(course_id: int | str, client) -> tuple[list[dict], str | None]:
+    """Debug wrapper for module file discovery."""
+    try:
+        return _collect_module_candidates(course_id, client), None
+    except Exception as exc:
+        return [], str(exc)
 
 
 def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
@@ -287,6 +303,71 @@ def find_syllabus_frontpage(course_id: int | str, client) -> str | None:
     candidates.sort(key=lambda x: x["confidence"], reverse=True)
     best = candidates[0]
     return best["url"] if best["confidence"] > 0 else None
+
+
+def debug_syllabus_resolution(course_id: int | str, client) -> dict:
+    """Return a compact debug summary for syllabus discovery."""
+    debug = {
+        "syllabus_body_pdf_urls": 0,
+        "files_candidates": 0,
+        "modules_candidates": 0,
+        "front_page_found": False,
+        "errors": [],
+    }
+
+    try:
+        syllabus = client.get_syllabus(course_id)
+        debug["syllabus_body_pdf_urls"] = len(syllabus.get("pdf_urls", []))
+    except Exception as exc:
+        debug["errors"].append(f"syllabus_body: {exc}")
+
+    try:
+        files = client.get_course_files(course_id)
+        debug["files_candidates"] = sum(
+            1
+            for f in files
+            if _allowed_ext(f.get("display_name") or f.get("filename") or "")
+        )
+    except Exception as exc:
+        debug["errors"].append(f"course_files: {exc}")
+
+    try:
+        modules = client.get_course_modules(course_id)
+        module_candidates = 0
+        seen_ids = set()
+        for module in modules:
+            for item in module.get("items", []):
+                if item.get("type") != "File":
+                    continue
+                file_id = item.get("content_id")
+                if not file_id or file_id in seen_ids:
+                    continue
+                seen_ids.add(file_id)
+                try:
+                    file_meta = client.get_file_metadata(file_id)
+                except Exception as exc:
+                    debug["errors"].append(f"file_metadata {file_id}: {exc}")
+                    continue
+                filename = file_meta.get("display_name") or file_meta.get("filename") or ""
+                if _allowed_ext(filename):
+                    module_candidates += 1
+        debug["modules_candidates"] = module_candidates
+    except Exception as exc:
+        debug["errors"].append(f"course_modules: {exc}")
+
+    try:
+        page = client.get_front_page(course_id)
+        html = page.get("body") or ""
+        soup = BeautifulSoup(html, "html.parser")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "/files/" in href or "/download" in href:
+                debug["front_page_found"] = True
+                break
+    except Exception as exc:
+        debug["errors"].append(f"front_page: {exc}")
+
+    return debug
 
 
 # ---------------------------------------------------------------------------

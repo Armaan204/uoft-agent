@@ -310,6 +310,11 @@ def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | 
     return None, None
 
 
+def _get_syllabus_debug(course_id: int, client) -> dict:
+    from integrations.syllabus import debug_syllabus_resolution
+    return debug_syllabus_resolution(course_id, client)
+
+
 def _display_grade_summary(grade: dict, grade_mode: str | None) -> tuple[bool, float, str, float]:
     """Return (has_data, displayed_pct, displayed_letter, graded_weight)."""
     has_data = grade is not None and grade["letter"] != "N/A"
@@ -372,7 +377,18 @@ def _load_single_course(course: dict, client) -> dict:
             result["grade"]      = None
             result["grade_mode"] = None
             result["what_if_reason"] = "No Canvas weights or accessible syllabus weights found."
-            result["debug_details"] = ["Weights source: none"]
+            syllabus_debug = _get_syllabus_debug(course_id, client)
+            result["debug_details"] = [
+                "Weights source: none",
+                f"Syllabus-body PDF links: {syllabus_debug['syllabus_body_pdf_urls']}",
+                f"Course files candidates: {syllabus_debug['files_candidates']}",
+                f"Module file candidates: {syllabus_debug['modules_candidates']}",
+                f"Front-page syllabus link found: {'yes' if syllabus_debug['front_page_found'] else 'no'}",
+            ]
+            if syllabus_debug["errors"]:
+                result["debug_details"].extend(
+                    [f"Discovery error: {error}" for error in syllabus_debug["errors"]]
+                )
     except Exception as exc:
         result["error"] = str(exc)
 
