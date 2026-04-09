@@ -384,7 +384,16 @@ def _load_single_course(course: dict, client) -> dict:
                 f"Course files candidates: {syllabus_debug['files_candidates']}",
                 f"Module file candidates: {syllabus_debug['modules_candidates']}",
                 f"Front-page syllabus link found: {'yes' if syllabus_debug['front_page_found'] else 'no'}",
+                f"Selected path: {syllabus_debug['selected_path'] or 'none'}",
+                f"Selected candidate: {syllabus_debug['selected_candidate'] or 'none'}",
             ]
+            for idx, candidate in enumerate(syllabus_debug.get("top_module_candidates", []), start=1):
+                label = candidate["filename"]
+                if candidate.get("title") and candidate["title"] != candidate["filename"]:
+                    label = f"{label} (module: {candidate['title']})"
+                result["debug_details"].append(
+                    f"Top module candidate {idx}: {label} [score={candidate['confidence']:.2f}]"
+                )
             if syllabus_debug["errors"]:
                 result["debug_details"].extend(
                     [f"Discovery error: {error}" for error in syllabus_debug["errors"]]

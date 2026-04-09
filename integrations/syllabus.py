@@ -33,6 +33,8 @@ load_dotenv()
 _SYLLABUS_KEYWORDS = ["syllabus", "outline", "course info", "course guide", "schedule"]
 _ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 _CONFIDENCE_THRESHOLD = 0.3   # score / len(_SYLLABUS_KEYWORDS) must exceed this
+_LLM_PICK_CANDIDATE_LIMIT = 10
+_DIRECT_PICK_MIN_CONFIDENCE = 0.15
 
 
 class SyllabusError(Exception):
@@ -63,6 +65,12 @@ def _confidence(name: str) -> float:
     return hits / len(_SYLLABUS_KEYWORDS)
 
 
+def _score_candidate(*texts: str) -> float:
+    """Return the best syllabus confidence across multiple text signals."""
+    scores = [_confidence(text) for text in texts if text]
+    return max(scores) if scores else 0.0
+
+
 def _allowed_ext(name: str) -> bool:
     ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
     return ext in _ALLOWED_EXTENSIONS
@@ -86,8 +94,10 @@ def _collect_file_candidates(course_id: int | str, client) -> list[dict]:
             continue
         candidates.append({
             "name":       name,
+            "filename":   name,
+            "label":      name,
             "url":        f.get("url"),
-            "confidence": _confidence(name),
+            "confidence": _score_candidate(name),
         })
     return candidates
 
@@ -136,10 +146,16 @@ def _collect_module_candidates(course_id: int | str, client) -> list[dict]:
             if not url:
                 continue
 
+            label = filename
+            if title and title != filename:
+                label = f"{filename} (module: {title})"
+
             candidates.append({
-                "name":       title or filename,
+                "name":       filename,
+                "filename":   filename,
+                "label":      label,
                 "url":        url,
-                "confidence": _confidence(title or filename),
+                "confidence": _score_candidate(filename, title),
             })
     return candidates
 
@@ -161,7 +177,12 @@ def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
     """
     claude = _get_anthropic_client()
 
-    names = "\n".join(f"- {c['name']}" for c in candidates)
+    ranked_candidates = sorted(
+        candidates,
+        key=lambda c: (c["confidence"], c.get("filename", "")),
+        reverse=True,
+    )[:_LLM_PICK_CANDIDATE_LIMIT]
+    names = "\n".join(f"- {c.get('label') or c['name']}" for c in ranked_candidates)
     prompt = (
         "The following files are available in a university course on Canvas LMS.\n"
         "Which ONE file is most likely to be the course syllabus or course outline "
@@ -182,14 +203,49 @@ def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
         return None
 
     # Match the chosen name back to a URL
-    for c in candidates:
+    for c in ranked_candidates:
+        if c.get("label", c["name"]).lower() == chosen.lower():
+            return c["url"]
         if c["name"].lower() == chosen.lower():
             return c["url"]
 
     # Fuzzy fallback: substring match
-    for c in candidates:
-        if chosen.lower() in c["name"].lower() or c["name"].lower() in chosen.lower():
+    for c in ranked_candidates:
+        label = c.get("label", c["name"]).lower()
+        name = c["name"].lower()
+        if chosen.lower() in label or label in chosen.lower():
             return c["url"]
+        if chosen.lower() in name or name in chosen.lower():
+            return c["url"]
+
+    return None
+
+
+def _pick_best_candidate(candidates: list[dict]) -> dict | None:
+    """Deterministically choose a clear best candidate when possible.
+
+    If one file is the unique top-ranked candidate with a positive score and
+    every runner-up scores strictly lower, prefer it directly rather than
+    asking the LLM to choose among mostly irrelevant files.
+    """
+    if not candidates:
+        return None
+
+    ranked = sorted(
+        candidates,
+        key=lambda c: (c["confidence"], c.get("filename", "")),
+        reverse=True,
+    )
+    best = ranked[0]
+    if best["confidence"] < _DIRECT_PICK_MIN_CONFIDENCE:
+        return None
+
+    if len(ranked) == 1:
+        return best
+
+    second = ranked[1]
+    if best["confidence"] > second["confidence"]:
+        return best
 
     return None
 
@@ -231,6 +287,10 @@ def find_syllabus_file(course_id: int | str, client) -> str | None:
 
     if best["confidence"] > _CONFIDENCE_THRESHOLD:
         return best["url"]
+
+    direct_pick = _pick_best_candidate(all_candidates)
+    if direct_pick is not None:
+        return direct_pick["url"]
 
     # Low confidence across the board — let Claude decide
     return _ask_claude_pick_syllabus(all_candidates)
@@ -312,6 +372,9 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
         "files_candidates": 0,
         "modules_candidates": 0,
         "front_page_found": False,
+        "selected_path": None,
+        "selected_candidate": None,
+        "top_module_candidates": [],
         "errors": [],
     }
 
@@ -333,6 +396,7 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
 
     try:
         modules = client.get_course_modules(course_id)
+        module_candidate_rows = []
         module_candidates = 0
         seen_ids = set()
         for module in modules:
@@ -351,7 +415,18 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
                 filename = file_meta.get("display_name") or file_meta.get("filename") or ""
                 if _allowed_ext(filename):
                     module_candidates += 1
+                    title = item.get("title") or ""
+                    module_candidate_rows.append({
+                        "filename": filename,
+                        "title": title,
+                        "confidence": _score_candidate(filename, title),
+                    })
         debug["modules_candidates"] = module_candidates
+        module_candidate_rows.sort(
+            key=lambda c: (c["confidence"], c["filename"]),
+            reverse=True,
+        )
+        debug["top_module_candidates"] = module_candidate_rows[:5]
     except Exception as exc:
         debug["errors"].append(f"course_modules: {exc}")
 
@@ -366,6 +441,49 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
                 break
     except Exception as exc:
         debug["errors"].append(f"front_page: {exc}")
+
+    try:
+        syllabus = client.get_syllabus(course_id)
+        pdf_urls = syllabus.get("pdf_urls", [])
+        if pdf_urls:
+            debug["selected_path"] = "syllabus_body"
+            debug["selected_candidate"] = pdf_urls[0]
+        else:
+            files_candidates = _collect_file_candidates(course_id, client)
+            module_candidates = _collect_module_candidates(course_id, client)
+            all_candidates = []
+            seen_urls = set()
+            for candidate in files_candidates + module_candidates:
+                url = candidate.get("url")
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                all_candidates.append(candidate)
+
+            if all_candidates:
+                all_candidates.sort(key=lambda c: c["confidence"], reverse=True)
+                best = all_candidates[0]
+                if best["confidence"] > _CONFIDENCE_THRESHOLD:
+                    debug["selected_path"] = "files_or_modules_high_confidence"
+                    debug["selected_candidate"] = best.get("label") or best["name"]
+                else:
+                    direct_pick = _pick_best_candidate(all_candidates)
+                    if direct_pick is not None:
+                        debug["selected_path"] = "files_or_modules_direct_pick"
+                        debug["selected_candidate"] = direct_pick.get("label") or direct_pick["name"]
+                    else:
+                        chosen_url = _ask_claude_pick_syllabus(all_candidates)
+                        if chosen_url:
+                            debug["selected_path"] = "files_or_modules_llm_pick"
+                            for candidate in all_candidates:
+                                if candidate.get("url") == chosen_url:
+                                    debug["selected_candidate"] = candidate.get("label") or candidate["name"]
+                                    break
+            elif debug["front_page_found"]:
+                debug["selected_path"] = "front_page"
+                debug["selected_candidate"] = "front_page file link"
+    except Exception as exc:
+        debug["errors"].append(f"selection_debug: {exc}")
 
     return debug
 
