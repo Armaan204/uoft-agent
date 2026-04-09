@@ -374,6 +374,9 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
         "front_page_found": False,
         "selected_path": None,
         "selected_candidate": None,
+        "selected_url": None,
+        "parse_error": None,
+        "parsed_weights_count": None,
         "top_module_candidates": [],
         "errors": [],
     }
@@ -448,6 +451,7 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
         if pdf_urls:
             debug["selected_path"] = "syllabus_body"
             debug["selected_candidate"] = pdf_urls[0]
+            debug["selected_url"] = pdf_urls[0]
         else:
             files_candidates = _collect_file_candidates(course_id, client)
             module_candidates = _collect_module_candidates(course_id, client)
@@ -466,15 +470,18 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
                 if best["confidence"] > _CONFIDENCE_THRESHOLD:
                     debug["selected_path"] = "files_or_modules_high_confidence"
                     debug["selected_candidate"] = best.get("label") or best["name"]
+                    debug["selected_url"] = best.get("url")
                 else:
                     direct_pick = _pick_best_candidate(all_candidates)
                     if direct_pick is not None:
                         debug["selected_path"] = "files_or_modules_direct_pick"
                         debug["selected_candidate"] = direct_pick.get("label") or direct_pick["name"]
+                        debug["selected_url"] = direct_pick.get("url")
                     else:
                         chosen_url = _ask_claude_pick_syllabus(all_candidates)
                         if chosen_url:
                             debug["selected_path"] = "files_or_modules_llm_pick"
+                            debug["selected_url"] = chosen_url
                             for candidate in all_candidates:
                                 if candidate.get("url") == chosen_url:
                                     debug["selected_candidate"] = candidate.get("label") or candidate["name"]
@@ -484,6 +491,15 @@ def debug_syllabus_resolution(course_id: int | str, client) -> dict:
                 debug["selected_candidate"] = "front_page file link"
     except Exception as exc:
         debug["errors"].append(f"selection_debug: {exc}")
+
+    if debug["selected_url"]:
+        try:
+            pdf_bytes = _download_pdf(debug["selected_url"])
+            text = _extract_text(pdf_bytes)
+            weights = _ask_claude(text)
+            debug["parsed_weights_count"] = len(weights)
+        except Exception as exc:
+            debug["parse_error"] = str(exc)
 
     return debug
 

@@ -386,7 +386,10 @@ def _load_single_course(course: dict, client) -> dict:
                 f"Front-page syllabus link found: {'yes' if syllabus_debug['front_page_found'] else 'no'}",
                 f"Selected path: {syllabus_debug['selected_path'] or 'none'}",
                 f"Selected candidate: {syllabus_debug['selected_candidate'] or 'none'}",
+                f"Parsed weights count: {syllabus_debug['parsed_weights_count'] if syllabus_debug['parsed_weights_count'] is not None else 'none'}",
             ]
+            if syllabus_debug.get("parse_error"):
+                result["debug_details"].append(f"Parse error: {syllabus_debug['parse_error']}")
             for idx, candidate in enumerate(syllabus_debug.get("top_module_candidates", []), start=1):
                 label = candidate["filename"]
                 if candidate.get("title") and candidate["title"] != candidate["filename"]:
