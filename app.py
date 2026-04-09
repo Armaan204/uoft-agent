@@ -698,7 +698,50 @@ def main():
 
     if not st.user.is_logged_in:
         st.title("UofT Agent")
-        st.button("Sign in with Google", on_click=st.login, args=("google",))
+        st.subheader("Demo:")
+        st.markdown(
+            """
+            <style>
+            img {
+                border: 4px solid #2b2a29;
+                border-radius: 10px;
+                padding: 4px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.image("assets/demo.gif")
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stButton"] > button[kind="secondary"] {
+                background-color: #c0392b;
+                color: white;
+                font-size: 1.1rem;
+                font-weight: 600;
+                padding: 0.65rem 2.5rem;
+                border: none;
+                border-radius: 6px;
+                display: block;
+                margin: 1rem auto;
+                cursor: pointer;
+            }
+            div[data-testid="stButton"] > button[kind="secondary"]:hover {
+                background-color: #a93226;
+                color: white;
+            }
+            div[data-testid="stButton"] {
+                text-align: center;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        # Centering
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            st.button("Sign in with Google", on_click=st.login, args=("google",))
         st.stop()
 
     with st.sidebar:
