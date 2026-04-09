@@ -290,6 +290,7 @@ def _grade_from_components(components: list[dict]) -> dict:
 
 def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | None]:
     """Resolve course weights from Canvas first, then from the syllabus."""
+    from integrations.syllabus import SyllabusError
     weights = client.get_canvas_weights(course_id)
     if weights:
         return weights, "canvas"
@@ -300,8 +301,11 @@ def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | 
         _, weights = _parse_syllabus_weights_lazy(course_id, client, pdf_url)
         if weights:
             return weights, "syllabus"
-    except Exception:
+    except SyllabusError:
+        # No syllabus found — not an error, just no weights available.
         pass
+    # All other exceptions (API errors, rate limits, etc.) propagate so they
+    # surface as a visible error on the dashboard card instead of silent failure.
 
     return None, None
 
@@ -838,7 +842,7 @@ def main():
 
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    answer, tool_calls = run(
+                    answer, tool_calls = _run_agent(
                         prompt,
                         token=st.session_state.token,
                         verbose=False,

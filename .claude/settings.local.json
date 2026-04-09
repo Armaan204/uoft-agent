@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(python test_quercus.py)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pip install anthropic)",
+      "Bash(python -m pip install -r requirements.txt)",
+      "Bash(python -m pip install -r \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\requirements.txt\")",
+      "Bash(python:*)"
     ]
   }
 }
