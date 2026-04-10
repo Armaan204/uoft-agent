@@ -149,6 +149,11 @@ web: python api_server.py
 - ACORN import currently uses import codes rather than a full user account model
 - If a saved Quercus token is revoked or expires, the app clears it and asks the user to enter a new one
 
+## Support
+
+Found a bug or have a question? Email armaanrehmanshah1@gmail.com
+or [open an issue](https://github.com/armaan204/uoft-agent/issues).
+
 ## License
 
 MIT. See [`LICENSE`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/LICENSE).

@@ -100,7 +100,6 @@ except Exception:
     traceback.print_exc()
     raise
 
-
 def _render_privacy_policy_page():
     """Render a standalone privacy policy page for the Chrome extension."""
     st.title("UofT Agent Connector Privacy Policy")
@@ -914,7 +913,36 @@ def main():
             raise
         st.stop()
 
-    st.title("UofT Agent")
+    st.markdown(
+        """
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; margin-bottom:1rem;">
+          <h1 style="margin:0;">UofT Agent</h1>
+          <a
+            href="https://forms.gle/TuLNGSS7nGD3ik237"
+            target="_blank"
+            style="
+              display:inline-flex;
+              align-items:center;
+              justify-content:center;
+              padding:0.65rem 1rem;
+              border:1px solid #d97706;
+              border-radius:999px;
+              text-decoration:none;
+              color:#7c2d12;
+              background:linear-gradient(135deg, #fef3c7 0%, #fdba74 100%);
+              box-shadow:0 8px 20px rgba(217, 119, 6, 0.18);
+              font-weight:700;
+              white-space:nowrap;
+              transition:transform 0.15s ease, box-shadow 0.15s ease;
+            "
+            title="Takes 1 minute. Helps improve the app."
+          >
+            📝 Give Feedback
+          </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if "dashboard" not in st.session_state:
         try:
