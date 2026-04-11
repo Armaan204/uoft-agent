@@ -625,6 +625,7 @@ def _render_course_detail(course_id: int):
 
     st.title(code)
     st.caption(course.get("name", ""))
+    st.caption("⚠️ Grades are estimated from Quercus data and may not reflect your official grade. Verify with your instructor.")
 
     if not detail["available"]:
         st.warning(detail["reason"])
