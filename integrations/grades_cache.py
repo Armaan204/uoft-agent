@@ -54,11 +54,22 @@ def _to_float(value) -> float | None:
     return float(value)
 
 
+def _fallback_component_key(component: dict) -> str:
+    """Build a deterministic fallback key for legacy component shapes."""
+    source = str(component.get("source") or "component").strip().lower() or "component"
+    group_name = str(component.get("group_name") or "").strip().lower()
+    name = str(component.get("name") or "").strip().lower()
+    status = str(component.get("status") or "").strip().lower()
+    possible = component.get("possible")
+    possible_part = "none" if possible in (None, "") else str(possible)
+    parts = [source, group_name, name, status, possible_part]
+    cleaned = [part.replace("::", ":") for part in parts if part]
+    return "::".join(cleaned)
+
+
 def _normalise_component(component: dict) -> dict:
-    key = str(component.get("component_key") or "").strip()
+    key = str(component.get("component_key") or "").strip() or _fallback_component_key(component)
     name = str(component.get("name") or "").strip()
-    if not key:
-        raise GradesCacheError("Each component must include a non-empty component_key")
     if not name:
         raise GradesCacheError("Each component must include a non-empty name")
     return {

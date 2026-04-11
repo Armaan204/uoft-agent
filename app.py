@@ -406,6 +406,7 @@ def _apply_grade_overrides(components: list[dict], overrides: dict[str, dict]) -
     applied = []
     for component in components:
         clone = dict(component)
+        clone["component_key"] = _ensure_component_key(clone)
         clone["is_manual"] = False
         clone["manual_score"] = None
         clone["manual_possible"] = None
@@ -423,6 +424,21 @@ def _apply_grade_overrides(components: list[dict], overrides: dict[str, dict]) -
                 clone["manual_possible"] = manual_possible
         applied.append(clone)
     return applied
+
+
+def _ensure_component_key(component: dict) -> str:
+    """Return an existing component_key or build a deterministic fallback."""
+    key = str(component.get("component_key") or "").strip()
+    if key:
+        return key
+    source = str(component.get("source") or "component").strip().lower() or "component"
+    group_name = str(component.get("group_name") or "").strip().lower()
+    name = str(component.get("name") or "").strip().lower()
+    status = str(component.get("status") or "").strip().lower()
+    possible = component.get("possible")
+    possible_part = "none" if possible in (None, "") else str(possible)
+    parts = [source, group_name, name, status, possible_part]
+    return "::".join(part.replace("::", ":") for part in parts if part)
 
 
 def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | None]:
@@ -640,7 +656,11 @@ def _load_course_detail(course_id: int, token: str, user_id: str | int) -> dict:
 
     saved_grades = get_saved_grades(user_id, course_id)
     overrides = get_grade_overrides(user_id, course_id)
-    live_components = component_model["components"]
+    live_components = []
+    for component in component_model["components"]:
+        clone = dict(component)
+        clone["component_key"] = _ensure_component_key(clone)
+        live_components.append(clone)
     components = _apply_grade_overrides(live_components, overrides)
     live_new_grade_keys = set(detect_new_grades(user_id, course_id, live_components))
     grade = _grade_from_components(components)
@@ -684,6 +704,20 @@ def _render_course_detail(course_id: int):
             color: rgb(107, 114, 128);
             font-size: 0.875rem;
         }
+        .sticky-back-anchor {
+            height: 0;
+            margin: 0;
+            padding: 0;
+        }
+        div[data-testid="stElementContainer"]:has(.sticky-back-anchor)
+          + div[data-testid="stElementContainer"] {
+            position: sticky;
+            top: 0.75rem;
+            z-index: 20;
+            padding-top: 0.25rem;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(6px);
+        }
         div[data-testid="stElementContainer"]:has(.moved-slider-marker)
           + div[data-testid="stElementContainer"] [data-baseweb="slider"] {
             filter: grayscale(1) saturate(0.1);
@@ -692,6 +726,7 @@ def _render_course_detail(course_id: int):
         """,
         unsafe_allow_html=True,
     )
+    st.markdown('<div class="sticky-back-anchor"></div>', unsafe_allow_html=True)
     if st.button("Back to overview"):
         st.session_state.pop("selected_course_id", None)
         st.rerun()
