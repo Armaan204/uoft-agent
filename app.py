@@ -453,9 +453,6 @@ def _load_single_course(course: dict, client) -> dict:
             else:
                 result["what_if_reason"] = "Weighted components could not be mapped reliably."
         else:
-            # No Canvas weights and no accessible syllabus: omit overview grade.
-            result["grade"]      = None
-            result["grade_mode"] = None
             result["what_if_reason"] = "No Canvas weights or accessible syllabus weights found."
     except Exception as exc:
         result["error"] = str(exc)

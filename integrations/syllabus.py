@@ -25,6 +25,12 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pypdf import PdfReader
 
+from integrations.syllabus_cache import (
+    SyllabusCacheError,
+    get_cached_syllabus_weights,
+    save_cached_syllabus_weights,
+)
+
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -565,6 +571,27 @@ def _extract_text_from_html(html: str) -> str:
     return text
 
 
+def _load_persisted_weights(course_id: int | str, source_ref: str) -> dict[str, float] | None:
+    """Load parsed weights from Supabase if available."""
+    try:
+        weights = get_cached_syllabus_weights(course_id, source_ref)
+    except SyllabusCacheError as exc:
+        print(f"Syllabus cache lookup skipped: {exc}", flush=True)
+        return None
+    if weights:
+        print(f"Syllabus cache hit: {course_id} [{source_ref}]", flush=True)
+    return weights
+
+
+def _save_persisted_weights(course_id: int | str, source_ref: str, weights: dict[str, float]) -> None:
+    """Best-effort save of parsed weights to Supabase."""
+    try:
+        save_cached_syllabus_weights(course_id, source_ref, weights)
+        print(f"Syllabus cache save: {course_id} [{source_ref}]", flush=True)
+    except SyllabusCacheError as exc:
+        print(f"Syllabus cache save skipped: {exc}", flush=True)
+
+
 def parse_syllabus_weights(
     course_id: int | str,
     client,
@@ -616,10 +643,15 @@ def _parse_syllabus_weights_cached(
     if not source_url:
         page_candidate = find_syllabus_page(course_id, _client)
         if page_candidate:
+            source_ref = f"canvas-page:{page_candidate['page_slug']}"
+            cached = _load_persisted_weights(course_id, source_ref)
+            if cached:
+                return source_ref, cached
             page = _client.get_page(course_id, page_candidate["page_slug"])
             text = _extract_text_from_html(page.get("body") or "")
             weights = _ask_claude(text)
-            return f"canvas-page:{page_candidate['page_slug']}", weights
+            _save_persisted_weights(course_id, source_ref, weights)
+            return source_ref, weights
 
     if not source_url:
         raise SyllabusError(
@@ -627,8 +659,13 @@ def _parse_syllabus_weights_cached(
             "(tried syllabus_body, files/modules/front page, and Canvas pages)"
         )
 
+    cached = _load_persisted_weights(course_id, source_url)
+    if cached:
+        return source_url, cached
+
     pdf_bytes = _download_pdf(source_url)
     text = _extract_text(pdf_bytes)
     weights = _ask_claude(text)
+    _save_persisted_weights(course_id, source_url, weights)
 
     return source_url, weights
