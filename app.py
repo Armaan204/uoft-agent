@@ -7,6 +7,7 @@ import os
 import secrets
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from time import perf_counter
 
 try:
     import streamlit as st
@@ -419,6 +420,7 @@ def _display_grade_summary(grade: dict, grade_mode: str | None) -> tuple[bool, f
 
 def _load_single_course(course: dict, client) -> dict:
     """Fetch grade data and upcoming deadlines for one course."""
+    started_at = perf_counter()
     calc = _get_grade_calculator()
     course_id = course["id"]
     result = {
@@ -477,6 +479,9 @@ def _load_single_course(course: dict, client) -> dict:
     except Exception:
         pass
 
+    elapsed = perf_counter() - started_at
+    code = result["course_code"] or result["name"] or str(course_id)
+    print(f"Course load timing: {code} ({course_id}) in {elapsed:.2f}s", flush=True)
     return result
 
 
@@ -491,6 +496,7 @@ def _announcement_preview(html: str | None, limit: int = 180) -> str:
 
 def _load_dashboard(token: str) -> tuple[list[dict], list[dict], list[dict]]:
     """Fetch all course data in parallel. Returns (course_results, deadlines, announcements)."""
+    started_at = perf_counter()
     QuercusClient, _ = _get_quercus_types()
     client  = QuercusClient(token=token)
     courses = client.get_courses()
@@ -544,6 +550,11 @@ def _load_dashboard(token: str) -> tuple[list[dict], list[dict], list[dict]]:
     announcements.sort(
         key=lambda a: a["posted_at"] or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
+    )
+    total_elapsed = perf_counter() - started_at
+    print(
+        f"Dashboard load timing: {len(course_results)} courses in {total_elapsed:.2f}s",
+        flush=True,
     )
     return course_results, deadlines, announcements
 

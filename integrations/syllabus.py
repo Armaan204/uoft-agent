@@ -20,6 +20,7 @@ import re
 
 import anthropic
 import requests
+import streamlit as st
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pypdf import PdfReader
@@ -438,6 +439,18 @@ def parse_syllabus_weights(
     client,
     pdf_url: str = None,
 ) -> tuple[str, dict[str, float]]:
+    """Cached wrapper around syllabus weight extraction."""
+    cache_key = getattr(client, "_token_cache_key", "default")
+    return _parse_syllabus_weights_cached(course_id, cache_key, client, pdf_url)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _parse_syllabus_weights_cached(
+    course_id: int | str,
+    cache_key: str,
+    _client,
+    pdf_url: str = None,
+) -> tuple[str, dict[str, float]]:
     """Extract grade weights from a course syllabus PDF.
 
     Resolution order
@@ -464,10 +477,10 @@ def parse_syllabus_weights(
     source_url = pdf_url
 
     if not source_url:
-        source_url = find_syllabus_file(course_id, client)
+        source_url = find_syllabus_file(course_id, _client)
 
     if not source_url:
-        source_url = find_syllabus_frontpage(course_id, client)
+        source_url = find_syllabus_frontpage(course_id, _client)
 
     if not source_url:
         raise SyllabusError(

@@ -8,9 +8,11 @@ wraps the Canvas REST API endpoints needed by the agent.
 
 import os
 import re
+from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 
 import requests
+import streamlit as st
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -21,6 +23,53 @@ class QuercusError(Exception):
     """Raised when a Quercus API request fails."""
 
 
+def _cached_paginated_get(token: str, path: str, params: dict | list | None = None) -> list | dict:
+    """Make an authenticated GET request with Canvas pagination handling."""
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{QuercusClient.BASE_URL}{path}"
+    results = []
+
+    while url:
+        response = requests.get(url, headers=headers, params=params)
+        if not response.ok:
+            raise QuercusError(f"GET {url} returned {response.status_code}: {response.text}")
+
+        data = response.json()
+        if isinstance(data, dict):
+            return data
+
+        results.extend(data)
+        url = None
+        params = None
+        link_header = response.headers.get("Link", "")
+        for part in link_header.split(","):
+            if 'rel="next"' in part:
+                url = part.split(";")[0].strip().strip("<>")
+                break
+
+    return results
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_get_assignment_groups(_token: str, token_cache_key: str, course_id: int | str) -> list:
+    """Cached assignment-group lookup scoped by token and course."""
+    return _cached_paginated_get(
+        _token,
+        f"/courses/{course_id}/assignment_groups",
+        params={"include[]": "assignments"},
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_get_submissions(_token: str, token_cache_key: str, course_id: int | str) -> list:
+    """Cached submission lookup scoped by token and course."""
+    return _cached_paginated_get(
+        _token,
+        f"/courses/{course_id}/students/submissions",
+        params={"student_ids[]": "self"},
+    )
+
+
 class QuercusClient:
     BASE_URL = "https://q.utoronto.ca/api/v1"
     _UPCOMING_TERM_WINDOW_DAYS = 45
@@ -29,6 +78,8 @@ class QuercusClient:
         token = token or os.getenv("QUERCUS_API_TOKEN")
         if not token:
             raise QuercusError("QUERCUS_API_TOKEN is not set")
+        self._token = token
+        self._token_cache_key = sha256(token.encode("utf-8")).hexdigest()
         self._headers = {"Authorization": f"Bearer {token}"}
 
     def _get(self, path: str, params: dict = None) -> list | dict:
@@ -167,9 +218,10 @@ class QuercusClient:
         submitted_at.  Requires the student's own token — will not work
         with a teacher token scoped to a specific student.
         """
-        return self._get(
-            f"/courses/{course_id}/students/submissions",
-            params={"student_ids[]": "self"},
+        return _cached_get_submissions(
+            self._token,
+            self._token_cache_key,
+            course_id,
         )
 
     def get_file_download_url(self, file_id: int | str) -> str:
@@ -255,9 +307,10 @@ class QuercusClient:
         'assignments' list — avoids a separate get_assignments() call when
         both the group weight and the individual items are needed together.
         """
-        return self._get(
-            f"/courses/{course_id}/assignment_groups",
-            params={"include[]": "assignments"},
+        return _cached_get_assignment_groups(
+            self._token,
+            self._token_cache_key,
+            course_id,
         )
 
     def get_canvas_weights(self, course_id: int | str) -> dict[str, float] | None:
