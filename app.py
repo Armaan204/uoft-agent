@@ -699,24 +699,27 @@ def _render_course_detail(course_id: int):
     st.markdown(
         """
         <style>
+        div[data-testid="stButton"]:first-of-type {
+            position: sticky;
+            top: 0.75rem;
+            z-index: 999;
+        }
+        div[data-testid="stElementContainer"]:has(.save-grades-anchor)
+          + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:not(:disabled) {
+            background: white;
+            color: black;
+            border-color: #d1d5db;
+        }
+        div[data-testid="stElementContainer"]:has(.save-grades-anchor)
+          + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:not(:disabled):hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+            color: black;
+        }
         .component-meta {
             margin: -0.35rem 0 0.15rem 0;
             color: rgb(107, 114, 128);
             font-size: 0.875rem;
-        }
-        .sticky-back-anchor {
-            height: 0;
-            margin: 0;
-            padding: 0;
-        }
-        div[data-testid="stElementContainer"]:has(.sticky-back-anchor)
-          + div[data-testid="stElementContainer"] {
-            position: sticky;
-            top: 0.75rem;
-            z-index: 20;
-            padding-top: 0.25rem;
-            background: rgba(255, 255, 255, 0.92);
-            backdrop-filter: blur(6px);
         }
         div[data-testid="stElementContainer"]:has(.moved-slider-marker)
           + div[data-testid="stElementContainer"] [data-baseweb="slider"] {
@@ -726,7 +729,6 @@ def _render_course_detail(course_id: int):
         """,
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="sticky-back-anchor"></div>', unsafe_allow_html=True)
     if st.button("Back to overview"):
         st.session_state.pop("selected_course_id", None)
         st.rerun()
@@ -797,9 +799,11 @@ def _render_course_detail(course_id: int):
         delta = projected_pct - detail["current_standing"] if detail["has_data"] else None
         delta_text = f"{delta:+.1f} pts" if delta is not None else None
         st.metric("Weights source", detail["weights_source"].title(), delta_text, delta_color="off")
+    st.caption("Estimated from Quercus data; verify with your instructor.")
 
     if graded_components:
         st.subheader("Marked Components")
+        marked_slider_baselines = {}
         for component in graded_components:
             component_key = component["component_key"]
             label = component["name"]
@@ -808,6 +812,7 @@ def _render_course_detail(course_id: int):
 
             st.markdown(f"**{label}**")
             baseline_value = int(round(component["pct"]))
+            marked_slider_baselines[component_key] = baseline_value
             current_value = st.session_state.get(
                 f"what_if_{course_id}_{component_key}",
                 baseline_value,
@@ -833,7 +838,12 @@ def _render_course_detail(course_id: int):
                 label_visibility="collapsed",
             )
 
-        if st.button("Save grades", use_container_width=True):
+        has_marked_changes = any(
+            int(projected_inputs[component_key]) != baseline
+            for component_key, baseline in marked_slider_baselines.items()
+        )
+        st.markdown('<div class="save-grades-anchor"></div>', unsafe_allow_html=True)
+        if st.button("Save grades", use_container_width=True, disabled=not has_marked_changes):
             try:
                 for component in graded_components:
                     slider_pct = float(projected_inputs[component["component_key"]])
@@ -859,8 +869,6 @@ def _render_course_detail(course_id: int):
                 st.session_state.pop("dashboard", None)
                 st.session_state.course_details.pop(course_id, None)
                 st.rerun()
-
-        st.warning("Grades are estimated from Quercus data and may not reflect your official grade.")
 
     if ungraded_components:
         st.subheader("Remaining Components")
