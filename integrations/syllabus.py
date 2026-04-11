@@ -77,6 +77,14 @@ def _allowed_ext(name: str) -> bool:
     return ext in _ALLOWED_EXTENSIONS
 
 
+def _extract_page_slug(href: str) -> str | None:
+    """Extract a Canvas wiki page slug from a course page URL."""
+    match = re.search(r"/pages/([^/?#]+)", href)
+    if not match:
+        return None
+    return match.group(1)
+
+
 def _collect_file_candidates(course_id: int | str, client) -> list[dict]:
     """Return all .pdf/.docx files from the course files API.
 
@@ -220,6 +228,94 @@ def _ask_claude_pick_syllabus(candidates: list[dict]) -> str | None:
             return c["url"]
 
     return None
+
+
+def _collect_syllabus_body_page_candidates(course_id: int | str, client) -> list[dict]:
+    """Return Canvas page candidates linked directly from syllabus HTML."""
+    try:
+        syllabus = client.get_syllabus(course_id)
+    except Exception:
+        return []
+
+    html = syllabus.get("syllabus_body") or ""
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    seen_slugs = set()
+    candidates = []
+    for a in soup.find_all("a", href=True):
+        slug = _extract_page_slug(a["href"])
+        if not slug or slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        title = a.get_text(strip=True) or slug.replace("-", " ")
+        candidates.append({
+            "name": title,
+            "label": title,
+            "page_slug": slug,
+            "source_type": "page",
+            "confidence": _score_candidate(title, slug.replace("-", " ")),
+        })
+    return candidates
+
+
+def _collect_module_page_candidates(course_id: int | str, client) -> list[dict]:
+    """Return Canvas page candidates referenced from course modules."""
+    try:
+        modules = client.get_course_modules(course_id)
+    except Exception:
+        return []
+
+    seen_slugs = set()
+    candidates = []
+    for module in modules:
+        for item in module.get("items", []):
+            if item.get("type") != "Page":
+                continue
+            slug = item.get("page_url") or _extract_page_slug(item.get("html_url") or "")
+            if not slug or slug in seen_slugs:
+                continue
+            seen_slugs.add(slug)
+            title = item.get("title") or slug.replace("-", " ")
+            candidates.append({
+                "name": title,
+                "label": title,
+                "page_slug": slug,
+                "source_type": "page",
+                "confidence": _score_candidate(title, slug.replace("-", " ")),
+            })
+    return candidates
+
+
+def _collect_frontpage_page_candidates(course_id: int | str, client) -> list[dict]:
+    """Return Canvas page candidates linked from the front page."""
+    try:
+        page = client.get_front_page(course_id)
+    except Exception:
+        return []
+
+    html = page.get("body") or ""
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    seen_slugs = set()
+    candidates = []
+    for a in soup.find_all("a", href=True):
+        slug = _extract_page_slug(a["href"])
+        if not slug or slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        title = a.get_text(strip=True) or slug.replace("-", " ")
+        candidates.append({
+            "name": title,
+            "label": title,
+            "page_slug": slug,
+            "source_type": "page",
+            "confidence": _score_candidate(title, slug.replace("-", " ")),
+        })
+    return candidates
 
 
 def _pick_best_candidate(candidates: list[dict]) -> dict | None:
@@ -366,6 +462,32 @@ def find_syllabus_frontpage(course_id: int | str, client) -> str | None:
     return best["url"] if best["confidence"] > 0 else None
 
 
+def find_syllabus_page(course_id: int | str, client) -> dict | None:
+    """Search for the most likely syllabus-like Canvas page in a course."""
+    all_candidates: list[dict] = []
+    seen_slugs: set[str] = set()
+
+    for candidate in (
+        _collect_syllabus_body_page_candidates(course_id, client)
+        + _collect_module_page_candidates(course_id, client)
+        + _collect_frontpage_page_candidates(course_id, client)
+    ):
+        slug = candidate.get("page_slug")
+        if not slug or slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        all_candidates.append(candidate)
+
+    if not all_candidates:
+        return None
+
+    all_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+    best = all_candidates[0]
+    if best["confidence"] > 0:
+        return best
+    return None
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +556,15 @@ def _ask_claude(text: str) -> dict:
     return weights
 
 
+def _extract_text_from_html(html: str) -> str:
+    """Extract plain text from syllabus-like HTML content."""
+    text = BeautifulSoup(html or "", "html.parser").get_text("\n", strip=True)
+    text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    if not text:
+        raise SyllabusError("Page contained no extractable text")
+    return text
+
+
 def parse_syllabus_weights(
     course_id: int | str,
     client,
@@ -483,9 +614,17 @@ def _parse_syllabus_weights_cached(
         source_url = find_syllabus_frontpage(course_id, _client)
 
     if not source_url:
+        page_candidate = find_syllabus_page(course_id, _client)
+        if page_candidate:
+            page = _client.get_page(course_id, page_candidate["page_slug"])
+            text = _extract_text_from_html(page.get("body") or "")
+            weights = _ask_claude(text)
+            return f"canvas-page:{page_candidate['page_slug']}", weights
+
+    if not source_url:
         raise SyllabusError(
             f"No syllabus PDF found for course {course_id} "
-            "(tried syllabus_body, files/modules API, and front page)"
+            "(tried syllabus_body, files/modules/front page, and Canvas pages)"
         )
 
     pdf_bytes = _download_pdf(source_url)

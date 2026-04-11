@@ -280,6 +280,10 @@ class QuercusClient:
         """
         return self._get(f"/courses/{course_id}/front_page")
 
+    def get_page(self, course_id: int | str, page_url_or_id: str) -> dict:
+        """Return one Canvas wiki page by URL slug or page ID."""
+        return self._get(f"/courses/{course_id}/pages/{page_url_or_id}")
+
     def get_course_modules(self, course_id: int | str) -> list:
         """Return all modules for a course, with their items inline.
 
