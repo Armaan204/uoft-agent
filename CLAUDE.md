@@ -9,6 +9,7 @@ An AI academic assistant for University of Toronto students.
 - Computes current standing and target-grade scenarios with deterministic Python math
 - Resolves course weights from Canvas assignment groups when available
 - Falls back to syllabus discovery and Anthropic-based weight extraction when Canvas weights are missing
+- Supports syllabi published as PDFs, DOCX files, or Canvas pages
 - Imports ACORN academic history through a user-triggered Chrome extension and a small backend API
 
 ## Architecture
@@ -19,6 +20,7 @@ An AI academic assistant for University of Toronto students.
 - `calculator/` — deterministic grade calculations and weighted-component modeling
 - `integrations/quercus.py` — Canvas / Quercus API client
 - `integrations/syllabus.py` — syllabus discovery, PDF parsing, and weight extraction
+- `integrations/syllabus_cache.py` — persistent Supabase cache for parsed syllabus weights
 - `integrations/acorn.py` — Streamlit-side ACORN backend client
 - `api_server.py` — minimal ACORN import API backed by Supabase Postgres
 - `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import
@@ -30,6 +32,8 @@ An AI academic assistant for University of Toronto students.
 - The UI shows weighted grades only when the weighted component model is reliable enough
 - Students provide their own Quercus token in the app; the validated token is encrypted and persisted in Supabase per user
 - Session state still caches the active token and derived dashboard data for the current run
+- Quercus submissions and assignment groups are cached briefly to speed up dashboard refreshes without making grades feel stale
+- Parsed syllabus weights are cached both in-process and persistently in Supabase to avoid repeated Anthropic parsing for the same course source
 
 ## Auth
 
@@ -87,10 +91,13 @@ Implemented:
 - Quercus integration for courses, assignments, submissions, assignment groups, syllabus body, modules, files, grades, and announcements
 - Persisted Quercus-token flow: load saved token on login, skip onboarding when present, allow manual disconnect, and clear revoked tokens automatically
 - Dynamic current-term filtering using Canvas term metadata
-- Dashboard with course cards, deadlines, announcements, chat, and ACORN tab
+- Dashboard with course cards, deadlines, announcements, chat, and a top-right feedback CTA
 - Weighted grade calculations and dedicated per-course what-if pages
-- Syllabus fallback that can discover files from syllabus HTML, modules, course files, or the front page
+- Syllabus fallback that can discover files from syllabus HTML, modules, course files, front-page links, or linked Canvas pages
 - More reliable module-based syllabus selection by preferring real file metadata and deterministically picking a unique best candidate before calling the LLM chooser
+- Canvas page syllabus support for courses where the syllabus is published as a Quercus page instead of a file
+- Short-lived Quercus caching: assignment groups and submissions are cached for 5 minutes
+- Syllabus parsing cache: in-process cache for 1 hour plus persistent Supabase cache in `syllabus_weights_cache`
 - ACORN import flow from Chrome extension to Railway-hosted backend to Streamlit readback
 - ACORN backend/import implementation remains in the repo, but the Streamlit ACORN tab is currently replaced with a muted "Coming Soon" placeholder while the extension flow is under review
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
@@ -107,6 +114,8 @@ Not implemented yet:
 - What-if sliders are only enabled when the weighted component model is reliable
 - The ACORN backend uses import-code scoping rather than a full user account model
 - Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
+- Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
+- Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
 
 ## Local Usage
 

@@ -222,6 +222,7 @@ class GradeCalculator:
             )
             if group_key and group_key not in used_keys:
                 group_components = self._build_group_weight_components(
+                    group.get("id", group["name"]),
                     group["name"],
                     group.get("assignments", []),
                     sub_by_id,
@@ -242,6 +243,7 @@ class GradeCalculator:
                 if not self._is_missing_future_component(data["name"]):
                     continue
                 components.append({
+                    "component_key": f"syllabus::{key}",
                     "name": data["name"],
                     "weight": data["weight"],
                     "status": "ungraded",
@@ -276,7 +278,8 @@ class GradeCalculator:
         for component in components:
             if component["status"] in {"graded", "ungraded"}:
                 default_pct = component["pct"] if component["status"] == "graded" else 100.0
-                pct = slider_values.get(component["name"], default_pct)
+                slider_key = component.get("component_key") or component["name"]
+                pct = slider_values.get(slider_key, default_pct)
             else:
                 raise ValueError(f"Cannot project partial component: {component['name']}")
             total += pct * component["weight"] / 100.0
@@ -453,6 +456,7 @@ class GradeCalculator:
 
             matched_keys.add(key)
             component = components_by_key.setdefault(key, {
+                "component_key": f"groupitem::{group.get('id', group['name'])}::{key}",
                 "name": weights_lookup[key]["name"],
                 "weight": weights_lookup[key]["weight"],
                 "status": "ungraded",
@@ -481,6 +485,7 @@ class GradeCalculator:
         if unmatched_assignments:
             if group_key and group_key not in used_keys and group_key not in matched_keys:
                 residual_components = cls._build_group_weight_components(
+                    group.get("id", group["name"]),
                     group["name"],
                     unmatched_assignments,
                     sub_by_id,
@@ -518,6 +523,7 @@ class GradeCalculator:
 
     @staticmethod
     def _build_group_weight_components(
+        group_id: int | str,
         group_name: str,
         assignments: list[dict],
         sub_by_id: dict[int, dict],
@@ -549,6 +555,7 @@ class GradeCalculator:
 
         if total_possible == 0:
             return [{
+                "component_key": f"group::{group_id}::{weight_info['name']}::all",
                 "name": weight_info["name"],
                 "weight": weight_info["weight"],
                 "status": "ungraded",
@@ -561,6 +568,7 @@ class GradeCalculator:
 
         if not graded_count:
             return [{
+                "component_key": f"group::{group_id}::{weight_info['name']}::pending",
                 "name": weight_info["name"],
                 "weight": weight_info["weight"],
                 "status": "ungraded",
@@ -573,6 +581,7 @@ class GradeCalculator:
 
         if not ungraded_count:
             return [{
+                "component_key": f"group::{group_id}::{weight_info['name']}::graded",
                 "name": weight_info["name"],
                 "weight": weight_info["weight"],
                 "status": "graded",
@@ -587,6 +596,7 @@ class GradeCalculator:
         remaining_weight = weight_info["weight"] - graded_weight
         return [
             {
+                "component_key": f"group::{group_id}::{weight_info['name']}::completed",
                 "name": f"{weight_info['name']} (completed)",
                 "weight": round(graded_weight, 2),
                 "status": "graded",
@@ -597,6 +607,7 @@ class GradeCalculator:
                 "group_name": group_name,
             },
             {
+                "component_key": f"group::{group_id}::{weight_info['name']}::remaining",
                 "name": f"{weight_info['name']} (remaining)",
                 "weight": round(remaining_weight, 2),
                 "status": "ungraded",

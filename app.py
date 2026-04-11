@@ -217,6 +217,25 @@ def _get_user_store():
     return UserStoreError, get_or_create_user, get_quercus_token, save_quercus_token, delete_quercus_token
 
 
+def _get_grades_cache_helpers():
+    from integrations.grades_cache import (
+        GradesCacheError,
+        detect_new_grades,
+        get_grade_overrides,
+        get_saved_grades,
+        save_grade_override,
+        save_grades,
+    )
+    return (
+        GradesCacheError,
+        detect_new_grades,
+        get_grade_overrides,
+        get_saved_grades,
+        save_grade_override,
+        save_grades,
+    )
+
+
 def _clear_quercus_session_state():
     """Clear cached state derived from the current Quercus token."""
     for key in [
@@ -380,6 +399,30 @@ def _grade_from_components(components: list[dict]) -> dict:
         },
         "graded_weight": round(graded_weight, 2),
     }
+
+
+def _apply_grade_overrides(components: list[dict], overrides: dict[str, dict]) -> list[dict]:
+    """Return component copies with manual overrides applied for calculations."""
+    applied = []
+    for component in components:
+        clone = dict(component)
+        clone["is_manual"] = False
+        clone["manual_score"] = None
+        clone["manual_possible"] = None
+        override = overrides.get(clone.get("component_key"))
+        if override:
+            manual_score = override.get("manual_score")
+            manual_possible = override.get("manual_possible")
+            if manual_score is not None and manual_possible not in (None, 0):
+                clone["earned"] = manual_score
+                clone["possible"] = manual_possible
+                clone["pct"] = round((manual_score / manual_possible) * 100, 2)
+                clone["status"] = "graded"
+                clone["is_manual"] = True
+                clone["manual_score"] = manual_score
+                clone["manual_possible"] = manual_possible
+        applied.append(clone)
+    return applied
 
 
 def _resolve_course_weights(course_id: int, client) -> tuple[dict | None, str | None]:
@@ -556,10 +599,18 @@ def _load_dashboard(token: str) -> tuple[list[dict], list[dict], list[dict]]:
     return course_results, deadlines, announcements
 
 
-def _load_course_detail(course_id: int, token: str) -> dict:
+def _load_course_detail(course_id: int, token: str, user_id: str | int) -> dict:
     """Load the data needed for a single course what-if page."""
     calc = _get_grade_calculator()
     QuercusClient, QuercusError = _get_quercus_types()
+    (
+        _GradesCacheError,
+        detect_new_grades,
+        get_grade_overrides,
+        get_saved_grades,
+        _save_grade_override,
+        _save_grades,
+    ) = _get_grades_cache_helpers()
     client = QuercusClient(token=token)
     courses = {c["id"]: c for c in client.get_courses()}
     course = courses.get(course_id)
@@ -587,17 +638,22 @@ def _load_course_detail(course_id: int, token: str) -> dict:
             "component_model": component_model,
         }
 
-    grade = calc.current_grade(groups, submissions, weights)
+    saved_grades = get_saved_grades(user_id, course_id)
+    overrides = get_grade_overrides(user_id, course_id)
+    live_components = component_model["components"]
+    components = _apply_grade_overrides(live_components, overrides)
+    live_new_grade_keys = set(detect_new_grades(user_id, course_id, live_components))
+    grade = _grade_from_components(components)
     default_slider_values = {
-        c["name"]: 100.0
-        for c in component_model["components"]
+        c["component_key"]: 100.0
+        for c in components
         if c["status"] == "ungraded"
     }
     projected_default = calc.projected_grade(
-        component_model["components"],
+        components,
         default_slider_values,
     )
-    graded_weight = component_model["graded_weight"]
+    graded_weight = round(sum(c["weight"] for c in components if c["status"] == "graded"), 2)
 
     return {
         "course": course,
@@ -608,14 +664,34 @@ def _load_course_detail(course_id: int, token: str) -> dict:
         "current_standing": projected_default,
         "current_letter": _to_letter(projected_default),
         "graded_weight": graded_weight,
-        "component_model": component_model,
+        "component_model": {**component_model, "components": components},
+        "live_components": live_components,
         "projected_default": projected_default,
+        "saved_grades": saved_grades,
+        "overrides": overrides,
+        "new_grade_keys": live_new_grade_keys,
     }
 
 
 def _render_course_detail(course_id: int):
     """Render the dedicated what-if page for one course."""
     calc = _get_grade_calculator()
+    st.markdown(
+        """
+        <style>
+        .component-meta {
+            margin: -0.35rem 0 0.15rem 0;
+            color: rgb(107, 114, 128);
+            font-size: 0.875rem;
+        }
+        div[data-testid="stElementContainer"]:has(.moved-slider-marker)
+          + div[data-testid="stElementContainer"] [data-baseweb="slider"] {
+            filter: grayscale(1) saturate(0.1);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     if st.button("Back to overview"):
         st.session_state.pop("selected_course_id", None)
         st.rerun()
@@ -625,7 +701,11 @@ def _render_course_detail(course_id: int):
 
     if course_id not in st.session_state.course_details:
         with st.spinner("Loading course details..."):
-            st.session_state.course_details[course_id] = _load_course_detail(course_id, st.session_state.token)
+            st.session_state.course_details[course_id] = _load_course_detail(
+                course_id,
+                st.session_state.token,
+                st.session_state.user_id,
+            )
 
     detail = st.session_state.course_details[course_id]
     course = detail["course"]
@@ -633,7 +713,6 @@ def _render_course_detail(course_id: int):
 
     st.title(code)
     st.caption(course.get("name", ""))
-    st.caption("⚠️ Grades are estimated from Quercus data and may not reflect your official grade. Verify with your instructor.")
 
     if not detail["available"]:
         st.warning(detail["reason"])
@@ -645,41 +724,27 @@ def _render_course_detail(course_id: int):
     components = detail["component_model"]["components"]
     graded_components = [c for c in components if c["status"] == "graded"]
     ungraded_components = [c for c in components if c["status"] == "ungraded"]
+    (
+        GradesCacheError,
+        _detect_new_grades,
+        _get_grade_overrides,
+        _get_saved_grades,
+        save_grade_override,
+        save_grades,
+    ) = _get_grades_cache_helpers()
 
     projected_inputs = {}
-    if graded_components:
-        st.subheader("Marked Components")
-        for component in graded_components:
-            key = f"what_if_{course_id}_{component['name']}"
-            projected_inputs[component["name"]] = st.slider(
-                f"{component['name']} ({component['weight']:.2f}%)",
-                min_value=0,
-                max_value=100,
-                value=int(round(component["pct"])),
-                key=key,
-            )
-            detected = component["pct"]
-            contrib = projected_inputs[component["name"]] * component["weight"] / 100
-            st.caption(
-                f"Detected {detected:.1f}% -> using {projected_inputs[component['name']]:.0f}% "
-                f"({contrib:.1f} pts)"
-            )
-
-    if ungraded_components:
-        st.subheader("Remaining Components")
-    for component in ungraded_components:
-        key = f"what_if_{course_id}_{component['name']}"
-        projected_inputs[component["name"]] = st.slider(
-            f"{component['name']} ({component['weight']:.2f}%)",
-            min_value=0,
-            max_value=100,
-            value=100,
-            key=key,
+    for component in graded_components:
+        component_key = component["component_key"]
+        projected_inputs[component_key] = st.session_state.get(
+            f"what_if_{course_id}_{component_key}",
+            int(round(component["pct"])),
         )
-        contrib = projected_inputs[component["name"]] * component["weight"] / 100
-        st.caption(
-            f"Using {projected_inputs[component['name']]:.0f}% "
-            f"({contrib:.1f} pts)"
+    for component in ungraded_components:
+        component_key = component["component_key"]
+        projected_inputs[component_key] = st.session_state.get(
+            f"what_if_{course_id}_{component_key}",
+            100,
         )
 
     projected_pct = calc.projected_grade(components, projected_inputs)
@@ -697,6 +762,91 @@ def _render_course_detail(course_id: int):
         delta = projected_pct - detail["current_standing"] if detail["has_data"] else None
         delta_text = f"{delta:+.1f} pts" if delta is not None else None
         st.metric("Weights source", detail["weights_source"].title(), delta_text, delta_color="off")
+
+    if graded_components:
+        st.subheader("Marked Components")
+        for component in graded_components:
+            component_key = component["component_key"]
+            label = component["name"]
+            if component_key in detail.get("new_grade_keys", set()):
+                label += " 🆕"
+
+            st.markdown(f"**{label}**")
+            baseline_value = int(round(component["pct"]))
+            current_value = st.session_state.get(
+                f"what_if_{course_id}_{component_key}",
+                baseline_value,
+            )
+            meta_class = "component-meta moved-slider-marker" if current_value != baseline_value else "component-meta"
+            st.markdown(
+                (
+                    f'<p class="{meta_class}">'
+                    f"Weight: {component['weight']:.2f}%, "
+                    f"Score: {component['earned']:.1f}/{component['possible']:.1f} pts"
+                    f"</p>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+            key = f"what_if_{course_id}_{component_key}"
+            projected_inputs[component_key] = st.slider(
+                "Slider",
+                min_value=0,
+                max_value=100,
+                value=baseline_value,
+                key=key,
+                label_visibility="collapsed",
+            )
+
+        if st.button("Save grades", use_container_width=True):
+            try:
+                for component in graded_components:
+                    slider_pct = float(projected_inputs[component["component_key"]])
+                    possible = float(component.get("possible") or 0.0)
+                    if possible <= 0:
+                        continue
+                    save_grade_override(
+                        st.session_state.user_id,
+                        course_id,
+                        component["component_key"],
+                        round(possible * slider_pct / 100.0, 2),
+                        possible,
+                    )
+                live_graded_components = [
+                    component
+                    for component in detail.get("live_components", [])
+                    if component.get("status") == "graded"
+                ]
+                save_grades(st.session_state.user_id, course_id, live_graded_components)
+            except GradesCacheError as exc:
+                st.error(f"Could not save grades. {exc}")
+            else:
+                st.session_state.pop("dashboard", None)
+                st.session_state.course_details.pop(course_id, None)
+                st.rerun()
+
+        st.warning("Grades are estimated from Quercus data and may not reflect your official grade.")
+
+    if ungraded_components:
+        st.subheader("Remaining Components")
+    for component in ungraded_components:
+        component_key = component["component_key"]
+        current_value = st.session_state.get(f"what_if_{course_id}_{component_key}", 100)
+        if current_value != 100:
+            st.markdown('<p class="component-meta moved-slider-marker"></p>', unsafe_allow_html=True)
+        key = f"what_if_{course_id}_{component_key}"
+        projected_inputs[component_key] = st.slider(
+            f"{component['name']} ({component['weight']:.2f}%)",
+            min_value=0,
+            max_value=100,
+            value=100,
+            key=key,
+        )
+        contrib = projected_inputs[component_key] * component["weight"] / 100
+        st.caption(
+            f"Using {projected_inputs[component_key]:.0f}% "
+            f"({contrib:.1f} pts)"
+        )
     if not ungraded_components:
         st.info("No remaining weighted components for this course.")
 

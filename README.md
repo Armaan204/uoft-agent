@@ -22,7 +22,7 @@ Current capabilities:
 - Encrypted Quercus-token persistence per logged-in user
 - Assignment and submission retrieval
 - Canvas assignment-group weight resolution
-- Syllabus PDF discovery and weight extraction when Canvas weights are missing
+- Syllabus PDF, DOCX, and Canvas-page discovery when Canvas weights are missing
 - Current-grade and target-grade calculations
 - Dashboard cards, announcements, deadlines, and per-course what-if views
 - ACORN academic-history import via browser extension and backend API
@@ -47,6 +47,7 @@ Current capabilities:
 - [`calculator/grades.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/calculator/grades.py) — deterministic grade engine
 - [`integrations/quercus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/quercus.py) — Quercus / Canvas API client
 - [`integrations/syllabus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus.py) — syllabus discovery and parsing
+- [`integrations/syllabus_cache.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus_cache.py) — persistent Supabase cache for parsed syllabus weights
 - [`api_server.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/api_server.py) — ACORN import backend
 - [`uoft-acorn-extension/`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/uoft-acorn-extension) — Chrome extension
 
@@ -122,6 +123,7 @@ Recommended split:
 - ACORN backend on Railway
 - ACORN import storage in Supabase Postgres
 - User records and encrypted Quercus tokens in Supabase Postgres
+- Persistent parsed syllabus weights in Supabase Postgres
 
 The backend supports:
 
@@ -139,15 +141,20 @@ web: python api_server.py
 
 - Canvas `group_weight` is preferred whenever it exists
 - Syllabus parsing is a fallback for courses with incomplete LMS metadata
+- The syllabus fallback can now parse linked Canvas pages in addition to PDFs and DOCX files
 - Weighted overview grades are shown only when the component mapping is reliable enough
 - Module-based syllabus discovery now prefers actual file metadata and can deterministically select a unique best candidate before falling back to an LLM chooser
+- Assignment groups and submissions are cached for 5 minutes to improve dashboard performance
+- Parsed syllabus weights are cached for 1 hour in-process and also persisted in Supabase for reuse across sessions
 
 ## Current Limitations
 
 - Gradescope and MarkUs integrations are still placeholders
 - Some courses intentionally show no weighted overview grade when syllabus-to-assignment mapping is too ambiguous
 - ACORN import currently uses import codes rather than a full user account model
+- The Streamlit ACORN tab is currently shown as a "Coming Soon" placeholder while the extension flow is under review
 - If a saved Quercus token is revoked or expires, the app clears it and asks the user to enter a new one
+- Quercus-posted grade changes can take up to about 5 minutes to appear because of short-lived API caching
 
 ## Support
 
