@@ -55,7 +55,7 @@
   function parseCoursesBlock(blockEl, termName) {
     const blockText = (blockEl.innerText || "").replace(/\s+/g, " ").trim();
     const segments = blockText
-      .split(/(?=[A-Z]{4}\d{2}[A-Z]\d)/)
+      .split(/(?=(?:[A-Z]{4}\d{2}|[A-Z]{3}\d{3})[A-Z]\d|[A-Z]{4}\*{3})/)
       .map((s) => s.trim())
       .filter(Boolean);
 
@@ -80,6 +80,7 @@
     log("Found info-section headings:", infoSections.length);
 
     const terms = [];
+    const processedBlocks = new Set();
 
     for (const infoSection of infoSections) {
       // "2022 Fall - Honours Bachelor of Science (Statistics Co-op)" → "2022 Fall"
@@ -108,6 +109,7 @@
         }
 
         if (sibling.classList.contains("courses") && sibling.classList.contains("blok")) {
+          processedBlocks.add(sibling);
           const courses = parseCoursesBlock(sibling, termName);
           termData.courses.push(...courses);
           log("Parsed courses for", termName, ":", courses.length);
@@ -119,8 +121,19 @@
       terms.push(termData);
     }
 
-    const allCourses = terms.flatMap((t) => t.courses);
-    log("Total terms:", terms.length, "Total courses:", allCourses.length);
+    // Capture any .courses.blok not under a term heading (e.g. transfer credits block).
+    const transferCourses = [];
+    const allBlocks = document.querySelectorAll("div.courses.blok");
+    for (const block of allBlocks) {
+      if (!processedBlocks.has(block)) {
+        const courses = parseCoursesBlock(block, null);
+        transferCourses.push(...courses);
+        log("Parsed transfer/unterm'd courses:", courses.length);
+      }
+    }
+
+    const allCourses = [...terms.flatMap((t) => t.courses), ...transferCourses];
+    log("Total terms:", terms.length, "Total courses:", allCourses.length, "Transfer:", transferCourses.length);
 
     if (!allCourses.length) {
       return { error: "ACORN structure found, but no courses parsed" };

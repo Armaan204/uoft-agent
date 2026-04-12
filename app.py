@@ -1021,9 +1021,6 @@ def _render_acorn_gpa_charts(terms: list):
 
     plotable = sorted(plotable, key=lambda t: _term_sort_key(t.get("term", "")))
 
-    latest_cumulative = plotable[-1]["cumulativeGpa"]
-    st.metric("Cumulative GPA", f"{latest_cumulative:.2f}")
-
     view = st.segmented_control(
         "GPA view", ["Sessional", "Cumulative"], default="Cumulative", label_visibility="collapsed"
     )
@@ -1055,7 +1052,41 @@ def _render_acorn_courses_table(latest: dict):
     courses = latest.get("courses", [])
     terms = latest.get("terms")
 
-    st.metric("Courses imported", len(courses))
+    # Summary table: headers on row 0, values on row 1.
+    plotable = sorted(
+        [t for t in (terms or [])
+         if isinstance(t.get("cumulativeGpa"), (int, float))],
+        key=lambda t: _term_sort_key(t.get("term", "")),
+    )
+    _UNEARNED_GRADES = {"IPR", "NGA"}
+    total_credits = sum(
+        float(c["credits"])
+        for c in courses
+        if c.get("credits") is not None
+        and (c.get("grade") or "").upper() not in _UNEARNED_GRADES
+    )
+
+    headers = ["Courses Imported", "Total Credits Earned"]
+    values = [str(len(courses)), f"{total_credits:.1f}"]
+    if plotable:
+        headers.append("Cumulative GPA")
+        values.append(f"{plotable[-1]['cumulativeGpa']:.2f}")
+    header_cells = "".join(f"<th>{h}</th>" for h in headers)
+    value_cells = "".join(f"<td>{v}</td>" for v in values)
+    st.markdown(f"""
+<table style="width:100%;border-collapse:collapse;text-align:center;">
+  <thead>
+    <tr style="font-size:1rem;font-weight:600;border-bottom:1px solid #444;">
+      {header_cells}
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="font-size:1.6rem;font-weight:700;">
+      {value_cells}
+    </tr>
+  </tbody>
+</table>
+""", unsafe_allow_html=True)
     st.caption(f"Last imported: {latest.get('importedAt') or 'Unknown'}")
 
     if terms:
@@ -1070,8 +1101,6 @@ def _render_acorn_courses_table(latest: dict):
     for course in courses:
         grade = course.get("grade")
         credits = course.get("credits")
-        if grade == "CR" and (not credits or float(credits) == 0):
-            credits = "0.50"
         row = {
             "Course": course.get("courseCode"),
             "Title": course.get("title"),

@@ -18,9 +18,16 @@ function isMarkToken(token) {
   return value >= 0 && value <= 100;
 }
 
+// Matches all UofT campus course code formats plus transfer credit codes:
+//   UTSC:       4 letters + 2 digits + letter + digit  (CSCA08H3)
+//   St. George / UTM: 3 letters + 3 digits + letter + digit  (CSC490H1, ECO101H5)
+//   Transfer:   4 letters + *** (CSCA***)
+const COURSE_CODE_RE = /^(?:[A-Z]{4}\d{2}|[A-Z]{3}\d{3})[A-Z]\d$|^[A-Z]{4}\*{3}$/;
+const COURSE_CODE_START_RE = /^(?:[A-Z]{4}\d{2}|[A-Z]{3}\d{3})[A-Z]\d|^[A-Z]{4}\*{3}/;
+
 export function parseCourseSegment(segment) {
   const rawText = normalizeText(segment);
-  if (!rawText || !/^[A-Z]{4}\d{2}[A-Z]\d/.test(rawText)) {
+  if (!rawText || !COURSE_CODE_START_RE.test(rawText)) {
     return null;
   }
 
@@ -30,7 +37,7 @@ export function parseCourseSegment(segment) {
   }
 
   const courseCode = tokens[0];
-  if (!/^[A-Z]{4}\d{2}[A-Z]\d$/.test(courseCode)) {
+  if (!COURSE_CODE_RE.test(courseCode)) {
     return null;
   }
 
@@ -70,10 +77,15 @@ export function parseCourseSegment(segment) {
     }
   }
 
-  // CR/NCR courses are worth 0.5 credits even when ACORN shows 0.00.
-  const gradeUpper = grade ? grade.toUpperCase() : null;
-  if ((gradeUpper === "CR" || gradeUpper === "NCR") && credits === "0.00") {
-    credits = "0.50";
+  // Co-op milestone courses (COP prefix) carry no academic credit.
+  if (courseCode.startsWith("COP")) {
+    credits = "0.00";
+  } else {
+    // CR/NCR courses are worth 0.5 credits even when ACORN shows 0.00.
+    const gradeUpper = grade ? grade.toUpperCase() : null;
+    if ((gradeUpper === "CR" || gradeUpper === "NCR") && credits === "0.00") {
+      credits = "0.50";
+    }
   }
 
   return {
