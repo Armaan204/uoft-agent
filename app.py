@@ -8,6 +8,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
+import altair as alt
 import pandas as pd
 
 try:
@@ -1023,14 +1024,30 @@ def _render_acorn_gpa_charts(terms: list):
     latest_cumulative = plotable[-1]["cumulativeGpa"]
     st.metric("Cumulative GPA", f"{latest_cumulative:.2f}")
 
-    df = pd.DataFrame(
-        {
-            "Sessional GPA": [t["sessionalGpa"] for t in plotable],
-            "Cumulative GPA": [t["cumulativeGpa"] for t in plotable],
-        },
-        index=[t["term"] for t in plotable],
+    view = st.segmented_control(
+        "GPA view", ["Sessional", "Cumulative"], default="Cumulative", label_visibility="collapsed"
     )
-    st.line_chart(df)
+
+    gpa_key = "sessionalGpa" if view == "Sessional" else "cumulativeGpa"
+    term_order = [t["term"] for t in plotable]
+    df = pd.DataFrame({"Term": term_order, "GPA": [t[gpa_key] for t in plotable]})
+
+    all_vals = df["GPA"].dropna()
+    y_min = round(max(0.0, all_vals.min() - 0.3), 1)
+    y_max = round(min(4.0, all_vals.max() + 0.3), 1)
+
+    base = alt.Chart(df).encode(
+        x=alt.X("Term:O", sort=term_order, axis=alt.Axis(labelAngle=-30, title=None)),
+        y=alt.Y("GPA:Q", scale=alt.Scale(domain=[y_min, y_max]), axis=alt.Axis(title="GPA")),
+    )
+
+    lines = base.mark_line(color="#1f77b4")
+    points = base.mark_point(filled=True, size=60, color="#1f77b4")
+    labels = base.mark_text(align="center", baseline="bottom", dy=-8, fontSize=11, color="#1f77b4").encode(
+        text=alt.Text("GPA:Q", format=".2f")
+    )
+
+    st.altair_chart((lines + points + labels).properties(height=300), use_container_width=True)
 
 
 def _render_acorn_courses_table(latest: dict):
@@ -1040,14 +1057,6 @@ def _render_acorn_courses_table(latest: dict):
 
     st.metric("Courses imported", len(courses))
     st.caption(f"Last imported: {latest.get('importedAt') or 'Unknown'}")
-
-    with st.expander("Debug: raw ACORN data", expanded=False):
-        st.json({
-            "has_terms": bool(terms),
-            "term_count": len(terms) if terms else 0,
-            "terms_preview": terms[:2] if terms else None,
-            "first_course": courses[0] if courses else None,
-        })
 
     if terms:
         _render_acorn_gpa_charts(terms)
@@ -1142,7 +1151,6 @@ def _render_acorn_tab():
 
     saved_latest = st.session_state.get("acorn_saved_data")
     if saved_latest and not st.session_state.acorn_reimport_mode:
-        st.caption(f"Last imported: {saved_latest.get('importedAt') or 'Unknown'}")
         _render_acorn_courses_table(saved_latest)
         return
 
