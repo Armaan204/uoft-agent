@@ -207,8 +207,22 @@ def _parse_syllabus_weights_lazy(course_id, client, pdf_url=None):
 
 
 def _get_acorn_helpers():
-    from integrations.acorn import AcornBackendError, get_import_status, get_latest_import
-    return AcornBackendError, get_import_status, get_latest_import
+    from integrations.acorn import (
+        AcornBackendError,
+        AcornStoreError,
+        claim_latest_import_for_user,
+        get_import_status,
+        get_latest_import,
+        get_latest_import_for_user,
+    )
+    return (
+        AcornBackendError,
+        AcornStoreError,
+        claim_latest_import_for_user,
+        get_import_status,
+        get_latest_import,
+        get_latest_import_for_user,
+    )
 
 
 def _run_agent(*args, **kwargs):
@@ -254,6 +268,20 @@ def _clear_quercus_session_state():
         "course_details",
         "selected_course_id",
         "messages",
+    ]:
+        st.session_state.pop(key, None)
+
+
+def _clear_acorn_session_state():
+    """Clear ACORN-specific UI state for the current session."""
+    for key in [
+        "acorn_import_code",
+        "acorn_saved_data",
+        "acorn_saved_data_user_id",
+        "acorn_lookup",
+        "acorn_lookup_code",
+        "acorn_lookup_user_id",
+        "acorn_reimport_mode",
     ]:
         st.session_state.pop(key, None)
 
@@ -911,9 +939,15 @@ def _get_acorn_import_code() -> str:
     return st.session_state.acorn_import_code
 
 
+def _reset_acorn_import_code() -> str:
+    """Generate a fresh ACORN import code for a new onboarding/re-import flow."""
+    st.session_state.acorn_import_code = secrets.token_hex(4).upper()
+    return st.session_state.acorn_import_code
+
+
 def _load_acorn_data(import_code: str) -> dict:
     """Load the latest ACORN import for one import code."""
-    AcornBackendError, get_import_status, get_latest_import = _get_acorn_helpers()
+    AcornBackendError, _, _, get_import_status, get_latest_import, _ = _get_acorn_helpers()
     try:
         return {
             "status": get_import_status(import_code),
@@ -928,55 +962,40 @@ def _load_acorn_data(import_code: str) -> dict:
         }
 
 
-def _render_acorn_tab():
-    """Render a minimal ACORN import/readback page."""
-    import_code = _get_acorn_import_code()
+def _load_saved_acorn_data(user_id: str | int) -> dict:
+    """Load the latest claimed ACORN import for one app user."""
+    _, AcornStoreError, _, _, _, get_latest_import_for_user = _get_acorn_helpers()
+    try:
+        return {
+            "latest": get_latest_import_for_user(user_id),
+            "error": None,
+        }
+    except AcornStoreError as exc:
+        return {
+            "latest": None,
+            "error": str(exc),
+        }
 
-    st.subheader("ACORN Import")
-    st.info(
-        "Use the UofT Agent Connector extension to import your ACORN academic history. "
-        "The extension writes to the backend using your import code, and this page reads the latest imported data for that same code."
-    )
 
-    st.code(import_code, language=None)
-    st.caption("Paste this import code into the extension popup before importing from ACORN.")
+def _claim_acorn_import_for_current_user(import_code: str, user_id: str | int) -> dict:
+    """Claim the latest imported row for one import code to the logged-in user."""
+    _, AcornStoreError, claim_latest_import_for_user, _, _, _ = _get_acorn_helpers()
+    try:
+        return {
+            "latest": claim_latest_import_for_user(import_code, user_id),
+            "error": None,
+        }
+    except AcornStoreError as exc:
+        return {
+            "latest": None,
+            "error": str(exc),
+        }
 
-    st.markdown(
-        '1. Install the [Chrome extension](https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb)  \n'
-        "2. Open ACORN and log in normally  \n"
-        "3. Paste the import code above into the extension popup  \n"
-        "4. Click the extension's **Import Academic History** button  \n"
-        "5. Return here and click **Refresh ACORN data**"
-    )
 
-    if "acorn_data" not in st.session_state:
-        st.session_state.acorn_data = _load_acorn_data(import_code)
-
-    if st.button("Refresh ACORN data", key="refresh_acorn_data"):
-        st.session_state.acorn_data = _load_acorn_data(import_code)
-        st.rerun()
-
-    acorn_data = st.session_state.acorn_data
-    status = acorn_data["status"]
-    latest = acorn_data["latest"]
-
-    if acorn_data.get("error"):
-        st.error(
-            "Could not load ACORN data from the backend. "
-            f"{acorn_data['error']}"
-        )
-        return
-
-    if not status.get("exists") or latest is None:
-        st.warning(
-            "No ACORN data has been imported for this code yet. If you have not installed the extension, "
-            "install it first. Otherwise, paste this code into the extension, run the import from ACORN, "
-            "then come back here and refresh."
-        )
-        return
-
+def _render_acorn_courses_table(latest: dict):
+    """Render the imported ACORN course list."""
     st.metric("Courses imported", len(latest.get("courses", [])))
-    st.caption(f"Last import: {latest.get('importedAt') or 'Unknown'}")
+    st.caption(f"Last imported: {latest.get('importedAt') or 'Unknown'}")
 
     courses = latest.get("courses", [])
     if not courses:
@@ -993,6 +1012,78 @@ def _render_acorn_tab():
             "Grade": course.get("grade"),
         })
     st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
+def _render_acorn_onboarding(user_id: str | int):
+    """Render the first-time / re-import onboarding flow."""
+    import_code = _get_acorn_import_code()
+
+    st.markdown(
+        '1. Install the [Chrome extension](https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb)  \n'
+        "2. Open ACORN Academic History in another tab  \n"
+        "3. Click the extension, paste the import code, and click **Import Academic History**  \n"
+        "4. Return here and click **I've completed the import**"
+    )
+
+    st.code(import_code, language=None)
+    st.caption("Paste this import code into the extension popup before importing from ACORN.")
+
+    if st.button("I've completed the import", key="acorn_complete_import"):
+        st.session_state.acorn_lookup = _claim_acorn_import_for_current_user(import_code, user_id)
+        st.session_state.acorn_lookup_code = import_code
+        st.session_state.acorn_lookup_user_id = user_id
+        claimed = st.session_state.acorn_lookup.get("latest")
+        if claimed:
+            st.session_state.acorn_saved_data = claimed
+            st.session_state.acorn_saved_data_user_id = user_id
+            st.session_state.acorn_reimport_mode = False
+            st.rerun()
+
+    lookup = st.session_state.get("acorn_lookup")
+    lookup_user_id = st.session_state.get("acorn_lookup_user_id")
+    lookup_code = st.session_state.get("acorn_lookup_code")
+    if lookup and lookup_user_id == user_id and lookup_code == import_code:
+        if lookup.get("error"):
+            st.error(f"Could not link the imported ACORN data to your account. {lookup['error']}")
+        elif lookup.get("latest") is None:
+            st.warning(
+                "No ACORN import was found for this code yet. Make sure you completed the import in the extension, then try again."
+            )
+
+
+def _render_acorn_tab():
+    """Render the claimed ACORN import flow for the current user."""
+    user_id = st.session_state.user_id
+
+    st.subheader("ACORN Import")
+
+    current_saved_user_id = st.session_state.get("acorn_saved_data_user_id")
+    if current_saved_user_id != user_id:
+        for key in ["acorn_saved_data", "acorn_lookup", "acorn_lookup_code", "acorn_lookup_user_id"]:
+            st.session_state.pop(key, None)
+        st.session_state.acorn_saved_data_user_id = user_id
+
+    if "acorn_reimport_mode" not in st.session_state:
+        st.session_state.acorn_reimport_mode = False
+
+    if "acorn_saved_data" not in st.session_state:
+        saved = _load_saved_acorn_data(user_id)
+        if saved.get("error"):
+            st.error(f"Could not load your saved ACORN data. {saved['error']}")
+            return
+        st.session_state.acorn_saved_data = saved.get("latest")
+        st.session_state.acorn_saved_data_user_id = user_id
+
+    saved_latest = st.session_state.get("acorn_saved_data")
+    if saved_latest and not st.session_state.acorn_reimport_mode:
+        st.caption(f"Last imported: {saved_latest.get('importedAt') or 'Unknown'}")
+        _render_acorn_courses_table(saved_latest)
+        return
+
+    st.info(
+        "Import your ACORN academic history once, and it will stay linked to your account for future visits."
+    )
+    _render_acorn_onboarding(user_id)
 
 
 def main():
@@ -1066,8 +1157,28 @@ def main():
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Could not disconnect Quercus. {exc}")
+        if ACORN_ENABLED:
+            current_saved_user_id = st.session_state.get("acorn_saved_data_user_id")
+            if current_saved_user_id != st.session_state.user_id:
+                st.session_state.pop("acorn_saved_data", None)
+                st.session_state.acorn_saved_data_user_id = st.session_state.user_id
+
+            if "acorn_saved_data" not in st.session_state:
+                saved = _load_saved_acorn_data(st.session_state.user_id)
+                if not saved.get("error"):
+                    st.session_state.acorn_saved_data = saved.get("latest")
+                    st.session_state.acorn_saved_data_user_id = st.session_state.user_id
+
+            has_saved_acorn = bool(st.session_state.get("acorn_saved_data"))
+            if has_saved_acorn and st.button("Re-import ACORN data", use_container_width=True):
+                st.session_state.acorn_reimport_mode = True
+                _reset_acorn_import_code()
+                for key in ["acorn_lookup", "acorn_lookup_code", "acorn_lookup_user_id"]:
+                    st.session_state.pop(key, None)
+                st.rerun()
         if st.button("Log out", use_container_width=True):
             _clear_quercus_session_state()
+            _clear_acorn_session_state()
             st.session_state.pop("app_user", None)
             st.session_state.pop("user_id", None)
             st.logout()
