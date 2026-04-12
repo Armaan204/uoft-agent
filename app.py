@@ -8,6 +8,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
+import pandas as pd
 
 try:
     import streamlit as st
@@ -992,25 +993,90 @@ def _claim_acorn_import_for_current_user(import_code: str, user_id: str | int) -
         }
 
 
+_SEASON_ORDER = {"winter": 0, "spring": 1, "summer": 2, "fall": 3}
+
+
+def _term_sort_key(term_str: str) -> tuple[int, int]:
+    parts = (term_str or "").lower().split()
+    year, season = 0, 0
+    for part in parts:
+        if part.isdigit():
+            year = int(part)
+        elif part in _SEASON_ORDER:
+            season = _SEASON_ORDER[part]
+    return (year, season)
+
+
+def _render_acorn_gpa_charts(terms: list):
+    """Render sessional and cumulative GPA line charts from the terms array."""
+    # Only include terms where ACORN reported real numeric GPA values.
+    plotable = [
+        t for t in terms
+        if isinstance(t.get("sessionalGpa"), (int, float))
+        and isinstance(t.get("cumulativeGpa"), (int, float))
+    ]
+    if not plotable:
+        return
+
+    plotable = sorted(plotable, key=lambda t: _term_sort_key(t.get("term", "")))
+
+    latest_cumulative = plotable[-1]["cumulativeGpa"]
+    st.metric("Cumulative GPA", f"{latest_cumulative:.2f}")
+
+    df = pd.DataFrame(
+        {
+            "Sessional GPA": [t["sessionalGpa"] for t in plotable],
+            "Cumulative GPA": [t["cumulativeGpa"] for t in plotable],
+        },
+        index=[t["term"] for t in plotable],
+    )
+    st.line_chart(df)
+
+
 def _render_acorn_courses_table(latest: dict):
-    """Render the imported ACORN course list."""
-    st.metric("Courses imported", len(latest.get("courses", [])))
+    """Render the imported ACORN course list, with GPA charts when available."""
+    courses = latest.get("courses", [])
+    terms = latest.get("terms")
+
+    st.metric("Courses imported", len(courses))
     st.caption(f"Last imported: {latest.get('importedAt') or 'Unknown'}")
 
-    courses = latest.get("courses", [])
+    with st.expander("Debug: raw ACORN data", expanded=False):
+        st.json({
+            "has_terms": bool(terms),
+            "term_count": len(terms) if terms else 0,
+            "terms_preview": terms[:2] if terms else None,
+            "first_course": courses[0] if courses else None,
+        })
+
+    if terms:
+        _render_acorn_gpa_charts(terms)
+
     if not courses:
         st.info("ACORN data exists, but no parsed courses were stored.")
         return
 
+    has_terms = any(c.get("term") for c in courses)
     rows = []
     for course in courses:
-        rows.append({
+        grade = course.get("grade")
+        credits = course.get("credits")
+        if grade == "CR" and (not credits or float(credits) == 0):
+            credits = "0.50"
+        row = {
             "Course": course.get("courseCode"),
             "Title": course.get("title"),
-            "Credits": course.get("credits"),
+            "Credits": credits,
             "Mark": course.get("mark"),
-            "Grade": course.get("grade"),
-        })
+            "Grade": grade,
+        }
+        if has_terms:
+            row["Term"] = course.get("term")
+        rows.append(row)
+
+    if has_terms:
+        rows.sort(key=lambda r: _term_sort_key(r.get("Term", "")))
+
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
 

@@ -25,44 +25,77 @@ def validate_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         raise AcornStoreError("Payload must be a JSON object")
 
-    courses = payload.get("courses")
-    if not isinstance(courses, list):
-        raise AcornStoreError("Payload must include a 'courses' list")
-
     import_code = payload.get("importCode")
     if not isinstance(import_code, str) or not import_code.strip():
         raise AcornStoreError("Payload must include a non-empty importCode")
     import_code = _normalise_import_code(import_code)
 
-    normalised_courses = []
-    for i, course in enumerate(courses):
-        if not isinstance(course, dict):
-            raise AcornStoreError(f"Course at index {i} must be an object")
-        course_code = course.get("courseCode")
-        if not isinstance(course_code, str) or not course_code.strip():
-            raise AcornStoreError(f"Course at index {i} is missing a valid courseCode")
+    # --- terms (new structured format) ---
+    normalised_terms = None
+    terms = payload.get("terms")
+    if isinstance(terms, list):
+        normalised_terms = []
+        for i, term_obj in enumerate(terms):
+            if not isinstance(term_obj, dict):
+                raise AcornStoreError(f"Term at index {i} must be an object")
+            term_name = _clean_optional_str(term_obj.get("term"))
+            sessional_gpa = term_obj.get("sessionalGpa")
+            cumulative_gpa = term_obj.get("cumulativeGpa")
+            status = _clean_optional_str(term_obj.get("status"))
 
-        normalised_courses.append({
-            "courseCode": course_code.strip(),
-            "title": _clean_optional_str(course.get("title")),
-            "term": _clean_optional_str(course.get("term")),
-            "grade": _clean_optional_str(course.get("grade")),
-            "mark": _clean_optional_str(course.get("mark")),
-            "credits": _clean_optional_str(course.get("credits")),
-            "rawText": _clean_optional_str(course.get("rawText")),
-        })
+            term_courses_raw = term_obj.get("courses")
+            term_courses = []
+            if isinstance(term_courses_raw, list):
+                for j, course in enumerate(term_courses_raw):
+                    if not isinstance(course, dict):
+                        raise AcornStoreError(f"Course at term {i}, index {j} must be an object")
+                    course_code = course.get("courseCode")
+                    if not isinstance(course_code, str) or not course_code.strip():
+                        raise AcornStoreError(
+                            f"Course at term {i}, index {j} is missing a valid courseCode"
+                        )
+                    term_courses.append(_normalise_course(course, term_name))
+
+            normalised_terms.append({
+                "term": term_name,
+                "sessionalGpa": sessional_gpa if isinstance(sessional_gpa, (int, float)) else None,
+                "cumulativeGpa": cumulative_gpa if isinstance(cumulative_gpa, (int, float)) else None,
+                "status": status,
+                "courses": term_courses,
+            })
+
+    # --- courses (flat list) ---
+    if normalised_terms is not None:
+        # Derive the flat list from terms so both representations stay in sync.
+        normalised_courses = [c for t in normalised_terms for c in t["courses"]]
+    else:
+        # Legacy format: flat courses list with no terms.
+        courses = payload.get("courses")
+        if not isinstance(courses, list):
+            raise AcornStoreError("Payload must include a 'courses' list or 'terms' array")
+        normalised_courses = []
+        for i, course in enumerate(courses):
+            if not isinstance(course, dict):
+                raise AcornStoreError(f"Course at index {i} must be an object")
+            course_code = course.get("courseCode")
+            if not isinstance(course_code, str) or not course_code.strip():
+                raise AcornStoreError(f"Course at index {i} is missing a valid courseCode")
+            normalised_courses.append(_normalise_course(course, None))
 
     imported_at = payload.get("importedAt") or payload.get("capturedAt") or payload.get("extractedAt")
     if not isinstance(imported_at, str) or not imported_at.strip():
         imported_at = datetime.now(timezone.utc).isoformat()
 
-    return {
+    result = {
         "importCode": import_code,
         "importedAt": imported_at,
         "source": _clean_optional_str(payload.get("source")),
         "sourceUrl": _clean_optional_str(payload.get("sourceUrl")),
         "courses": normalised_courses,
     }
+    if normalised_terms is not None:
+        result["terms"] = normalised_terms
+    return result
 
 
 def write_latest(payload: dict) -> dict:
@@ -91,6 +124,19 @@ def get_status(import_code: str) -> dict:
         "importedAt": latest.get("importedAt"),
         "importCode": latest.get("importCode"),
         "courseCount": len(latest.get("courses", [])),
+    }
+
+
+def _normalise_course(course: dict, term: str | None) -> dict:
+    return {
+        "courseCode": course["courseCode"].strip(),
+        "title": _clean_optional_str(course.get("title")),
+        "term": _clean_optional_str(course.get("term")) or term,
+        "grade": _clean_optional_str(course.get("grade")),
+        "mark": _clean_optional_str(course.get("mark")),
+        "credits": _clean_optional_str(course.get("credits")),
+        "courseAverage": _clean_optional_str(course.get("courseAverage")),
+        "rawText": _clean_optional_str(course.get("rawText")),
     }
 
 

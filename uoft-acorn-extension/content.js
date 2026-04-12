@@ -14,7 +14,7 @@
 
   async function waitForCourses() {
     for (let i = 0; i < 10; i += 1) {
-      const exists = document.querySelector("div.courses");
+      const exists = document.querySelector("div.courses.blok");
       if (exists) {
         return;
       }
@@ -32,6 +32,43 @@
     return hasHistoryHeading;
   }
 
+  /**
+   * Parse sessional and cumulative GPA from a .gpa-listing div's text.
+   * Returns { sessionalGpa, cumulativeGpa, status } — any field may be null.
+   */
+  function parseGpaListing(text) {
+    const normalised = (text || "").replace(/\s+/g, " ").trim();
+    const sessMatch = normalised.match(/Sessional\s+GPA\s+([\d.]+)/i);
+    const cumMatch = normalised.match(/Cumulative\s+GPA\s+([\d.]+)/i);
+    const statusMatch = normalised.match(/Status:\s*(.+)/i);
+    return {
+      sessionalGpa: sessMatch ? parseFloat(sessMatch[1]) : null,
+      cumulativeGpa: cumMatch ? parseFloat(cumMatch[1]) : null,
+      status: statusMatch ? statusMatch[1].trim() : null,
+    };
+  }
+
+  /**
+   * Parse courses from a div.courses.blok element.
+   * Each course is tagged with the given termName.
+   */
+  function parseCoursesBlock(blockEl, termName) {
+    const blockText = (blockEl.innerText || "").replace(/\s+/g, " ").trim();
+    const segments = blockText
+      .split(/(?=[A-Z]{4}\d{2}[A-Z]\d)/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const courses = [];
+    for (const segment of segments) {
+      const course = parser.parseCourseSegment(segment);
+      if (course) {
+        courses.push({ ...course, term: termName });
+      }
+    }
+    return courses;
+  }
+
   async function extractAcademicHistory() {
     if (!isAcademicHistoryPage()) {
       return { error: "Not on supported ACORN page" };
@@ -39,39 +76,60 @@
 
     await waitForCourses();
 
-    const blocks = Array.from(document.querySelectorAll("div.courses"));
-    log("Found course blocks:", blocks.length);
+    const infoSections = Array.from(document.querySelectorAll("p.info-section"));
+    log("Found info-section headings:", infoSections.length);
 
-    const courses = [];
-    for (const block of blocks) {
-      const text = (block.innerText || "").replace(/\s+/g, " ").trim();
-      const segments = text
-        .split(/(?=[A-Z]{4}\d{2}[A-Z]\d)/)
-        .map((segment) => segment.trim())
-        .filter(Boolean);
+    const terms = [];
 
-      log("Matches found in block:", segments.length);
+    for (const infoSection of infoSections) {
+      // "2022 Fall - Honours Bachelor of Science (Statistics Co-op)" → "2022 Fall"
+      const termText = (infoSection.textContent || "").trim();
+      const termName = termText.split(" - ")[0].trim();
+      if (!termName) {
+        continue;
+      }
 
-      for (const segment of segments) {
-        const course = parser.parseCourseSegment(segment);
-        if (!course) {
-          continue;
+      const termData = {
+        term: termName,
+        sessionalGpa: null,
+        cumulativeGpa: null,
+        status: null,
+        courses: [],
+      };
+
+      // Walk siblings until the next info-section or end of parent.
+      let sibling = infoSection.nextElementSibling;
+      while (sibling && !sibling.matches("p.info-section")) {
+        if (sibling.classList.contains("gpa-listing")) {
+          const parsed = parseGpaListing(sibling.textContent);
+          if (parsed.sessionalGpa !== null) termData.sessionalGpa = parsed.sessionalGpa;
+          if (parsed.cumulativeGpa !== null) termData.cumulativeGpa = parsed.cumulativeGpa;
+          if (parsed.status !== null) termData.status = parsed.status;
         }
 
-        log("Parsed course:", course.courseCode, course.grade);
-        courses.push(course);
+        if (sibling.classList.contains("courses") && sibling.classList.contains("blok")) {
+          const courses = parseCoursesBlock(sibling, termName);
+          termData.courses.push(...courses);
+          log("Parsed courses for", termName, ":", courses.length);
+        }
+
+        sibling = sibling.nextElementSibling;
       }
+
+      terms.push(termData);
     }
 
-    log("Parsed courses:", courses.length);
+    const allCourses = terms.flatMap((t) => t.courses);
+    log("Total terms:", terms.length, "Total courses:", allCourses.length);
 
-    if (!courses.length) {
+    if (!allCourses.length) {
       return { error: "ACORN structure found, but no courses parsed" };
     }
 
     return {
       ok: true,
-      courses
+      terms,
+      courses: allCourses,
     };
   }
 
@@ -91,7 +149,8 @@
 
         sendResponse({
           ok: true,
-          courses: result.courses
+          terms: result.terms,
+          courses: result.courses,
         });
       } catch (error) {
         sendResponse({

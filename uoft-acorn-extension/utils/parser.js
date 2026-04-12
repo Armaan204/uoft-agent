@@ -3,7 +3,7 @@ function normalizeText(value) {
 }
 
 function isGradeToken(token) {
-  return /^(A|B|C|D|F)[+-]?$/i.test(token) || ["CR", "NGA", "IPR"].includes(token.toUpperCase());
+  return /^(A|B|C|D|F)[+-]?$/i.test(token) || ["NCR", "CR", "NGA", "IPR"].includes(token.toUpperCase());
 }
 
 function isCreditToken(token) {
@@ -39,12 +39,13 @@ export function parseCourseSegment(segment) {
     return null;
   }
 
-  const credits = tokens[creditIndex];
+  let credits = tokens[creditIndex];
   const title = normalizeText(tokens.slice(1, creditIndex).join(" "));
   const trailingTokens = tokens.slice(creditIndex + 1);
 
   let mark = null;
   let grade = null;
+  let courseAverage = null;
 
   for (const token of trailingTokens) {
     if (mark === null && isMarkToken(token)) {
@@ -57,10 +58,22 @@ export function parseCourseSegment(segment) {
       continue;
     }
 
+    // Second grade token is the course average.
+    if (grade !== null && courseAverage === null && isGradeToken(token)) {
+      courseAverage = token.toUpperCase();
+      continue;
+    }
+
     // Transfer-credit style codes like A08 / A30 / A36 should still be kept.
     if (grade === null && /^[A-Z]\d{2}$/.test(token)) {
       grade = token.toUpperCase();
     }
+  }
+
+  // CR/NCR courses are worth 0.5 credits even when ACORN shows 0.00.
+  const gradeUpper = grade ? grade.toUpperCase() : null;
+  if ((gradeUpper === "CR" || gradeUpper === "NCR") && credits === "0.00") {
+    credits = "0.50";
   }
 
   return {
@@ -69,6 +82,7 @@ export function parseCourseSegment(segment) {
     credits,
     mark,
     grade,
+    courseAverage,
     rawText
   };
 }

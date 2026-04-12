@@ -101,7 +101,8 @@ Implemented:
 - Short-lived Quercus caching: assignment groups and submissions are cached for 5 minutes
 - Syllabus parsing cache: in-process cache for 1 hour plus persistent Supabase cache in `syllabus_weights_cache`
 - ACORN import flow from the published Chrome extension to Railway-hosted backend to Streamlit readback
-- ACORN backend/import implementation remains in the repo, but the Streamlit ACORN tab is currently replaced with a muted "Coming Soon" placeholder while the extension flow is under review
+- ACORN imports can now be claimed to the logged-in user account so returning users do not need to re-import on every visit
+- The Streamlit ACORN tab is behind the `ACORN_ENABLED` feature flag and, when enabled, shows either saved ACORN data or the onboarding / re-import flow
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
 
 Not implemented yet:
@@ -114,7 +115,7 @@ Not implemented yet:
 
 - Courses with unresolved or only partially reliable syllabus-to-Canvas mappings intentionally show no weighted overview grade
 - What-if sliders are only enabled when the weighted component model is reliable
-- The ACORN backend uses import-code scoping rather than a full user account model
+- The ACORN backend still receives extension imports by import code first; the Streamlit app then claims the latest matching import to the logged-in user account
 - Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
 - Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
 - Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
