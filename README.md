@@ -12,6 +12,12 @@ AI academic assistant for University of Toronto students.
 
 https://uoft-agent.streamlit.app/
 
+## Chrome Extension
+
+UofT Agent Connector is published on the Chrome Web Store:
+
+https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb
+
 ## What It Does
 
 UofT Agent combines live academic data, deterministic grade math, and an Anthropic tool-calling loop.
@@ -26,6 +32,7 @@ Current capabilities:
 - Current-grade and target-grade calculations
 - Dashboard cards, announcements, deadlines, and per-course what-if views
 - ACORN academic-history import via browser extension and backend API
+- Published Chrome Web Store extension for ACORN academic-history import
 
 ## Core Flow
 
@@ -49,7 +56,7 @@ Current capabilities:
 - [`integrations/syllabus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus.py) — syllabus discovery and parsing
 - [`integrations/syllabus_cache.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus_cache.py) — persistent Supabase cache for parsed syllabus weights
 - [`api_server.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/api_server.py) — ACORN import backend
-- [`uoft-acorn-extension/`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/uoft-acorn-extension) — Chrome extension
+- [`uoft-acorn-extension/`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/uoft-acorn-extension) — Chrome extension, published on the Chrome Web Store
 
 ## Auth
 

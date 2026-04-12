@@ -95,6 +95,16 @@ for env_name in ("SUPABASE_URL", "SUPABASE_KEY", "ENCRYPTION_KEY", "ACORN_BACKEN
         os.environ[env_name] = str(env_value)
 
 try:
+    _acorn_enabled_raw = st.secrets.get("ACORN_ENABLED") or os.getenv("ACORN_ENABLED")
+except StreamlitSecretNotFoundError:
+    _acorn_enabled_raw = os.getenv("ACORN_ENABLED")
+except Exception:
+    print("Failed while resolving ACORN_ENABLED in app.py", flush=True)
+    traceback.print_exc()
+    raise
+ACORN_ENABLED = str(_acorn_enabled_raw or "").strip().lower() == "true"
+
+try:
     st.set_page_config(page_title="UofT Agent", page_icon="📚", layout="centered")
 except Exception:
     print("Failed during st.set_page_config() in app.py", flush=True)
@@ -932,7 +942,7 @@ def _render_acorn_tab():
     st.caption("Paste this import code into the extension popup before importing from ACORN.")
 
     st.markdown(
-        "1. Install the Chrome extension from `uoft-acorn-extension/`  \n"
+        '1. Install the [Chrome extension](https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb)  \n'
         "2. Open ACORN and log in normally  \n"
         "3. Paste the import code above into the extension popup  \n"
         "4. Click the extension's **Import Academic History** button  \n"
@@ -1274,20 +1284,23 @@ def main():
             })
 
     with acorn_tab:
-        st.markdown(
-            """
-            <div style="text-align: center; padding: 3rem 1rem 4rem; color: #8a8f98;">
-              <div style="font-size: 3rem; line-height: 1;">🔒</div>
-              <div style="margin-top: 1rem; font-size: 1.5rem; font-weight: 600; color: #7a7f87;">
-                ACORN Integration — Coming Soon
-              </div>
-              <div style="margin-top: 0.75rem; font-size: 1rem; color: #9aa0a8;">
-                Import your academic history directly from ACORN. Currently in review.
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        if ACORN_ENABLED:
+            _render_acorn_tab()
+        else:
+            st.markdown(
+                """
+                <div style="text-align: center; padding: 3rem 1rem 4rem; color: #8a8f98;">
+                  <div style="font-size: 3rem; line-height: 1;">🔒</div>
+                  <div style="margin-top: 1rem; font-size: 1.5rem; font-weight: 600; color: #7a7f87;">
+                    ACORN Integration — Coming Soon
+                  </div>
+                  <div style="margin-top: 0.75rem; font-size: 1rem; color: #9aa0a8;">
+                    Import your academic history directly from ACORN. Currently in review.
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 main()

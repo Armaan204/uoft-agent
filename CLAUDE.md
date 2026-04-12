@@ -11,6 +11,8 @@ An AI academic assistant for University of Toronto students.
 - Falls back to syllabus discovery and Anthropic-based weight extraction when Canvas weights are missing
 - Supports syllabi published as PDFs, DOCX files, or Canvas pages
 - Imports ACORN academic history through a user-triggered Chrome extension and a small backend API
+- The ACORN Chrome extension is published on the Chrome Web Store:
+  https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb
 
 ## Architecture
 
@@ -23,7 +25,7 @@ An AI academic assistant for University of Toronto students.
 - `integrations/syllabus_cache.py` — persistent Supabase cache for parsed syllabus weights
 - `integrations/acorn.py` — Streamlit-side ACORN backend client
 - `api_server.py` — minimal ACORN import API backed by Supabase Postgres
-- `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import
+- `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import, published on the Chrome Web Store
 
 ## Key Decisions
 
@@ -98,7 +100,7 @@ Implemented:
 - Canvas page syllabus support for courses where the syllabus is published as a Quercus page instead of a file
 - Short-lived Quercus caching: assignment groups and submissions are cached for 5 minutes
 - Syllabus parsing cache: in-process cache for 1 hour plus persistent Supabase cache in `syllabus_weights_cache`
-- ACORN import flow from Chrome extension to Railway-hosted backend to Streamlit readback
+- ACORN import flow from the published Chrome extension to Railway-hosted backend to Streamlit readback
 - ACORN backend/import implementation remains in the repo, but the Streamlit ACORN tab is currently replaced with a muted "Coming Soon" placeholder while the extension flow is under review
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
 
