@@ -61,6 +61,7 @@ class GradeCalculator:
         weights_lower = {k.lower(): v for k, v in weights.items()}
 
         group_breakdown = {}
+        dropped_assignment_ids = set()
 
         for group in assignment_groups:
             group_name = group["name"]
@@ -68,10 +69,14 @@ class GradeCalculator:
             if group_weight is None:
                 continue  # group not in syllabus weights — skip
 
+            dropped_ids = self._resolve_dropped_assignment_ids(group, sub_by_id)
+            dropped_assignment_ids.update(dropped_ids)
             earned = 0.0
             possible = 0.0
 
             for assignment in group.get("assignments", []):
+                if assignment["id"] in dropped_ids:
+                    continue
                 sub = sub_by_id.get(assignment["id"])
                 if sub is None or sub.get("score") is None:
                     continue  # not yet graded
@@ -87,6 +92,7 @@ class GradeCalculator:
                 "possible": possible,
                 "pct":      round(pct, 2),
                 "weight":   group_weight,
+                "dropped_assignment_ids": sorted(dropped_ids),
             }
 
         # Weighted average over graded groups only; re-normalise weights
@@ -97,6 +103,7 @@ class GradeCalculator:
                 "letter":          "N/A",
                 "group_breakdown": {},
                 "graded_weight":   0.0,
+                "dropped_assignment_ids": [],
             }
 
         weighted_sum = sum(
@@ -109,6 +116,7 @@ class GradeCalculator:
             "letter":          self._to_letter(weighted_sum),
             "group_breakdown": group_breakdown,
             "graded_weight":   graded_weight,
+            "dropped_assignment_ids": sorted(dropped_assignment_ids),
         }
 
     def needed_on_final(
@@ -206,9 +214,12 @@ class GradeCalculator:
         used_keys = set()
         components = []
         reliable = True
+        dropped_assignment_ids = set()
 
         for group in assignment_groups:
-            group_model = self._build_group_components(group, sub_by_id, weights_lookup, used_keys)
+            group_dropped_ids = self._resolve_dropped_assignment_ids(group, sub_by_id)
+            dropped_assignment_ids.update(group_dropped_ids)
+            group_model = self._build_group_components(group, sub_by_id, weights_lookup, used_keys, group_dropped_ids)
             if group_model["components"]:
                 components.extend(group_model["components"])
                 used_keys.update(group_model["matched_keys"])
@@ -227,6 +238,7 @@ class GradeCalculator:
                     group.get("assignments", []),
                     sub_by_id,
                     weights_lookup[group_key],
+                    group_dropped_ids,
                 )
                 components.extend(group_components)
                 used_keys.add(group_key)
@@ -269,6 +281,7 @@ class GradeCalculator:
             "graded_weight": round(sum(c["weight"] for c in components if c["status"] == "graded"), 2),
             "ungraded_weight": round(sum(c["weight"] for c in components if c["status"] == "ungraded"), 2),
             "unmatched_weights": unmatched_weights,
+            "dropped_assignment_ids": sorted(dropped_assignment_ids),
             "reliable": reliable and bool(components),
         }
 
@@ -423,6 +436,7 @@ class GradeCalculator:
         sub_by_id: dict[int, dict],
         weights_lookup: dict[str, dict],
         used_keys: set[str],
+        dropped_assignment_ids: set[int],
     ) -> dict:
         """Build the most specific reliable components available for one group.
 
@@ -439,6 +453,8 @@ class GradeCalculator:
         reliable = True
 
         for assignment in group.get("assignments", []):
+            if assignment["id"] in dropped_assignment_ids:
+                continue
             points_possible = assignment.get("points_possible") or 0
             if points_possible <= 0:
                 continue
@@ -490,6 +506,7 @@ class GradeCalculator:
                     unmatched_assignments,
                     sub_by_id,
                     weights_lookup[group_key],
+                    dropped_assignment_ids,
                 )
                 components.extend(residual_components)
                 matched_keys.add(group_key)
@@ -528,6 +545,7 @@ class GradeCalculator:
         assignments: list[dict],
         sub_by_id: dict[int, dict],
         weight_info: dict,
+        dropped_assignment_ids: set[int],
     ) -> list[dict]:
         """Build group-level components, splitting completed vs remaining work.
 
@@ -541,6 +559,8 @@ class GradeCalculator:
         ungraded_count = 0
 
         for assignment in assignments:
+            if assignment["id"] in dropped_assignment_ids:
+                continue
             points_possible = assignment.get("points_possible") or 0
             if points_possible <= 0:
                 continue
@@ -618,3 +638,48 @@ class GradeCalculator:
                 "group_name": group_name,
             },
         ]
+
+    @staticmethod
+    def _resolve_dropped_assignment_ids(group: dict, sub_by_id: dict[int, dict]) -> set[int]:
+        """Return graded assignment IDs dropped by Canvas group drop rules."""
+        rules = group.get("rules") or {}
+        drop_lowest = int(rules.get("drop_lowest") or 0)
+        drop_highest = int(rules.get("drop_highest") or 0)
+        never_drop = {int(aid) for aid in (rules.get("never_drop") or []) if aid is not None}
+
+        if drop_lowest <= 0 and drop_highest <= 0:
+            return set()
+
+        candidates = []
+        for assignment in group.get("assignments", []):
+            assignment_id = assignment.get("id")
+            if assignment_id is None or assignment_id in never_drop:
+                continue
+            points_possible = assignment.get("points_possible") or 0
+            if points_possible <= 0:
+                continue
+            sub = sub_by_id.get(assignment_id)
+            if sub is None or sub.get("score") is None:
+                continue
+            pct = sub["score"] / points_possible
+            candidates.append({
+                "id": int(assignment_id),
+                "pct": pct,
+            })
+
+        if not candidates:
+            return set()
+
+        dropped_ids = set()
+        remaining = list(candidates)
+
+        if drop_lowest > 0:
+            for candidate in sorted(remaining, key=lambda item: (item["pct"], item["id"]))[:drop_lowest]:
+                dropped_ids.add(candidate["id"])
+            remaining = [candidate for candidate in remaining if candidate["id"] not in dropped_ids]
+
+        if drop_highest > 0 and remaining:
+            for candidate in sorted(remaining, key=lambda item: (-item["pct"], item["id"]))[:drop_highest]:
+                dropped_ids.add(candidate["id"])
+
+        return dropped_ids

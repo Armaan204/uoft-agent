@@ -310,6 +310,9 @@ class QuercusClient:
         Passes include[]=assignments so each group dict contains a nested
         'assignments' list — avoids a separate get_assignments() call when
         both the group weight and the individual items are needed together.
+        Canvas group responses may also include grading `rules` such as
+        drop_lowest, drop_highest, and never_drop, which the calculator uses
+        to mirror Canvas grade math.
         """
         return _cached_get_assignment_groups(
             self._token,
