@@ -1038,9 +1038,9 @@ def _render_acorn_gpa_charts(terms: list):
         y=alt.Y("GPA:Q", scale=alt.Scale(domain=[y_min, y_max]), axis=alt.Axis(title="GPA")),
     )
 
-    lines = base.mark_line(color="#1f77b4")
-    points = base.mark_point(filled=True, size=60, color="#1f77b4")
-    labels = base.mark_text(align="center", baseline="bottom", dy=-8, fontSize=11, color="#1f77b4").encode(
+    lines = base.mark_line(color="#1f77b4", strokeWidth=3)
+    points = base.mark_point(filled=True, size=80, color="#1f77b4")
+    labels = base.mark_text(align="center", baseline="bottom", dy=-10, fontSize=13, fontWeight="bold", color="#1f77b4").encode(
         text=alt.Text("GPA:Q", format=".2f")
     )
 

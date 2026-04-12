@@ -104,6 +104,14 @@ Implemented:
 - ACORN imports can now be claimed to the logged-in user account so returning users do not need to re-import on every visit
 - The Streamlit ACORN tab is behind the `ACORN_ENABLED` feature flag and, when enabled, shows either saved ACORN data or the onboarding / re-import flow
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
+- ACORN tab shows a summary table (Courses Imported, Total Credits, Cumulative GPA) and an Altair line chart of GPA over time with a Sessional / Cumulative toggle; chart uses adaptive Y-axis zoom and labelled data points
+- ACORN data is structured per-term: the extension extracts term headings, sessional GPA, and cumulative GPA directly from the ACORN DOM and stores them in a `terms` top-level array alongside the flat `courses` list
+- Extension parses `courseAverage` (the class average column) as a nullable field on each course, stored but not yet displayed
+- Transfer credits (course codes ending in `***`) are captured from blocks not under a term heading and stored with `term: null`
+- Course code regex handles all UofT campus formats: UTSC (4 letters + 2 digits, e.g. `CSCA08H3`), St. George / UTM (3 letters + 3 digits, e.g. `CSC490H1`, `ECO101H5`), and transfer placeholders (`CSCA***`)
+- Credit corrections applied in the extension at parse time: CR/NCR courses with `0.00` credits are set to `0.50`; COP-prefix courses are always `0.00`
+- Total Credits in the summary table excludes IPR (In Progress) and NGA (No Grade Available) courses — only earned credits are counted
+- `background.js` detects stale-tab "Receiving end does not exist" errors (happen when the extension updates while an ACORN tab is already open) and surfaces a clear "Please reload the ACORN tab" message rather than using `chrome.scripting` dynamic injection, keeping permissions minimal
 
 Not implemented yet:
 

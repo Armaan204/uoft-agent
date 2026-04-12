@@ -90,20 +90,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const msg = msgError instanceof Error ? msgError.message : String(msgError);
         const isStaleTab = msg.includes("Receiving end does not exist") ||
                            msg.includes("Could not establish connection");
-        if (!isStaleTab) {
+        if (isStaleTab) {
+          sendResponse({ ok: false, error: "Please reload the ACORN tab and try again." });
+        } else {
           sendResponse({ ok: false, error: msg });
-          return;
         }
-        // Content script invalidated after extension update — re-inject and retry once.
-        log("Content script not found, re-injecting into tab:", activeTab.id);
-        try {
-          await chrome.scripting.executeScript({ target: { tabId: activeTab.id }, files: ["content.js"] });
-          await new Promise((r) => setTimeout(r, 300));
-          extractionResult = await sendMessageToTab(activeTab.id, { action: "EXTRACT_ACORN_DATA" });
-        } catch (_retryError) {
-          sendResponse({ ok: false, error: "Could not reach the ACORN tab. Please reload it and try again." });
-          return;
-        }
+        return;
       }
 
       if (!extractionResult?.ok) {

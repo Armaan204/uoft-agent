@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "UofT Agent Connector",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Extracts academic history from ACORN after the user logs in and prepares it for UofT Agent import.",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage"],
   "host_permissions": [
     "https://acorn.utoronto.ca/*",
     "https://uoft-agent-production.up.railway.app/*"
