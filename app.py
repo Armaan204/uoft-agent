@@ -725,6 +725,7 @@ def _load_course_detail(course_id: int, token: str, user_id: str | int) -> dict:
         "current_letter": _to_letter(projected_default),
         "graded_weight": graded_weight,
         "component_model": {**component_model, "components": components},
+        "assignments_by_component": component_model.get("assignments_by_component", {}),
         "live_components": live_components,
         "projected_default": projected_default,
         "saved_grades": saved_grades,
@@ -764,6 +765,15 @@ def _render_course_detail(course_id: int):
         div[data-testid="stElementContainer"]:has(.moved-slider-marker)
           + div[data-testid="stElementContainer"] [data-baseweb="slider"] {
             filter: grayscale(1) saturate(0.1);
+        }
+        .assignment-row {
+            margin: 0.1rem 0 0.1rem 1rem;
+            font-size: 0.8rem;
+            color: rgb(107, 114, 128);
+        }
+        .assignment-row.dropped {
+            text-decoration: line-through;
+            opacity: 0.55;
         }
         </style>
         """,
@@ -810,19 +820,47 @@ def _render_course_detail(course_id: int):
         save_grades,
     ) = _get_grades_cache_helpers()
 
+    assignments_by_component = detail.get("assignments_by_component", {})
+
+    def _active_rows(rows: list[dict]) -> list[dict]:
+        return [r for r in rows if r.get("status") != "dropped"]
+
+    def _use_individual(rows: list[dict]) -> bool:
+        return len(_active_rows(rows)) >= 1
+
+    def _effective_pct_from_state(component_key: str, rows: list[dict], default: float) -> float:
+        """Compute effective pct from individual assignment slider session-state values."""
+        active = _active_rows(rows)
+        if not active:
+            return default
+        return sum(
+            st.session_state.get(
+                f"what_if_{course_id}_assign_{r['assignment_id']}",
+                int(round(r["pct"] or 0)) if r.get("status") == "graded" else 100,
+            )
+            for r in active
+        ) / len(active)
+
     projected_inputs = {}
     for component in graded_components:
         component_key = component["component_key"]
-        projected_inputs[component_key] = st.session_state.get(
-            f"what_if_{course_id}_{component_key}",
-            int(round(component["pct"])),
-        )
+        rows = assignments_by_component.get(component_key, [])
+        baseline = int(round(component["pct"]))
+        if _use_individual(rows):
+            projected_inputs[component_key] = _effective_pct_from_state(component_key, rows, float(baseline))
+        else:
+            projected_inputs[component_key] = st.session_state.get(
+                f"what_if_{course_id}_{component_key}", baseline,
+            )
     for component in ungraded_components:
         component_key = component["component_key"]
-        projected_inputs[component_key] = st.session_state.get(
-            f"what_if_{course_id}_{component_key}",
-            100,
-        )
+        rows = assignments_by_component.get(component_key, [])
+        if _use_individual(rows):
+            projected_inputs[component_key] = _effective_pct_from_state(component_key, rows, 100.0)
+        else:
+            projected_inputs[component_key] = st.session_state.get(
+                f"what_if_{course_id}_{component_key}", 100,
+            )
 
     projected_pct = calc.projected_grade(components, projected_inputs)
     projected_letter = _to_letter(projected_pct)
@@ -847,39 +885,131 @@ def _render_course_detail(course_id: int):
         for component in graded_components:
             component_key = component["component_key"]
             label = component["name"]
-            if component_key in detail.get("new_grade_keys", set()):
-                label += " 🆕"
-
             st.markdown(f"**{label}**")
             baseline_value = int(round(component["pct"]))
             marked_slider_baselines[component_key] = baseline_value
-            current_value = st.session_state.get(
-                f"what_if_{course_id}_{component_key}",
-                baseline_value,
-            )
-            meta_class = "component-meta moved-slider-marker" if current_value != baseline_value else "component-meta"
-            st.markdown(
-                (
+
+            assignment_rows = assignments_by_component.get(component_key, [])
+            active_rows = _active_rows(assignment_rows)
+            dropped_rows = [r for r in assignment_rows if r.get("status") == "dropped"]
+
+            if _use_individual(assignment_rows):
+                # --- per-assignment sliders ---
+                st.markdown(
+                    f'<p class="component-meta">'
+                    f"Weight: {component['weight']:.2f}%, "
+                    f"Score: {component['earned']:.1f}/{component['possible']:.1f} pts"
+                    f"</p>",
+                    unsafe_allow_html=True,
+                )
+                if dropped_rows:
+                    html_dropped = []
+                    for row in dropped_rows:
+                        name = row["name"] or "Untitled"
+                        score_str = (
+                            f"{row['earned']:.1f}/{row['possible']:.1f} pts ({row['pct']:.1f}%)"
+                            if row["earned"] is not None
+                            else f"/{row['possible']:.1f} pts"
+                        )
+                        html_dropped.append(
+                            f'<p class="assignment-row dropped">{name} — {score_str} · dropped</p>'
+                        )
+                    st.markdown("".join(html_dropped), unsafe_allow_html=True)
+
+                assign_weight = component["weight"] / len(active_rows)
+                individual_vals: dict[int, int] = {}
+                for row in active_rows:
+                    assign_key = f"what_if_{course_id}_assign_{row['assignment_id']}"
+                    baseline_assign = int(round(row["pct"] or 0))
+                    current_assign = st.session_state.get(assign_key, baseline_assign)
+                    meta_class = (
+                        "component-meta moved-slider-marker"
+                        if current_assign != baseline_assign
+                        else "component-meta"
+                    )
+                    if len(active_rows) > 1:
+                        st.markdown(
+                            f'<p class="{meta_class}">'
+                            f'{row["name"] or "Untitled"} — '
+                            f'{row["earned"]:.1f}/{row["possible"]:.1f} pts'
+                            f" ({row['pct']:.1f}%) · {assign_weight:.2f}%"
+                            f"</p>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(f'<p class="{meta_class}"></p>', unsafe_allow_html=True)
+                    individual_vals[row["assignment_id"]] = st.slider(
+                        "Slider",
+                        min_value=0,
+                        max_value=100,
+                        value=baseline_assign,
+                        key=assign_key,
+                        label_visibility="collapsed",
+                    )
+
+                effective_pct = (
+                    sum(individual_vals[r["assignment_id"]] for r in active_rows) / len(active_rows)
+                    if active_rows
+                    else float(baseline_value)
+                )
+                projected_inputs[component_key] = effective_pct
+
+            else:
+                # --- single component slider ---
+                current_value = st.session_state.get(
+                    f"what_if_{course_id}_{component_key}", baseline_value,
+                )
+                meta_class = (
+                    "component-meta moved-slider-marker"
+                    if current_value != baseline_value
+                    else "component-meta"
+                )
+                st.markdown(
                     f'<p class="{meta_class}">'
                     f"Weight: {component['weight']:.2f}%, "
                     f"Score: {component['earned']:.1f}/{component['possible']:.1f} pts"
-                    f"</p>"
-                ),
-                unsafe_allow_html=True,
-            )
+                    f"</p>",
+                    unsafe_allow_html=True,
+                )
+                if len(assignment_rows) > 1 or (
+                    len(assignment_rows) == 1
+                    and assignment_rows[0]["name"].lower() != label.lower()
+                ):
+                    html_rows = []
+                    for row in assignment_rows:
+                        name = row["name"] or "Untitled"
+                        if row["status"] == "dropped":
+                            score_str = (
+                                f"{row['earned']:.1f}/{row['possible']:.1f} pts ({row['pct']:.1f}%)"
+                                if row["earned"] is not None
+                                else f"/{row['possible']:.1f} pts"
+                            )
+                            html_rows.append(
+                                f'<p class="assignment-row dropped">{name} — {score_str} · dropped</p>'
+                            )
+                        elif row["status"] == "graded":
+                            html_rows.append(
+                                f'<p class="assignment-row">{name} — '
+                                f'{row["earned"]:.1f}/{row["possible"]:.1f} pts ({row["pct"]:.1f}%)</p>'
+                            )
+                        else:
+                            html_rows.append(
+                                f'<p class="assignment-row">{name} — not yet graded</p>'
+                            )
+                    st.markdown("".join(html_rows), unsafe_allow_html=True)
 
-            key = f"what_if_{course_id}_{component_key}"
-            projected_inputs[component_key] = st.slider(
-                "Slider",
-                min_value=0,
-                max_value=100,
-                value=baseline_value,
-                key=key,
-                label_visibility="collapsed",
-            )
+                key = f"what_if_{course_id}_{component_key}"
+                projected_inputs[component_key] = st.slider(
+                    "Slider",
+                    min_value=0,
+                    max_value=100,
+                    value=baseline_value,
+                    key=key,
+                    label_visibility="collapsed",
+                )
 
         has_marked_changes = any(
-            int(projected_inputs[component_key]) != baseline
+            abs(projected_inputs[component_key] - baseline) > 0.5
             for component_key, baseline in marked_slider_baselines.items()
         )
         st.markdown('<div class="save-grades-anchor"></div>', unsafe_allow_html=True)
@@ -914,22 +1044,95 @@ def _render_course_detail(course_id: int):
         st.subheader("Remaining Components")
     for component in ungraded_components:
         component_key = component["component_key"]
-        current_value = st.session_state.get(f"what_if_{course_id}_{component_key}", 100)
-        if current_value != 100:
-            st.markdown('<p class="component-meta moved-slider-marker"></p>', unsafe_allow_html=True)
-        key = f"what_if_{course_id}_{component_key}"
-        projected_inputs[component_key] = st.slider(
-            f"{component['name']} ({component['weight']:.2f}%)",
-            min_value=0,
-            max_value=100,
-            value=100,
-            key=key,
-        )
-        contrib = projected_inputs[component_key] * component["weight"] / 100
-        st.caption(
-            f"Using {projected_inputs[component_key]:.0f}% "
-            f"({contrib:.1f} pts)"
-        )
+        assignment_rows = assignments_by_component.get(component_key, [])
+
+        if _use_individual(assignment_rows):
+            # --- per-assignment sliders ---
+            st.markdown(f"**{component['name']}**")
+            st.markdown(
+                f'<p class="component-meta">Weight: {component["weight"]:.2f}%</p>',
+                unsafe_allow_html=True,
+            )
+            assign_weight = component["weight"] / len(assignment_rows)
+            individual_vals: dict[int, int] = {}
+            for row in assignment_rows:
+                assign_key = f"what_if_{course_id}_assign_{row['assignment_id']}"
+                current_assign = st.session_state.get(assign_key, 100)
+                meta_class = (
+                    "component-meta moved-slider-marker"
+                    if current_assign != 100
+                    else "component-meta"
+                )
+                if len(assignment_rows) > 1:
+                    st.markdown(
+                        f'<p class="{meta_class}">'
+                        f'{row["name"] or "Untitled"} · {assign_weight:.2f}%'
+                        f'</p>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(f'<p class="{meta_class}"></p>', unsafe_allow_html=True)
+                individual_vals[row["assignment_id"]] = st.slider(
+                    "Slider",
+                    min_value=0,
+                    max_value=100,
+                    value=100,
+                    key=assign_key,
+                    label_visibility="collapsed",
+                )
+                contrib = individual_vals[row["assignment_id"]] * assign_weight / 100
+                st.caption(
+                    f"Using {individual_vals[row['assignment_id']]:.0f}% ({contrib:.2f} pts)"
+                )
+
+            effective_pct = (
+                sum(individual_vals[r["assignment_id"]] for r in assignment_rows) / len(assignment_rows)
+                if assignment_rows
+                else 100.0
+            )
+            projected_inputs[component_key] = effective_pct
+
+        else:
+            # --- single component slider ---
+            st.markdown(f"**{component['name']}**")
+            st.markdown(
+                f'<p class="component-meta">Weight: {component["weight"]:.2f}%</p>',
+                unsafe_allow_html=True,
+            )
+            current_value = st.session_state.get(f"what_if_{course_id}_{component_key}", 100)
+            meta_class = (
+                "component-meta moved-slider-marker"
+                if current_value != 100
+                else "component-meta"
+            )
+            st.markdown(f'<p class="{meta_class}"></p>', unsafe_allow_html=True)
+            key = f"what_if_{course_id}_{component_key}"
+            projected_inputs[component_key] = st.slider(
+                "Slider",
+                min_value=0,
+                max_value=100,
+                value=100,
+                key=key,
+                label_visibility="collapsed",
+            )
+            contrib = projected_inputs[component_key] * component["weight"] / 100
+            st.caption(
+                f"Using {projected_inputs[component_key]:.0f}% ({contrib:.1f} pts)"
+            )
+            if assignment_rows:
+                html_rows = []
+                for row in assignment_rows:
+                    name = row["name"] or "Untitled"
+                    if row["status"] == "graded":
+                        html_rows.append(
+                            f'<p class="assignment-row">{name} — '
+                            f'{row["earned"]:.1f}/{row["possible"]:.1f} pts ({row["pct"]:.1f}%)</p>'
+                        )
+                    else:
+                        html_rows.append(
+                            f'<p class="assignment-row">{name} — not yet graded</p>'
+                        )
+                st.markdown("".join(html_rows), unsafe_allow_html=True)
     if not ungraded_components:
         st.info("No remaining weighted components for this course.")
 

@@ -213,6 +213,7 @@ class GradeCalculator:
         weights_lookup = {k.lower(): {"name": k, "weight": float(v)} for k, v in weights.items()}
         used_keys = set()
         components = []
+        assignments_by_component: dict[str, list[dict]] = {}
         reliable = True
         dropped_assignment_ids = set()
 
@@ -225,6 +226,8 @@ class GradeCalculator:
                 used_keys.update(group_model["matched_keys"])
                 if not group_model["reliable"]:
                     reliable = False
+                for comp_key, rows in group_model["assignments_by_component"].items():
+                    assignments_by_component.setdefault(comp_key, []).extend(rows)
                 continue
 
             group_key = self._match_weight_key(
@@ -232,7 +235,7 @@ class GradeCalculator:
                 {k: v["weight"] for k, v in weights_lookup.items()},
             )
             if group_key and group_key not in used_keys:
-                group_components = self._build_group_weight_components(
+                group_result = self._build_group_weight_components(
                     group.get("id", group["name"]),
                     group["name"],
                     group.get("assignments", []),
@@ -240,7 +243,9 @@ class GradeCalculator:
                     weights_lookup[group_key],
                     group_dropped_ids,
                 )
-                components.extend(group_components)
+                components.extend(group_result["components"])
+                for comp_key, rows in group_result["assignments_by_component"].items():
+                    assignments_by_component.setdefault(comp_key, []).extend(rows)
                 used_keys.add(group_key)
 
         unmatched_weights = [
@@ -283,6 +288,7 @@ class GradeCalculator:
             "unmatched_weights": unmatched_weights,
             "dropped_assignment_ids": sorted(dropped_assignment_ids),
             "reliable": reliable and bool(components),
+            "assignments_by_component": assignments_by_component,
         }
 
     def projected_grade(self, components: list[dict], slider_values: dict[str, float]) -> float:
@@ -447,17 +453,44 @@ class GradeCalculator:
         weights_only = {k: v["weight"] for k, v in weights_lookup.items()}
         group_key = cls._match_weight_key(group["name"], weights_only)
         components_by_key = {}
+        assignments_by_component_key: dict[str, list[dict]] = {}
         matched_keys = set()
         unmatched_assignments = []
         scorable_seen = 0
         reliable = True
 
         for assignment in group.get("assignments", []):
-            if assignment["id"] in dropped_assignment_ids:
-                continue
+            assignment_id = assignment["id"]
             points_possible = assignment.get("points_possible") or 0
+            is_dropped = assignment_id in dropped_assignment_ids
+
             if points_possible <= 0:
                 continue
+
+            if is_dropped:
+                # Track for display only — use direct name matching so it lands
+                # in the right component rather than always the group fallback.
+                key = cls._match_weight_key(
+                    assignment.get("name", ""),
+                    {k: v for k, v in weights_only.items() if k not in used_keys},
+                )
+                if key is None:
+                    key = group_key
+                if key:
+                    comp_key = f"groupitem::{group.get('id', group['name'])}::{key}"
+                    sub = sub_by_id.get(assignment_id)
+                    earned_val = sub["score"] if sub and sub.get("score") is not None else None
+                    pct_val = round(earned_val / points_possible * 100, 1) if earned_val is not None else None
+                    assignments_by_component_key.setdefault(comp_key, []).append({
+                        "name": assignment.get("name", ""),
+                        "assignment_id": assignment_id,
+                        "possible": points_possible,
+                        "earned": earned_val,
+                        "pct": pct_val,
+                        "status": "dropped",
+                    })
+                continue
+
             scorable_seen += 1
 
             key = cls._best_assignment_weight_key(
@@ -471,8 +504,9 @@ class GradeCalculator:
                 continue
 
             matched_keys.add(key)
+            comp_key = f"groupitem::{group.get('id', group['name'])}::{key}"
             component = components_by_key.setdefault(key, {
-                "component_key": f"groupitem::{group.get('id', group['name'])}::{key}",
+                "component_key": comp_key,
                 "name": weights_lookup[key]["name"],
                 "weight": weights_lookup[key]["weight"],
                 "status": "ungraded",
@@ -483,13 +517,24 @@ class GradeCalculator:
                 "group_name": group["name"],
             })
 
-            sub = sub_by_id.get(assignment["id"])
-            if sub is not None and sub.get("score") is not None:
+            sub = sub_by_id.get(assignment_id)
+            earned_val = sub["score"] if sub and sub.get("score") is not None else None
+            pct_val = round(earned_val / points_possible * 100, 1) if earned_val is not None else None
+            assignments_by_component_key.setdefault(comp_key, []).append({
+                "name": assignment.get("name", ""),
+                "assignment_id": assignment_id,
+                "possible": points_possible,
+                "earned": earned_val,
+                "pct": pct_val,
+                "status": "graded" if earned_val is not None else "ungraded",
+            })
+
+            if earned_val is not None:
                 component["earned"] += sub["score"]
                 component["possible"] += points_possible
 
         if scorable_seen == 0:
-            return {"components": [], "matched_keys": set(), "reliable": True}
+            return {"components": [], "matched_keys": set(), "reliable": True, "assignments_by_component": {}}
 
         components = []
         for component in components_by_key.values():
@@ -500,7 +545,7 @@ class GradeCalculator:
 
         if unmatched_assignments:
             if group_key and group_key not in used_keys and group_key not in matched_keys:
-                residual_components = cls._build_group_weight_components(
+                group_result = cls._build_group_weight_components(
                     group.get("id", group["name"]),
                     group["name"],
                     unmatched_assignments,
@@ -508,14 +553,21 @@ class GradeCalculator:
                     weights_lookup[group_key],
                     dropped_assignment_ids,
                 )
-                components.extend(residual_components)
+                components.extend(group_result["components"])
+                for comp_key, rows in group_result["assignments_by_component"].items():
+                    assignments_by_component_key.setdefault(comp_key, []).extend(rows)
                 matched_keys.add(group_key)
             elif matched_keys:
                 reliable = False
             else:
-                return {"components": [], "matched_keys": set(), "reliable": True}
+                return {"components": [], "matched_keys": set(), "reliable": True, "assignments_by_component": {}}
 
-        return {"components": components, "matched_keys": matched_keys, "reliable": reliable}
+        return {
+            "components": components,
+            "matched_keys": matched_keys,
+            "reliable": reliable,
+            "assignments_by_component": assignments_by_component_key,
+        }
 
     @classmethod
     def _best_assignment_weight_key(
@@ -546,17 +598,22 @@ class GradeCalculator:
         sub_by_id: dict[int, dict],
         weight_info: dict,
         dropped_assignment_ids: set[int],
-    ) -> list[dict]:
+    ) -> dict:
         """Build group-level components, splitting completed vs remaining work.
 
         When only a coarse group weight is known, Canvas points provide the best
         available way to apportion that group's weight between already-graded and
         still-ungraded work.
+
+        Returns a dict with "components" and "assignments_by_component" keys.
         """
         earned = possible = 0.0
         total_possible = 0.0
         graded_count = 0
         ungraded_count = 0
+
+        graded_rows: list[dict] = []
+        ungraded_rows: list[dict] = []
 
         for assignment in assignments:
             if assignment["id"] in dropped_assignment_ids:
@@ -570,74 +627,110 @@ class GradeCalculator:
                 earned += sub["score"]
                 possible += points_possible
                 graded_count += 1
+                graded_rows.append({
+                    "name": assignment.get("name", ""),
+                    "assignment_id": assignment["id"],
+                    "possible": points_possible,
+                    "earned": sub["score"],
+                    "pct": round(sub["score"] / points_possible * 100, 1) if points_possible > 0 else None,
+                    "status": "graded",
+                })
             else:
                 ungraded_count += 1
+                ungraded_rows.append({
+                    "name": assignment.get("name", ""),
+                    "assignment_id": assignment["id"],
+                    "possible": points_possible,
+                    "earned": None,
+                    "pct": None,
+                    "status": "ungraded",
+                })
 
         if total_possible == 0:
-            return [{
-                "component_key": f"group::{group_id}::{weight_info['name']}::all",
-                "name": weight_info["name"],
-                "weight": weight_info["weight"],
-                "status": "ungraded",
-                "pct": None,
-                "earned": 0.0,
-                "possible": 0.0,
-                "source": "group",
-                "group_name": group_name,
-            }]
+            comp_key = f"group::{group_id}::{weight_info['name']}::all"
+            return {
+                "components": [{
+                    "component_key": comp_key,
+                    "name": weight_info["name"],
+                    "weight": weight_info["weight"],
+                    "status": "ungraded",
+                    "pct": None,
+                    "earned": 0.0,
+                    "possible": 0.0,
+                    "source": "group",
+                    "group_name": group_name,
+                }],
+                "assignments_by_component": {},
+            }
 
         if not graded_count:
-            return [{
-                "component_key": f"group::{group_id}::{weight_info['name']}::pending",
-                "name": weight_info["name"],
-                "weight": weight_info["weight"],
-                "status": "ungraded",
-                "pct": None,
-                "earned": 0.0,
-                "possible": 0.0,
-                "source": "group",
-                "group_name": group_name,
-            }]
+            comp_key = f"group::{group_id}::{weight_info['name']}::pending"
+            return {
+                "components": [{
+                    "component_key": comp_key,
+                    "name": weight_info["name"],
+                    "weight": weight_info["weight"],
+                    "status": "ungraded",
+                    "pct": None,
+                    "earned": 0.0,
+                    "possible": 0.0,
+                    "source": "group",
+                    "group_name": group_name,
+                }],
+                "assignments_by_component": {comp_key: ungraded_rows},
+            }
 
         if not ungraded_count:
-            return [{
-                "component_key": f"group::{group_id}::{weight_info['name']}::graded",
-                "name": weight_info["name"],
-                "weight": weight_info["weight"],
-                "status": "graded",
-                "pct": round((earned / possible) * 100, 2) if possible > 0 else None,
-                "earned": earned,
-                "possible": possible,
-                "source": "group",
-                "group_name": group_name,
-            }]
+            comp_key = f"group::{group_id}::{weight_info['name']}::graded"
+            return {
+                "components": [{
+                    "component_key": comp_key,
+                    "name": weight_info["name"],
+                    "weight": weight_info["weight"],
+                    "status": "graded",
+                    "pct": round((earned / possible) * 100, 2) if possible > 0 else None,
+                    "earned": earned,
+                    "possible": possible,
+                    "source": "group",
+                    "group_name": group_name,
+                }],
+                "assignments_by_component": {comp_key: graded_rows},
+            }
 
         graded_weight = weight_info["weight"] * (possible / total_possible)
         remaining_weight = weight_info["weight"] - graded_weight
-        return [
-            {
-                "component_key": f"group::{group_id}::{weight_info['name']}::completed",
-                "name": f"{weight_info['name']} (completed)",
-                "weight": round(graded_weight, 2),
-                "status": "graded",
-                "pct": round((earned / possible) * 100, 2) if possible > 0 else None,
-                "earned": earned,
-                "possible": possible,
-                "source": "group",
-                "group_name": group_name,
+        comp_key_completed = f"group::{group_id}::{weight_info['name']}::completed"
+        comp_key_remaining = f"group::{group_id}::{weight_info['name']}::remaining"
+        return {
+            "components": [
+                {
+                    "component_key": comp_key_completed,
+                    "name": f"{weight_info['name']} (completed)",
+                    "weight": round(graded_weight, 2),
+                    "status": "graded",
+                    "pct": round((earned / possible) * 100, 2) if possible > 0 else None,
+                    "earned": earned,
+                    "possible": possible,
+                    "source": "group",
+                    "group_name": group_name,
+                },
+                {
+                    "component_key": comp_key_remaining,
+                    "name": f"{weight_info['name']} (remaining)",
+                    "weight": round(remaining_weight, 2),
+                    "status": "ungraded",
+                    "pct": None,
+                    "earned": 0.0,
+                    "possible": 0.0,
+                    "source": "group",
+                    "group_name": group_name,
+                },
+            ],
+            "assignments_by_component": {
+                comp_key_completed: graded_rows,
+                comp_key_remaining: ungraded_rows,
             },
-            {
-                "component_key": f"group::{group_id}::{weight_info['name']}::remaining",
-                "name": f"{weight_info['name']} (remaining)",
-                "weight": round(remaining_weight, 2),
-                "status": "ungraded",
-                "pct": None,
-                "earned": 0.0,
-                "possible": 0.0,
-                "source": "group",
-                "group_name": group_name,
-            },
-        ]
+        }
 
     @staticmethod
     def _resolve_dropped_assignment_ids(group: dict, sub_by_id: dict[int, dict]) -> set[int]:
