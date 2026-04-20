@@ -4,6 +4,7 @@ api/routers/auth.py - Google OAuth auth routes.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -19,25 +20,31 @@ from api.services.auth_service import (
 )
 
 router = APIRouter(tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _redirect_uri(request: Request) -> str:
-    return os.getenv("GOOGLE_REDIRECT_URI") or str(request.url_for("auth_callback"))
+    return os.getenv("REDIRECT_URI") or str(request.url_for("auth_callback"))
 
 
 @router.get("/google")
 def google_oauth_redirect(request: Request):
     try:
-        target = build_google_oauth_url(_redirect_uri(request))
+        redirect_uri = _redirect_uri(request)
+        target = build_google_oauth_url(redirect_uri)
     except AuthServiceError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    logger.info("Google OAuth redirect_uri: %s", redirect_uri)
+    logger.info("Google OAuth URL: %s", target)
     return RedirectResponse(target, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get("/callback", name="auth_callback")
 def google_oauth_callback(request: Request, code: str):
     try:
-        google_userinfo = exchange_google_code(code, _redirect_uri(request))
+        redirect_uri = _redirect_uri(request)
+        logger.info("Google OAuth callback redirect_uri: %s", redirect_uri)
+        google_userinfo = exchange_google_code(code, redirect_uri)
         user = get_or_create_backend_user(google_userinfo)
         token = create_access_token(user)
     except AuthServiceError as exc:

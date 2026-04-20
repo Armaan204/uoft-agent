@@ -5,16 +5,18 @@ api/dependencies.py - Shared FastAPI auth dependencies.
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from api.services.auth_service import AuthServiceError, decode_access_token
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/google")
+bearer_scheme = HTTPBearer()
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> dict:
     try:
-        payload = decode_access_token(token)
+        payload = decode_access_token(credentials.credentials)
     except AuthServiceError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -26,6 +26,16 @@ An AI academic assistant for University of Toronto students.
 - `integrations/acorn.py` — Streamlit-side ACORN backend client
 - `api_server.py` — minimal ACORN import API backed by Supabase Postgres
 - `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import, published on the Chrome Web Store
+- `api/` — FastAPI backend (Phase 1 of Streamlit → FastAPI + React migration)
+  - `api/main.py` — FastAPI app with CORS, mounts all routers, health check at `GET /`
+  - `api/dependencies.py` — JWT-based `get_current_user` dependency
+  - `api/routers/auth.py` — Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
+  - `api/routers/courses.py` — course, grade, scenario, weight routes + Quercus token CRUD
+  - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`
+  - `api/routers/acorn.py` — public ACORN routes matching `api_server.py` exactly
+  - `api/services/course_service.py` — uncached Quercus + calculator wrappers (bypasses `st.cache_data`)
+  - `api/services/acorn_service.py` — ACORN business logic for the FastAPI router
+  - `api/services/auth_service.py` — user lookup/creation and JWT signing helpers
 
 ## Key Decisions
 
@@ -36,6 +46,9 @@ An AI academic assistant for University of Toronto students.
 - Session state still caches the active token and derived dashboard data for the current run
 - Quercus submissions and assignment groups are cached briefly to speed up dashboard refreshes without making grades feel stale
 - Parsed syllabus weights are cached both in-process and persistently in Supabase to avoid repeated Anthropic parsing for the same course source
+- FastAPI course routes accept `?quercus_token=...` directly from the client; fall back to the Supabase-stored token if omitted
+- `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass `st.cache_data` decorators without touching the original integration files
+- JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
 
 ## Auth
 
@@ -85,6 +98,8 @@ Common variables:
 - `ENCRYPTION_KEY`
 - `ACORN_BACKEND_URL` optional override for the hosted ACORN API
 - `HOST` and `PORT` for `api_server.py`
+- `JWT_SECRET` for signing FastAPI JWTs (generate: `python -c "import secrets; print(secrets.token_hex(32))"`)
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for FastAPI Google OAuth
 
 ## Current Status
 
@@ -115,6 +130,7 @@ Implemented:
 
 Not implemented yet:
 
+- React frontend (Phase 2 of migration)
 - Gradescope integration
 - MarkUs integration
 - ACORN-driven planning workflows beyond readback/import
@@ -147,3 +163,11 @@ Run the ACORN backend:
 ```bash
 python api_server.py
 ```
+
+Run the FastAPI backend (dev):
+
+```bash
+uvicorn api.main:app --reload --port 8001
+```
+
+Swagger UI available at `http://localhost:8001/docs`.
