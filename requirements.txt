@@ -8,3 +8,7 @@ pypdf==6.1.1            # PDF syllabus parsing
 python-dotenv==1.1.1    # load .env in development
 supabase==2.15.3        # Supabase Postgres client
 cryptography==45.0.4    # Fernet token encryption
+fastapi
+uvicorn[standard]
+python-jose[cryptography]
+python-multipart

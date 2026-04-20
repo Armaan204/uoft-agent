@@ -13,9 +13,7 @@ import os
 import sys
 
 import anthropic
-import streamlit as st
 from dotenv import load_dotenv
-from streamlit.errors import StreamlitSecretNotFoundError
 
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools import TOOL_SCHEMAS, execute_tool
@@ -23,10 +21,7 @@ from integrations.quercus import QuercusClient
 
 load_dotenv()
 
-try:
-    ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-except StreamlitSecretNotFoundError:
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 MODEL = "claude-sonnet-4-6"
 
