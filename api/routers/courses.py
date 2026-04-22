@@ -5,6 +5,7 @@ api/routers/courses.py - Course, grade, scenario, weight, and token routes.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -28,10 +29,19 @@ from auth.user_store import (
 )
 
 router = APIRouter(tags=["courses"])
+logger = logging.getLogger(__name__)
 
 
 class QuercusTokenBody(BaseModel):
     token: str
+
+
+def _token_debug_value(token: str | None) -> str:
+    if not token:
+        return "<missing>"
+    if len(token) <= 10:
+        return token
+    return f"{token[:6]}...{token[-4:]} (len={len(token)})"
 
 
 def _resolve_token(
@@ -40,17 +50,35 @@ def _resolve_token(
 ) -> str:
     """Return the caller-supplied token or fall back to the saved one."""
     if quercus_token:
+        logger.info(
+            "Resolved dashboard token from request user_id=%s token=%s",
+            current_user.get("user_id"),
+            _token_debug_value(quercus_token),
+        )
         return quercus_token
     try:
         saved = get_quercus_token(current_user["user_id"])
     except UserStoreError as exc:
+        logger.exception(
+            "Failed to load saved Quercus token user_id=%s",
+            current_user.get("user_id"),
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not saved:
+        logger.warning(
+            "No saved Quercus token found user_id=%s",
+            current_user.get("user_id"),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No Quercus token provided and no saved token found. "
                    "Pass ?quercus_token=... or save one via POST /api/quercus-token.",
         )
+    logger.info(
+        "Resolved dashboard token from saved Supabase token user_id=%s token=%s",
+        current_user.get("user_id"),
+        _token_debug_value(saved),
+    )
     return saved
 
 
@@ -113,13 +141,38 @@ async def dashboard_courses(
 ):
     token = _resolve_token(quercus_token, current_user)
     try:
+        logger.info(
+            "Starting dashboard load user_id=%s token=%s",
+            current_user.get("user_id"),
+            _token_debug_value(token),
+        )
         courses = list_current_term_courses(token)
         tasks = [asyncio.to_thread(get_dashboard_course, token, course) for course in courses]
         dashboard = await asyncio.gather(*tasks)
         announcements = await asyncio.to_thread(get_dashboard_announcements, token, courses)
+        logger.info(
+            "Completed dashboard load user_id=%s courses=%s announcements=%s",
+            current_user.get("user_id"),
+            len(dashboard),
+            len(announcements),
+        )
         return {"courses": dashboard, "announcements": announcements}
     except (CourseServiceError, QuercusError) as exc:
+        logger.exception(
+            "Dashboard load failed user_id=%s token=%s error=%s",
+            current_user.get("user_id"),
+            _token_debug_value(token),
+            exc,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception(
+            "Unexpected dashboard load failure user_id=%s token=%s error=%s",
+            current_user.get("user_id"),
+            _token_debug_value(token),
+            exc,
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected dashboard error") from exc
 
 
 @router.get("/{course_id}/grades")
