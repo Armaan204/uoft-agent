@@ -2,6 +2,11 @@
 
 An AI academic assistant for University of Toronto students.
 
+## Live URLs
+
+- Main app: `https://uoft-agent.com`
+- Chrome extension: `https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb`
+
 ## What It Does
 
 - Connects to Quercus with a student-provided personal access token
@@ -26,7 +31,7 @@ An AI academic assistant for University of Toronto students.
 - `integrations/acorn.py` — Streamlit-side ACORN backend client
 - `api_server.py` — minimal ACORN import API backed by Supabase Postgres
 - `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import, published on the Chrome Web Store
-- `api/` — FastAPI backend (Phase 1 of Streamlit → FastAPI + React migration)
+- `api/` — FastAPI backend powering the deployed app at `https://uoft-agent.com`
   - `api/main.py` — FastAPI app with CORS, mounts all routers, health check at `GET /`
   - `api/dependencies.py` — JWT-based `get_current_user` dependency
   - `api/routers/auth.py` — Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
@@ -36,12 +41,13 @@ An AI academic assistant for University of Toronto students.
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers (bypasses `st.cache_data`)
   - `api/services/acorn_service.py` — ACORN business logic for the FastAPI router
   - `api/services/auth_service.py` — user lookup/creation and JWT signing helpers
-- `frontend/` — Vite + React frontend (Phase 3 in progress)
+- `frontend/` — Vite + React frontend deployed at `https://uoft-agent.com`
   - `frontend/src/App.jsx` — app routes, protected shell, frontend auth callback handling
   - `frontend/src/api/client.js` — Axios client with JWT injection and 401 handling
   - `frontend/src/hooks/useAuth.jsx` — localStorage-backed auth state and login completion
+  - `frontend/src/hooks/useQuercusStatus.jsx` — checks whether the logged-in user has a saved Quercus token
   - `frontend/src/components/` — reusable UI pieces including sidebar shell, profile menu, cards, lists, and tool-call rendering
-  - `frontend/src/pages/` — Login, Dashboard, Course Detail, Chat, and ACORN placeholder pages
+  - `frontend/src/pages/` — Login, Quercus onboarding, Dashboard, Course Detail, Chat, and ACORN pages
   - `frontend/src/index.css` — shared design system, typography, layout, and animation styles
 
 ## Key Decisions
@@ -58,6 +64,7 @@ An AI academic assistant for University of Toronto students.
 - JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
 - FastAPI Google OAuth now redirects back to the React frontend using `FRONTEND_URL`, and the frontend stores the returned JWT in localStorage
 - Swagger auth uses HTTP Bearer so developers can paste JWTs directly while testing the FastAPI API
+- Production frontend is served at `https://uoft-agent.com`; backend CORS allows `FRONTEND_URL` and optional `CORS_ORIGINS`
 
 ## Auth
 
@@ -73,6 +80,7 @@ The new React auth flow is:
 - Google returns to FastAPI at `REDIRECT_URI`
 - FastAPI callback signs a JWT and redirects to `${FRONTEND_URL}/auth/callback?token=...`
 - React stores the token in localStorage and uses it for protected API calls
+- After Google auth, React checks for a saved Quercus token; users without one are sent to `/onboarding`
 
 Expected Streamlit secrets structure:
 
@@ -116,6 +124,7 @@ Common variables:
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for FastAPI Google OAuth
 - `REDIRECT_URI` for FastAPI Google OAuth callback, e.g. `http://localhost:8001/auth/callback`
 - `FRONTEND_URL` for the React app callback target, e.g. `http://localhost:5173`
+- `CORS_ORIGINS` optional comma-separated extra allowed frontend origins for FastAPI CORS
 
 ## Current Status
 
@@ -144,21 +153,23 @@ Implemented:
 - Total Credits in the summary table excludes IPR (In Progress) and NGA (No Grade Available) courses — only earned credits are counted
 - `background.js` detects stale-tab "Receiving end does not exist" errors (happen when the extension updates while an ACORN tab is already open) and surfaces a clear "Please reload the ACORN tab" message rather than using `chrome.scripting` dynamic injection, keeping permissions minimal
 - FastAPI Google OAuth now works locally with `http://localhost:8001/auth/callback`, and the callback redirects into the React app
+- FastAPI + React app is deployed at `https://uoft-agent.com`
 - FastAPI protected routes now use Bearer JWT auth in Swagger UI instead of the broken password-flow form
 - `GET /api/courses/dashboard` aggregates dashboard cards plus upcoming deadlines and recent announcements in one request
 - `POST /api/chat` can use the saved Supabase Quercus token when `quercus_token` is omitted
 - React frontend scaffolded with Vite, React Router, Axios, and TanStack Query
 - React login page implemented and wired to FastAPI Google OAuth
+- React Quercus onboarding flow implemented: checks for saved token, validates new token, persists it, and redirects into the app
 - React dashboard implemented with course cards, upcoming deadlines rail, recent announcements section, and profile dropdown
 - React course-detail page implemented with real grade breakdown data and what-if sliders
 - React chat page implemented against `POST /api/chat` with tool-call blocks and suggestion chips
 - Shared React app shell implemented with sidebar navigation for Dashboard, Chat, and ACORN
-- ACORN page exists in React as a placeholder route only; ACORN workflows have not yet been ported from Streamlit
+- React ACORN page implemented with onboarding/claim flow, summary cards, GPA chart, sortable course table, and re-import flow
+- Frontend and backend deployment scaffolding added for Railway: `Procfile`, frontend Dockerfile, nginx static config, and production API URL support
 
 Not implemented yet:
 
 - React frontend polish and completion of remaining product flows
-- React ACORN workflows beyond a placeholder page
 - Gradescope integration
 - MarkUs integration
 - ACORN-driven planning workflows beyond readback/import

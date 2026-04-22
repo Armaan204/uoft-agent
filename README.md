@@ -10,7 +10,7 @@ AI academic assistant for University of Toronto students.
 
 ## Live App
 
-https://uoft-agent.streamlit.app/
+https://uoft-agent.com/
 
 ## Chrome Extension
 
@@ -36,7 +36,7 @@ Current capabilities:
 
 ## Core Flow
 
-1. The student signs in with Google using Streamlit's native auth.
+1. The student signs in with Google through the deployed FastAPI + React flow.
 2. On first use, the student enters a Quercus personal access token.
 3. The app validates the token, encrypts it, and stores it in Supabase for that logged-in user.
 4. On later visits, the app restores the saved token automatically and skips the token prompt.
@@ -68,7 +68,7 @@ The app uses Streamlit's built-in auth APIs:
 
 This is not a Supabase Auth flow and not a custom auth module.
 
-On Streamlit Cloud, configure secrets like this:
+If you still run the legacy Streamlit app, configure secrets like this:
 
 ```toml
 ANTHROPIC_API_KEY = "..."
@@ -77,7 +77,7 @@ SUPABASE_KEY = "..."
 ENCRYPTION_KEY = "..."
 
 [auth]
-redirect_uri = "https://uoft-agent.streamlit.app/oauth2callback"
+redirect_uri = "https://uoft-agent.com/oauth2callback"
 cookie_secret = "..."
 
 [auth.google]
