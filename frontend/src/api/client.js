@@ -1,9 +1,10 @@
 import axios from 'axios'
 
 export const TOKEN_KEY = 'uoft-agent-token'
+const baseURL = import.meta.env.VITE_API_URL || ''
 
 const client = axios.create({
-  baseURL: '',
+  baseURL,
 })
 
 client.interceptors.request.use((config) => {
