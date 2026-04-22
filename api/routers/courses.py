@@ -91,9 +91,20 @@ def read_quercus_token(current_user: dict = Depends(get_current_user)):
     try:
         token = get_quercus_token(current_user["user_id"])
     except UserStoreError as exc:
+        logger.exception(
+            "Failed to read saved Quercus token user_id=%s error=%s",
+            current_user.get("user_id"),
+            exc,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if token is None:
+        logger.info("No saved Quercus token for user_id=%s", current_user.get("user_id"))
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved Quercus token")
+    logger.info(
+        "Read saved Quercus token user_id=%s token=%s",
+        current_user.get("user_id"),
+        _token_debug_value(token),
+    )
     return {"token": token}
 
 

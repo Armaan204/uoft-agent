@@ -67,4 +67,11 @@ def logout():
 
 @router.get("/me")
 def me(current_user: dict = Depends(get_current_user)):
+    logger.info(
+        "Auth /me user_id=%s email=%s name=%s google_id=%s",
+        current_user.get("user_id"),
+        current_user.get("email"),
+        current_user.get("name"),
+        current_user.get("google_id"),
+    )
     return current_user
