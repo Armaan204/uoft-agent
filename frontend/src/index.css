@@ -210,6 +210,67 @@ h1 {
   color: oklch(35% 0.015 260);
 }
 
+.onboarding-copy {
+  margin-bottom: 10px;
+}
+
+.onboarding-help {
+  margin: 0 0 34px;
+  max-width: 32ch;
+  color: var(--muted2);
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.onboarding-form {
+  width: 100%;
+}
+
+.onboarding-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.onboarding-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid oklch(28% 0.028 260);
+  background: oklch(12.5% 0.018 260);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  margin-bottom: 14px;
+}
+
+.onboarding-input:focus {
+  border-color: oklch(42% 0.08 240);
+  background: oklch(14% 0.02 260);
+}
+
+.onboarding-input::placeholder {
+  color: var(--muted);
+}
+
+.onboarding-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid oklch(35% 0.1 20 / 0.4);
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.onboarding-submit {
+  margin-bottom: 0;
+}
+
 .dashboard-page,
 .detail-page {
   width: 100%;

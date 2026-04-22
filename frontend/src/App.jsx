@@ -3,11 +3,13 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 
 import AppShell from './components/AppShell'
 import { useAuth } from './hooks/useAuth'
+import { useQuercusStatus } from './hooks/useQuercusStatus'
 import Acorn from './pages/Acorn'
 import Chat from './pages/Chat'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
+import Onboarding from './pages/Onboarding'
 
 function AuthCallbackPage() {
   const navigate = useNavigate()
@@ -38,6 +40,36 @@ function ProtectedRoute({ children }) {
   return children
 }
 
+function QuercusTokenRequired({ children }) {
+  const { data, isLoading, error } = useQuercusStatus()
+
+  if (isLoading) {
+    return <div className="callback-screen">Loading…</div>
+  }
+  if (error) {
+    return <div className="callback-screen">Failed to load Quercus status.</div>
+  }
+  if (!data?.hasToken) {
+    return <Navigate to="/onboarding" replace />
+  }
+  return children
+}
+
+function QuercusTokenMissing({ children }) {
+  const { data, isLoading, error } = useQuercusStatus()
+
+  if (isLoading) {
+    return <div className="callback-screen">Loading…</div>
+  }
+  if (error) {
+    return <div className="callback-screen">Failed to load Quercus status.</div>
+  }
+  if (data?.hasToken) {
+    return <Navigate to="/" replace />
+  }
+  return children
+}
+
 export default function App() {
   const { isAuthenticated } = useAuth()
 
@@ -46,15 +78,46 @@ export default function App() {
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <QuercusTokenMissing>
+              <Onboarding />
+            </QuercusTokenMissing>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         element={
           <ProtectedRoute>
             <AppShell />
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/courses/:id" element={<CourseDetail />} />
-        <Route path="/chat" element={<Chat />} />
+        <Route
+          path="/"
+          element={
+            <QuercusTokenRequired>
+              <Dashboard />
+            </QuercusTokenRequired>
+          }
+        />
+        <Route
+          path="/courses/:id"
+          element={
+            <QuercusTokenRequired>
+              <CourseDetail />
+            </QuercusTokenRequired>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <QuercusTokenRequired>
+              <Chat />
+            </QuercusTokenRequired>
+          }
+        />
         <Route path="/acorn" element={<Acorn />} />
       </Route>
     </Routes>

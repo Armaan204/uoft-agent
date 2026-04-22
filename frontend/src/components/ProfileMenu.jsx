@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 
 import client from '../api/client'
 
@@ -8,6 +9,7 @@ export default function ProfileMenu({ displayName, initials, onLogout, dropUp = 
   const [disconnecting, setDisconnecting] = useState(false)
   const menuRef = useRef(null)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   useEffect(() => {
     function handlePointer(event) {
@@ -38,6 +40,8 @@ export default function ProfileMenu({ displayName, initials, onLogout, dropUp = 
       await queryClient.removeQueries({ queryKey: ['dashboard'] })
       await queryClient.removeQueries({ queryKey: ['courses'] })
       await queryClient.removeQueries({ queryKey: ['course-grades'] })
+      await queryClient.invalidateQueries({ queryKey: ['quercus-token-status'] })
+      navigate('/onboarding', { replace: true })
     } finally {
       setDisconnecting(false)
       setOpen(false)
