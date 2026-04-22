@@ -4,6 +4,9 @@ api/services/course_service.py - Uncached Quercus and grading service wrappers.
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta, timezone
+from html import unescape
 from typing import Any
 
 from auth.user_store import UserStoreError, get_quercus_token
@@ -67,6 +70,74 @@ def list_current_term_courses(quercus_token: str) -> list[dict[str, Any]]:
         }
         for course in courses
     ]
+
+
+def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str, Any]:
+    client = UncachedQuercusClient(token=quercus_token)
+    course_id = course["id"]
+    groups = client.get_assignment_groups(course_id)
+    submissions = client.get_submissions(course_id)
+    weights, _source = _resolve_course_weights_uncached(course_id, client)
+
+    if weights:
+        component_model = _calc.build_weighted_components(groups, submissions, weights)
+        if component_model["reliable"]:
+            grade = _grade_from_components(component_model["components"])
+        else:
+            grade = _grade_from_points(groups, submissions)
+    else:
+        grade = _grade_from_points(groups, submissions)
+
+    upcoming_deadlines = _get_upcoming_deadlines(client, course_id, course.get("course_code"))
+    current_grade = grade["weighted_grade"]
+    return {
+        "id": course_id,
+        "course_code": course.get("course_code"),
+        "name": course.get("name"),
+        "current_grade": current_grade,
+        "letter_grade": grade["letter"],
+        "risk_flag": _risk_flag(current_grade, grade["letter"] != "N/A"),
+        "progress_pct": round(grade.get("graded_weight", 0.0), 2),
+        "deadlines": upcoming_deadlines,
+    }
+
+
+def get_dashboard_announcements(quercus_token: str, courses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    client = UncachedQuercusClient(token=quercus_token)
+    course_lookup = {course["id"]: course for course in courses}
+    raw_announcements = client.get_latest_announcements(list(course_lookup.keys()))
+    announcements = []
+
+    for announcement in raw_announcements:
+        context_code = announcement.get("context_code", "")
+        if not context_code.startswith("course_"):
+            continue
+        try:
+            course_id = int(context_code.split("_", 1)[1])
+        except ValueError:
+            continue
+
+        course = course_lookup.get(course_id)
+        if course is None:
+            continue
+
+        posted_at = announcement.get("posted_at")
+        try:
+            posted_dt = datetime.fromisoformat(posted_at.replace("Z", "+00:00")) if posted_at else None
+        except ValueError:
+            posted_dt = None
+
+        announcements.append({
+            "course_id": course_id,
+            "course_code": course.get("course_code") or course.get("name"),
+            "title": announcement.get("title") or "Untitled announcement",
+            "preview": _announcement_preview(announcement.get("message")),
+            "url": announcement.get("html_url") or announcement.get("url"),
+            "posted_at": posted_dt.isoformat() if posted_dt else None,
+        })
+
+    announcements.sort(key=lambda item: item["posted_at"] or "", reverse=True)
+    return announcements
 
 
 def get_course_weights(quercus_token: str, course_id: int | str) -> dict[str, Any]:
@@ -200,6 +271,49 @@ def _resolve_course_weights_uncached(course_id: int | str, client: UncachedQuerc
         pass
 
     return None, None
+
+
+def _risk_flag(pct: float, has_data: bool) -> str:
+    if not has_data:
+        return "No breakdown"
+    if pct < 70:
+        return "At risk"
+    if pct < 85:
+        return "On track"
+    return "Safe"
+
+
+def _get_upcoming_deadlines(
+    client: UncachedQuercusClient,
+    course_id: int | str,
+    course_code: str | None,
+    days: int = 14,
+) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=days)
+    deadlines = []
+    for assignment in client.get_assignments(course_id):
+        due_raw = assignment.get("due_at")
+        if not due_raw:
+            continue
+        due_dt = datetime.fromisoformat(due_raw.replace("Z", "+00:00"))
+        if now <= due_dt <= cutoff:
+            deadlines.append({
+                "name": assignment.get("name"),
+                "due_at": due_dt.isoformat(),
+                "course_code": course_code,
+                "url": assignment.get("html_url"),
+            })
+    deadlines.sort(key=lambda item: item["due_at"])
+    return deadlines
+
+
+def _announcement_preview(html: str | None, limit: int = 180) -> str:
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    text = " ".join(unescape(text).split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 def parse_syllabus_weights_uncached(

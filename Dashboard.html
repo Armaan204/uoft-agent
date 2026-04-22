@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UofT Agent — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        oklch(10% 0.015 260);
+      --surface:   oklch(13.5% 0.018 260);
+      --surface2:  oklch(16% 0.02 260);
+      --border:    oklch(22% 0.022 260);
+      --border2:   oklch(26% 0.02 260);
+      --muted:     oklch(45% 0.018 260);
+      --muted2:    oklch(60% 0.015 260);
+      --text:      oklch(92% 0.008 260);
+      --accent:    oklch(68% 0.16 240);
+      --accent-dim:oklch(30% 0.08 240);
+      --green:     oklch(68% 0.16 150);
+      --green-bg:  oklch(20% 0.05 150);
+      --yellow:    oklch(78% 0.15 85);
+      --yellow-bg: oklch(20% 0.05 85);
+      --red:       oklch(65% 0.18 20);
+      --red-bg:    oklch(20% 0.06 20);
+    }
+
+    html, body {
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 40% at 50% 0%, oklch(20% 0.06 245 / 0.35) 0%, transparent 65%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .page { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 32px 80px; }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 0 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
+      animation: rise 0.5s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 32px; height: 32px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, oklch(20% 0.06 245), oklch(16% 0.04 260));
+      border: 1px solid oklch(28% 0.05 245);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 16px -4px var(--accent);
+    }
+
+    .logo-name {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      color: var(--text);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-dim), oklch(25% 0.06 200));
+      border: 1.5px solid var(--border2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.3px;
+    }
+
+    .user-name {
+      font-size: 13px;
+      color: var(--muted2);
+      font-weight: 400;
+    }
+
+    .btn-logout {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12.5px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-logout:hover { border-color: var(--border2); color: var(--text); }
+
+    /* ── Semester label ── */
+    .semester-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 24px;
+      animation: rise 0.5s 0.05s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .semester-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+    }
+    .semester-tag {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border: 1px solid oklch(40% 0.1 240 / 0.4);
+      border-radius: 6px;
+      padding: 2px 8px;
+    }
+
+    /* ── GPA bar ── */
+    .gpa-strip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+      animation: rise 0.5s 0.07s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .gpa-label { font-size: 12px; color: var(--muted); }
+    .gpa-val { font-size: 13px; font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
+
+    /* ── Course grid ── */
+    .course-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    .course-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      animation: rise 0.5s cubic-bezier(0.16,1,0.3,1) both;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .course-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, oklch(100% 0 0 / 0.06), transparent);
+    }
+
+    .course-card:hover {
+      border-color: var(--border2);
+      box-shadow: 0 8px 32px -8px oklch(5% 0.02 260 / 0.6);
+    }
+
+    .course-card:nth-child(1) { animation-delay: 0.08s; }
+    .course-card:nth-child(2) { animation-delay: 0.12s; }
+    .course-card:nth-child(3) { animation-delay: 0.16s; }
+    .course-card:nth-child(4) { animation-delay: 0.20s; }
+
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .course-code {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .course-name {
+      font-size: 14.5px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: -0.1px;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.2px;
+      flex-shrink: 0;
+    }
+    .badge.safe   { background: var(--green-bg); color: var(--green); border: 1px solid oklch(35% 0.08 150 / 0.5); }
+    .badge.track  { background: var(--yellow-bg); color: var(--yellow); border: 1px solid oklch(40% 0.08 85 / 0.5); }
+    .badge.risk   { background: var(--red-bg); color: var(--red); border: 1px solid oklch(35% 0.1 20 / 0.5); }
+
+    .grade-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .grade-pct {
+      font-size: 36px;
+      font-weight: 600;
+      letter-spacing: -1.5px;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .grade-letter {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--muted2);
+      letter-spacing: -0.3px;
+    }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      height: 4px;
+      background: var(--surface2);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 1s cubic-bezier(0.16,1,0.3,1);
+    }
+
+    .fill-safe  { background: linear-gradient(90deg, var(--green), oklch(75% 0.18 160)); }
+    .fill-track { background: linear-gradient(90deg, var(--yellow), oklch(82% 0.18 95)); }
+    .fill-risk  { background: linear-gradient(90deg, var(--red), oklch(72% 0.2 30)); }
+
+    .btn-view {
+      align-self: flex-start;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted2);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-view:hover { background: oklch(20% 0.022 260); border-color: var(--border2); color: var(--text); }
+    .btn-view svg { width: 12px; height: 12px; opacity: 0.7; }
+
+    /* ── Deadlines ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+      animation: rise 0.5s 0.24s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .deadlines {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      animation: rise 0.5s 0.26s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .deadline-item {
+      display: grid;
+      grid-template-columns: 100px 1fr auto;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+
+    .deadline-item:last-child { border-bottom: none; }
+    .deadline-item:hover { background: var(--surface2); }
+
+    .dl-code {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.4px;
+    }
+
+    .dl-name {
+      font-size: 13.5px;
+      font-weight: 400;
+      color: var(--text);
+    }
+
+    .dl-due {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .dl-due.soon { color: var(--yellow); }
+    .dl-due.urgent { color: var(--red); }
+
+    .dl-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .dot-safe   { background: var(--green); }
+    .dot-soon   { background: var(--yellow); }
+    .dot-urgent { background: var(--red); }
+
+    /* ── Floating chat ── */
+    .chat-fab {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 24px oklch(40% 0.2 240 / 0.45), 0 0 0 1px oklch(80% 0.12 240 / 0.15) inset;
+      transition: transform 0.18s, box-shadow 0.18s, background 0.15s;
+      animation: rise 0.5s 0.35s cubic-bezier(0.16,1,0.3,1) both;
+      z-index: 100;
+    }
+    .chat-fab:hover {
+      transform: translateY(-2px) scale(1.05);
+      box-shadow: 0 8px 32px oklch(40% 0.2 240 / 0.55), 0 0 0 1px oklch(80% 0.12 240 / 0.2) inset;
+      background: oklch(72% 0.17 240);
+    }
+    .chat-fab:active { transform: scale(0.97); }
+    .chat-fab svg { width: 22px; height: 22px; }
+
+    /* ── Animations ── */
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .page { padding: 0 16px 80px; }
+      .course-grid { grid-template-columns: 1fr; }
+      .deadline-item { grid-template-columns: 80px 1fr; }
+      .dl-due { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
+            <path d="M14 6L3 11.5L14 17L25 11.5L14 6Z" fill="oklch(68% 0.16 240)" opacity="0.9"/>
+            <path d="M8 14.2V19.5C8 19.5 10.5 21.5 14 21.5C17.5 21.5 20 19.5 20 19.5V14.2L14 17L8 14.2Z" fill="oklch(68% 0.16 240)" opacity="0.55"/>
+            <circle cx="22.5" cy="8" r="1.1" fill="oklch(80% 0.12 200)" opacity="0.8"/>
+          </svg>
+        </div>
+        <span class="logo-name">UofT Agent</span>
+      </div>
+      <div class="header-right">
+        <span class="user-name">Alex Chen</span>
+        <div class="avatar">AC</div>
+        <button class="btn-logout">Log out</button>
+      </div>
+    </header>
+
+    <!-- Semester -->
+    <div class="semester-row">
+      <span class="semester-title">Winter 2026</span>
+      <span class="semester-tag">Active</span>
+    </div>
+
+    <!-- Course grid -->
+    <div class="course-grid">
+
+      <!-- Card 1 -->
+      <div class="course-card">
+        <div class="card-top">
+          <div>
+            <div class="course-code">STAD68H3</div>
+            <div class="course-name">Applied Regression Analysis</div>
+          </div>
+          <span class="badge safe">Safe</span>
+        </div>
+        <div class="grade-row">
+          <span class="grade-pct">91</span>
+          <span class="grade-letter">% · A+</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-fill fill-safe" style="width: 91%"></div>
+        </div>
+        <button class="btn-view" onclick="openBreakdown('STAD68H3')">
+          View breakdown
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6h8M6 2l4 4-4 4"/></svg>
+        </button>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="course-card">
+        <div class="card-top">
+          <div>
+            <div class="course-code">CSCD27H3</div>
+            <div class="course-name">Computer &amp; Network Security</div>
+          </div>
+          <span class="badge track">On track</span>
+        </div>
+        <div class="grade-row">
+          <span class="grade-pct">76</span>
+          <span class="grade-letter">% · B+</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-fill fill-track" style="width: 76%"></div>
+        </div>
+        <button class="btn-view" onclick="openBreakdown('CSCD27H3')">
+          View breakdown
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6h8M6 2l4 4-4 4"/></svg>
+        </button>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="course-card">
+        <div class="card-top">
+          <div>
+            <div class="course-code">MATB44H3</div>
+            <div class="course-name">Differential Equations II</div>
+          </div>
+          <span class="badge risk">At risk</span>
+        </div>
+        <div class="grade-row">
+          <span class="grade-pct">58</span>
+          <span class="grade-letter">% · C−</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-fill fill-risk" style="width: 58%"></div>
+        </div>
+        <button class="btn-view" onclick="openBreakdown('MATB44H3')">
+          View breakdown
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6h8M6 2l4 4-4 4"/></svg>
+        </button>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="course-card">
+        <div class="card-top">
+          <div>
+            <div class="course-code">LIND01H3</div>
+            <div class="course-name">Language &amp; Linguistics</div>
+          </div>
+          <span class="badge safe">Safe</span>
+        </div>
+        <div class="grade-row">
+          <span class="grade-pct">84</span>
+          <span class="grade-letter">% · A−</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-fill fill-safe" style="width: 84%"></div>
+        </div>
+        <button class="btn-view" onclick="openBreakdown('LIND01H3')">
+          View breakdown
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6h8M6 2l4 4-4 4"/></svg>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Deadlines -->
+    <div class="section-label">Upcoming Deadlines</div>
+    <div class="deadlines">
+
+      <div class="deadline-item">
+        <span class="dl-code">MATB44H3</span>
+        <span class="dl-name">Problem Set 4</span>
+        <span class="dl-due urgent"><span class="dl-dot dot-urgent"></span>Tomorrow, Apr 21</span>
+      </div>
+
+      <div class="deadline-item">
+        <span class="dl-code">CSCD27H3</span>
+        <span class="dl-name">Lab 6 — Buffer Overflow</span>
+        <span class="dl-due soon"><span class="dl-dot dot-soon"></span>Wed, Apr 23</span>
+      </div>
+
+      <div class="deadline-item">
+        <span class="dl-code">STAD68H3</span>
+        <span class="dl-name">Assignment 3</span>
+        <span class="dl-due soon"><span class="dl-dot dot-soon"></span>Fri, Apr 25</span>
+      </div>
+
+      <div class="deadline-item">
+        <span class="dl-code">LIND01H3</span>
+        <span class="dl-name">Essay Draft — Phonology</span>
+        <span class="dl-due"><span class="dl-dot dot-safe"></span>Mon, Apr 28</span>
+      </div>
+
+      <div class="deadline-item">
+        <span class="dl-code">MATB44H3</span>
+        <span class="dl-name">Midterm 2 (in-person)</span>
+        <span class="dl-due"><span class="dl-dot dot-safe"></span>Thu, May 1</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Floating chat button -->
+  <button class="chat-fab" title="Ask UofT Agent" onclick="toggleChat()">
+    <svg viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 6C4 4.9 4.9 4 6 4H16C17.1 4 18 4.9 18 6V13C18 14.1 17.1 15 16 15H12L8 18V15H6C4.9 15 4 14.1 4 13V6Z"
+            fill="white" opacity="0.95"/>
+      <circle cx="8.5" cy="9.5" r="1" fill="oklch(68% 0.16 240)"/>
+      <circle cx="11" cy="9.5" r="1" fill="oklch(68% 0.16 240)"/>
+      <circle cx="13.5" cy="9.5" r="1" fill="oklch(68% 0.16 240)"/>
+    </svg>
+  </button>
+
+  <script>
+    // Animate progress bars on load
+    window.addEventListener('load', () => {
+      document.querySelectorAll('.progress-fill').forEach(el => {
+        const w = el.style.width;
+        el.style.width = '0%';
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => { el.style.width = w; });
+        });
+      });
+    });
+
+    function openBreakdown(code) {
+      // Placeholder interaction
+      const card = [...document.querySelectorAll('.course-card')]
+        .find(c => c.querySelector('.course-code').textContent === code);
+      if (card) {
+        card.style.borderColor = 'oklch(40% 0.1 240)';
+        setTimeout(() => card.style.borderColor = '', 600);
+      }
+    }
+
+    function toggleChat() {
+      const fab = document.querySelector('.chat-fab');
+      fab.style.transform = 'scale(0.9)';
+      setTimeout(() => fab.style.transform = '', 150);
+    }
+  </script>
+</body>
+</html>

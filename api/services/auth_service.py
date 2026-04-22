@@ -84,7 +84,9 @@ def get_or_create_backend_user(google_userinfo: dict[str, Any]) -> dict[str, Any
     email = google_userinfo.get("email")
     if not google_id:
         raise AuthServiceError("Google user info missing subject identifier")
-    return get_or_create_user(google_id=google_id, email=email)
+    user = get_or_create_user(google_id=google_id, email=email)
+    user["name"] = google_userinfo.get("name")
+    return user
 
 
 def create_access_token(user: dict[str, Any]) -> str:
@@ -93,6 +95,7 @@ def create_access_token(user: dict[str, Any]) -> str:
     payload = {
         "user_id": user.get("id"),
         "email": user.get("email"),
+        "name": user.get("name"),
         "google_id": user.get("google_id"),
         "exp": int(expires_at.timestamp()),
     }

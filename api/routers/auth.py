@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 def _redirect_uri(request: Request) -> str:
     return os.getenv("REDIRECT_URI") or str(request.url_for("auth_callback"))
+
+
+def _frontend_callback_url(token: str) -> str:
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    return f"{frontend_url}/auth/callback?{urlencode({'token': token})}"
 
 
 @router.get("/google")
@@ -49,14 +55,9 @@ def google_oauth_callback(request: Request, code: str):
         token = create_access_token(user)
     except AuthServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return {
-        "token": token,
-        "user": {
-            "user_id": user.get("id"),
-            "email": user.get("email"),
-            "google_id": user.get("google_id"),
-        },
-    }
+    frontend_redirect = _frontend_callback_url(token)
+    logger.info("Frontend auth callback URL: %s", frontend_redirect)
+    return RedirectResponse(frontend_redirect, status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/logout")

@@ -10,6 +10,7 @@ from typing import Any
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
+from auth.user_store import get_supabase_client
 from integrations.acorn_store import AcornStoreError, validate_payload
 
 load_dotenv()
@@ -98,3 +99,77 @@ def get_import_status(import_code: str) -> dict:
         "importCode": latest.get("importCode", normalized),
         "courseCount": len(latest.get("courses", [])),
     }
+
+
+def get_latest_import_for_user(user_id: str | int) -> dict | None:
+    """Return the latest claimed ACORN import row for one user."""
+    if user_id in (None, ""):
+        return None
+
+    try:
+        response = (
+            get_supabase_client()
+            .table("acorn_imports")
+            .select("id, data, imported_at")
+            .eq("user_id", user_id)
+            .order("imported_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise AcornServiceError("Failed to load saved ACORN import") from exc
+
+    rows = getattr(response, "data", None) or []
+    if not rows:
+        return None
+
+    row = rows[0]
+    data = dict(row.get("data") or {})
+    if row.get("imported_at") and not data.get("importedAt"):
+        data["importedAt"] = row["imported_at"]
+    return data
+
+
+def claim_latest_import_for_user(import_code: str, user_id: str | int) -> dict | None:
+    """Attach the newest import for one import code to the given user account."""
+    if not import_code or not str(import_code).strip():
+        raise AcornStoreError("import_code must be provided")
+    if user_id in (None, ""):
+        raise AcornStoreError("user_id must be provided")
+
+    normalized = validate_payload({"importCode": import_code, "courses": []})["importCode"]
+    client = get_supabase_client()
+
+    try:
+        lookup = (
+            client
+            .table("acorn_imports")
+            .select("id, data, imported_at")
+            .eq("import_code", normalized)
+            .order("imported_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise AcornServiceError("Failed to load ACORN import to claim") from exc
+
+    rows = getattr(lookup, "data", None) or []
+    if not rows:
+        return None
+
+    row = rows[0]
+    try:
+        (
+            client
+            .table("acorn_imports")
+            .update({"user_id": user_id})
+            .eq("id", row["id"])
+            .execute()
+        )
+    except Exception as exc:
+        raise AcornServiceError("Failed to claim ACORN import for user") from exc
+
+    data = dict(row.get("data") or {})
+    if row.get("imported_at") and not data.get("importedAt"):
+        data["importedAt"] = row["imported_at"]
+    return data

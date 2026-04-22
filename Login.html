@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UofT Agent — Sign In</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        oklch(10% 0.015 260);
+      --surface:   oklch(14% 0.018 260);
+      --border:    oklch(22% 0.022 260);
+      --muted:     oklch(45% 0.018 260);
+      --text:      oklch(92% 0.008 260);
+      --accent:    oklch(68% 0.16 240);
+      --glow:      oklch(55% 0.18 240);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100svh;
+      overflow: hidden;
+    }
+
+    /* Ambient background glow */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 30%, oklch(20% 0.06 245 / 0.4) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 70% 80%, oklch(18% 0.04 280 / 0.2) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Subtle grid texture */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(oklch(100% 0 0 / 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, oklch(100% 0 0 / 0.018) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Card ── */
+    .card {
+      position: relative;
+      z-index: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 52px 48px 44px;
+      width: min(420px, calc(100vw - 32px));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      box-shadow:
+        0 0 0 1px oklch(100% 0 0 / 0.04) inset,
+        0 32px 80px -16px oklch(5% 0.02 260 / 0.8),
+        0 0 60px -20px var(--glow);
+
+      animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(24px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── Icon ── */
+    .icon-wrap {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, oklch(20% 0.06 245), oklch(16% 0.04 260));
+      border: 1px solid oklch(28% 0.05 245);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 28px;
+      box-shadow: 0 0 24px -4px var(--glow);
+      animation: rise 0.7s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .icon-wrap svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    /* ── Title ── */
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: -0.3px;
+      color: var(--text);
+      margin-bottom: 10px;
+      animation: rise 0.7s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .tagline {
+      font-size: 13.5px;
+      font-weight: 300;
+      color: var(--muted);
+      letter-spacing: 0.1px;
+      margin-bottom: 40px;
+      animation: rise 0.7s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin-bottom: 32px;
+      animation: rise 0.7s 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    /* ── Google Button ── */
+    .btn-google {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 13px 24px;
+      border-radius: 12px;
+      border: none;
+      background: oklch(97% 0.003 260);
+      color: oklch(18% 0.01 260);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14.5px;
+      font-weight: 500;
+      letter-spacing: 0.1px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+      box-shadow: 0 2px 12px oklch(5% 0.02 260 / 0.4);
+      margin-bottom: 24px;
+      animation: rise 0.7s 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .btn-google:hover {
+      background: oklch(100% 0 0);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px oklch(5% 0.02 260 / 0.5);
+    }
+
+    .btn-google:active {
+      transform: translateY(0);
+      background: oklch(94% 0.004 260);
+    }
+
+    /* Google G logo */
+    .g-logo {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    /* ── Footer note ── */
+    .footnote {
+      font-size: 11.5px;
+      color: oklch(35% 0.015 260);
+      text-align: center;
+      letter-spacing: 0.2px;
+      animation: rise 0.7s 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+
+    <!-- Icon: mortarboard + sparkle -->
+    <div class="icon-wrap">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Mortarboard -->
+        <path d="M14 6L3 11.5L14 17L25 11.5L14 6Z"
+              fill="oklch(68% 0.16 240)" opacity="0.9"/>
+        <path d="M8 14.2V19.5C8 19.5 10.5 21.5 14 21.5C17.5 21.5 20 19.5 20 19.5V14.2L14 17L8 14.2Z"
+              fill="oklch(68% 0.16 240)" opacity="0.55"/>
+        <!-- Sparkle dots -->
+        <circle cx="22.5" cy="8" r="1.1" fill="oklch(80% 0.12 200)" opacity="0.8"/>
+        <circle cx="20.5" cy="5.2" r="0.7" fill="oklch(75% 0.14 220)" opacity="0.6"/>
+        <circle cx="24.2" cy="6" r="0.6" fill="oklch(72% 0.14 260)" opacity="0.5"/>
+      </svg>
+    </div>
+
+    <h1>UofT Agent</h1>
+    <p class="tagline">Your AI academic assistant</p>
+
+    <div class="divider"></div>
+
+    <button class="btn-google" onclick="this.textContent='Signing in…'; this.style.opacity='0.7';">
+      <!-- Official Google G SVG -->
+      <svg class="g-logo" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Sign in with Google
+    </button>
+
+    <p class="footnote">For University of Toronto students</p>
+  </div>
+</body>
+</html>

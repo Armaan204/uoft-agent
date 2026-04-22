@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UofT Agent — STAD68H3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        oklch(10% 0.015 260);
+      --surface:   oklch(13.5% 0.018 260);
+      --surface2:  oklch(16% 0.02 260);
+      --surface3:  oklch(19% 0.022 260);
+      --border:    oklch(22% 0.022 260);
+      --border2:   oklch(28% 0.022 260);
+      --muted:     oklch(45% 0.018 260);
+      --muted2:    oklch(60% 0.015 260);
+      --text:      oklch(92% 0.008 260);
+      --accent:    oklch(68% 0.16 240);
+      --accent-dim:oklch(25% 0.07 240);
+      --green:     oklch(68% 0.16 150);
+      --green-bg:  oklch(18% 0.05 150);
+      --yellow:    oklch(78% 0.15 85);
+      --yellow-bg: oklch(18% 0.05 85);
+    }
+
+    html, body {
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 35% at 50% 0%, oklch(20% 0.06 245 / 0.3) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .page {
+      position: relative;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 32px 32px 80px;
+    }
+
+    /* ── Back ── */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 28px;
+      transition: color 0.15s;
+      animation: rise 0.4s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .back-btn:hover { color: var(--text); }
+    .back-btn svg { width: 14px; height: 14px; }
+
+    /* ── Header ── */
+    .course-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 36px;
+      animation: rise 0.4s 0.04s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .course-meta { flex: 1; }
+
+    .course-code-tag {
+      font-family: 'DM Mono', monospace;
+      font-size: 11.5px;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-pip {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .course-name-h {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+
+    .course-sub {
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    /* ── Grade hero ── */
+    .grade-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .grade-big {
+      font-size: 52px;
+      font-weight: 600;
+      letter-spacing: -2.5px;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .grade-big span {
+      font-size: 28px;
+      font-weight: 400;
+      color: var(--muted2);
+      letter-spacing: -0.5px;
+    }
+
+    .grade-letter-hero {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--green);
+      background: var(--green-bg);
+      border: 1px solid oklch(32% 0.08 150 / 0.5);
+      border-radius: 6px;
+      padding: 3px 10px;
+      letter-spacing: 0.3px;
+    }
+
+    .grade-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin-bottom: 32px;
+    }
+
+    /* ── Section labels ── */
+    .section-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.9px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* ── Grade table ── */
+    .grade-table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 32px;
+      animation: rise 0.4s 0.08s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 13px 20px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    thead th:not(:first-child) { text-align: right; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+
+    tbody td {
+      padding: 14px 20px;
+      font-size: 13.5px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    tbody td:not(:first-child) {
+      text-align: right;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+    }
+
+    .comp-name { font-weight: 500; }
+
+    .comp-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .tag-done { background: var(--green-bg); color: var(--green); }
+    .tag-remaining { background: var(--accent-dim); color: var(--accent); }
+
+    .score-cell { color: var(--text); }
+    .score-na   { color: var(--muted); font-style: italic; font-family: 'DM Sans', sans-serif; font-size: 12px; }
+
+    .contrib-cell { color: var(--muted2); }
+    .contrib-cell.contrib-positive { color: var(--green); }
+
+    /* mini bar inside table */
+    .mini-bar-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .mini-bar {
+      width: 60px;
+      height: 3px;
+      background: var(--surface3);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .mini-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--accent);
+      opacity: 0.7;
+    }
+
+    /* table footer totals */
+    tfoot td {
+      padding: 13px 20px;
+      font-size: 13px;
+      border-top: 1px solid var(--border2);
+      background: var(--surface2);
+      font-weight: 600;
+    }
+    tfoot td:not(:first-child) {
+      text-align: right;
+      font-family: 'DM Mono', monospace;
+    }
+    tfoot .total-label { color: var(--muted2); }
+    tfoot .total-score { color: var(--text); font-size: 14px; }
+
+    /* ── What-if section ── */
+    .whatif-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      animation: rise 0.4s 0.14s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .whatif-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .whatif-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .whatif-title svg { width: 14px; height: 14px; color: var(--accent); }
+
+    .projected-grade {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .proj-label { font-size: 12px; color: var(--muted); }
+
+    .proj-val {
+      font-family: 'DM Mono', monospace;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      transition: color 0.3s;
+    }
+
+    .proj-letter {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 5px;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .proj-letter.A  { background: var(--green-bg); color: var(--green); }
+    .proj-letter.B  { background: var(--yellow-bg); color: var(--yellow); }
+    .proj-letter.C  { background: oklch(18% 0.05 30); color: oklch(65% 0.18 20); }
+
+    .whatif-body { padding: 8px 0; }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 60px;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    .slider-row:last-child { border-bottom: none; }
+    .slider-row:hover { background: var(--surface2); }
+
+    .slider-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .slider-weight {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* custom range slider */
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 99px;
+      background: var(--surface3);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--accent), 0 2px 8px oklch(40% 0.2 240 / 0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 0 0 1px var(--accent), 0 4px 12px oklch(40% 0.2 240 / 0.5);
+    }
+
+    input[type=range]::-moz-range-thumb {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      cursor: pointer;
+    }
+
+    .slider-val {
+      font-family: 'DM Mono', monospace;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text);
+      text-align: right;
+      letter-spacing: -0.3px;
+    }
+
+    /* ── Disclaimer ── */
+    .disclaimer {
+      font-size: 11.5px;
+      color: var(--muted);
+      line-height: 1.6;
+      text-align: center;
+      animation: rise 0.4s 0.2s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    /* ── Animations ── */
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Back -->
+  <button class="back-btn" onclick="history.back()">
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M9 2L4 7l5 5"/>
+    </svg>
+    Back to dashboard
+  </button>
+
+  <!-- Course header -->
+  <div class="course-header">
+    <div class="course-meta">
+      <div class="course-code-tag">
+        <span class="status-pip"></span>
+        STAD68H3 · Winter 2026
+      </div>
+      <div class="course-name-h">Applied Regression Analysis</div>
+      <div class="course-sub">Instructor: Prof. D. Brenner &nbsp;·&nbsp; UTSC Department of Computer &amp; Mathematical Sciences</div>
+    </div>
+    <div class="grade-hero">
+      <div class="grade-big">87<span>%</span></div>
+      <div class="grade-letter-hero">A</div>
+      <div class="grade-sub">67% of course graded</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Grade breakdown table -->
+  <div class="section-label">Grade Breakdown</div>
+  <div class="grade-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Weight</th>
+          <th>Score</th>
+          <th>Contribution</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="comp-name">Assignment 1 <span class="comp-tag tag-done">Graded</span></td>
+          <td>10%</td>
+          <td class="score-cell">92%</td>
+          <td class="contrib-cell contrib-positive">
+            <div class="mini-bar-wrap">
+              9.2% <div class="mini-bar"><div class="mini-bar-fill" style="width:92%"></div></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="comp-name">Assignment 2 <span class="comp-tag tag-done">Graded</span></td>
+          <td>10%</td>
+          <td class="score-cell">88%</td>
+          <td class="contrib-cell contrib-positive">
+            <div class="mini-bar-wrap">
+              8.8% <div class="mini-bar"><div class="mini-bar-fill" style="width:88%"></div></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="comp-name">Midterm Exam <span class="comp-tag tag-done">Graded</span></td>
+          <td>25%</td>
+          <td class="score-cell">84%</td>
+          <td class="contrib-cell contrib-positive">
+            <div class="mini-bar-wrap">
+              21.0% <div class="mini-bar"><div class="mini-bar-fill" style="width:84%"></div></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="comp-name">Lab Reports (avg) <span class="comp-tag tag-done">Graded</span></td>
+          <td>12%</td>
+          <td class="score-cell">91%</td>
+          <td class="contrib-cell contrib-positive">
+            <div class="mini-bar-wrap">
+              10.9% <div class="mini-bar"><div class="mini-bar-fill" style="width:91%"></div></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="comp-name">Quizzes (best 5 of 6) <span class="comp-tag tag-done">Graded</span></td>
+          <td>10%</td>
+          <td class="score-cell">78%</td>
+          <td class="contrib-cell contrib-positive">
+            <div class="mini-bar-wrap">
+              7.8% <div class="mini-bar"><div class="mini-bar-fill" style="width:78%"></div></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="comp-name">Assignment 3 <span class="comp-tag tag-remaining">Remaining</span></td>
+          <td>8%</td>
+          <td class="score-na">Not submitted</td>
+          <td class="contrib-cell">—</td>
+        </tr>
+        <tr>
+          <td class="comp-name">Final Exam <span class="comp-tag tag-remaining">Remaining</span></td>
+          <td>25%</td>
+          <td class="score-na">Not yet</td>
+          <td class="contrib-cell">—</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td class="total-label">Graded so far (67%)</td>
+          <td></td>
+          <td></td>
+          <td class="total-score">57.7 / 67%</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- What-if Calculator -->
+  <div class="section-label">What-if Calculator</div>
+  <div class="whatif-card">
+    <div class="whatif-header">
+      <div class="whatif-title">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M7 1v6l3 3M13 7A6 6 0 1 1 1 7a6 6 0 0 1 12 0z"/>
+        </svg>
+        Projected Final Grade
+      </div>
+      <div class="projected-grade">
+        <span class="proj-label">If you score these marks:</span>
+        <span class="proj-val" id="projVal">90.9%</span>
+        <span class="proj-letter A" id="projLetter">A</span>
+      </div>
+    </div>
+
+    <div class="whatif-body">
+      <!-- Slider: Assignment 3 -->
+      <div class="slider-row">
+        <div>
+          <div class="slider-name">Assignment 3</div>
+          <div class="slider-weight">Weight: 8%</div>
+        </div>
+        <input type="range" min="0" max="100" value="85"
+               id="sl-a3" oninput="updateProjection()">
+        <div class="slider-val" id="sv-a3">85%</div>
+      </div>
+      <!-- Slider: Final Exam -->
+      <div class="slider-row">
+        <div>
+          <div class="slider-name">Final Exam</div>
+          <div class="slider-weight">Weight: 25%</div>
+        </div>
+        <input type="range" min="0" max="100" value="80"
+               id="sl-final" oninput="updateProjection()">
+        <div class="slider-val" id="sv-final">80%</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="disclaimer">
+    ✦ &nbsp;Projected grades are estimates based on available data and may not reflect official university records.
+    Always verify grades on ACORN and consult your instructor for authoritative information.
+  </p>
+
+</div>
+
+<script>
+  const graded = 57.7; // out of 67%
+
+  function letterGrade(pct) {
+    if (pct >= 90) return ['A+', 'A'];
+    if (pct >= 85) return ['A',  'A'];
+    if (pct >= 80) return ['A−', 'A'];
+    if (pct >= 77) return ['B+', 'B'];
+    if (pct >= 73) return ['B',  'B'];
+    if (pct >= 70) return ['B−', 'B'];
+    if (pct >= 67) return ['C+', 'C'];
+    if (pct >= 63) return ['C',  'C'];
+    if (pct >= 60) return ['C−', 'C'];
+    return ['D / F', 'C'];
+  }
+
+  function updateProjection() {
+    const a3    = +document.getElementById('sl-a3').value;
+    const final = +document.getElementById('sl-final').value;
+
+    document.getElementById('sv-a3').textContent    = a3 + '%';
+    document.getElementById('sv-final').textContent = final + '%';
+
+    // Update slider track fill
+    ['sl-a3','sl-final'].forEach(id => {
+      const el = document.getElementById(id);
+      const pct = el.value;
+      el.style.background = `linear-gradient(to right, oklch(68% 0.16 240) ${pct}%, oklch(19% 0.022 260) ${pct}%)`;
+    });
+
+    const projected = graded + (a3 * 0.08) + (final * 0.25);
+    const [letter, cls] = letterGrade(projected);
+
+    const projVal    = document.getElementById('projVal');
+    const projLetter = document.getElementById('projLetter');
+
+    projVal.textContent    = projected.toFixed(1) + '%';
+    projLetter.textContent = letter;
+    projLetter.className   = 'proj-letter ' + cls;
+  }
+
+  // Init on load
+  updateProjection();
+</script>
+</body>
+</html>

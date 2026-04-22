@@ -4,6 +4,8 @@ api/routers/courses.py - Course, grade, scenario, weight, and token routes.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
@@ -11,6 +13,8 @@ from api.dependencies import get_current_user
 from api.services.course_service import (
     CourseServiceError,
     QuercusError,
+    get_dashboard_announcements,
+    get_dashboard_course,
     get_course_grades,
     get_course_scenarios,
     get_course_weights,
@@ -98,6 +102,22 @@ def list_courses(
     token = _resolve_token(quercus_token, current_user)
     try:
         return {"courses": list_current_term_courses(token)}
+    except (CourseServiceError, QuercusError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/dashboard")
+async def dashboard_courses(
+    quercus_token: str | None = Query(default=None, description="Quercus personal access token"),
+    current_user: dict = Depends(get_current_user),
+):
+    token = _resolve_token(quercus_token, current_user)
+    try:
+        courses = list_current_term_courses(token)
+        tasks = [asyncio.to_thread(get_dashboard_course, token, course) for course in courses]
+        dashboard = await asyncio.gather(*tasks)
+        announcements = await asyncio.to_thread(get_dashboard_announcements, token, courses)
+        return {"courses": dashboard, "announcements": announcements}
     except (CourseServiceError, QuercusError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

@@ -36,5 +36,6 @@ def get_current_user(
     return {
         "user_id": user_id,
         "email": payload.get("email"),
+        "name": payload.get("name"),
         "google_id": google_id,
     }
