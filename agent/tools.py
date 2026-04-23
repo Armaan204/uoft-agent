@@ -6,6 +6,12 @@ execute_tool  : called by the agent loop; accepts a QuercusClient so the
                 token flows in from session state rather than from .env.
 """
 
+import re
+from html import unescape
+
+from api.services.acorn_service import get_academic_history as load_academic_history
+from api.services.grade_snapshot_cache import get_grade_snapshot, invalidate_grade_snapshot
+from api.services.grades_snapshot_service import get_snapshot as load_grades_snapshot, save_snapshot
 from integrations.quercus import QuercusClient
 from integrations.syllabus import parse_syllabus_weights
 from calculator.grades import GradeCalculator
@@ -31,6 +37,87 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "get_all_grades",
+        "description": (
+            "Return the student's current grade across all current courses in one call. "
+            "Use this for multi-course questions like GPA tracking, comparing courses, "
+            "or listing current grades across the semester."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "get_academic_history",
+        "description": (
+            "Return the student's saved ACORN academic history, including course history, "
+            "credits earned, and GPA by term. Prefer this for past performance and GPA history questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "get_cached_grades",
+        "description": (
+            "Return the student's persisted current-grade snapshot from Supabase. "
+            "Prefer this for current-grade questions because it is much faster than live Quercus fetches. "
+            "The snapshot is refreshed when the dashboard loads or when refresh_grades is called."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "refresh_grades",
+        "description": (
+            "Fetch fresh current grades from Quercus across all current courses, save them to the persisted "
+            "grades snapshot, and return the updated results. Use this only when the user explicitly asks for "
+            "updated, refreshed, or latest current grade data."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "get_course_announcements",
+        "description": (
+            "Return up to 10 recent announcements for one course as lightweight previews. "
+            "Prefer this when the user asks about course news or instructor updates."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "course_id": {"type": "integer", "description": "Canvas course ID"},
+                "course_name": {"type": "string", "description": "Human-readable course name for context"},
+            },
+            "required": ["course_id", "course_name"],
+        },
+    },
+    {
+        "name": "get_announcement_detail",
+        "description": (
+            "Return the full content for a single announcement. Use only when the user explicitly asks "
+            "to read one announcement in detail."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "course_id": {"type": "integer", "description": "Canvas course ID"},
+                "announcement_id": {"type": "integer", "description": "Canvas announcement ID"},
+            },
+            "required": ["course_id", "announcement_id"],
+        },
+    },
+    {
         "name": "get_course_weights",
         "description": (
             "Fetch the grade breakdown (assessment categories and their percentage "
@@ -50,8 +137,8 @@ TOOL_SCHEMAS = [
         "name": "get_current_grade",
         "description": (
             "Compute the student's current weighted grade in a course based on "
-            "graded submissions so far. Returns overall percentage, letter grade, "
-            "and a per-group breakdown."
+            "graded submissions so far. Returns overall percentage, UofT letter grade, "
+            "UofT GPA points, and a per-group breakdown."
         ),
         "input_schema": {
             "type": "object",
@@ -107,12 +194,138 @@ def _get_course_weights(inp: dict, client: QuercusClient) -> dict:
     return weights
 
 
+def _build_grade_summary(course: dict, client: QuercusClient) -> dict:
+    inp = {
+        "course_id": course["id"],
+        "course_name": course["name"],
+    }
+    grade = _get_current_grade(inp, client)
+    return {
+        "course_id": course["id"],
+        "course_name": course["name"],
+        "course_code": course.get("course_code"),
+        "current_grade": grade["weighted_grade"],
+        "letter": grade["letter"],
+        "gpa_points": grade["gpa_points"],
+        "graded_weight": grade["graded_weight"],
+    }
+
+
 def _get_current_grade(inp: dict, client: QuercusClient) -> dict:
     course_id   = inp["course_id"]
     groups      = client.get_assignment_groups(course_id)
     submissions = client.get_submissions(course_id)
     weights     = _get_course_weights(inp, client)
     return _calc.current_grade(groups, submissions, weights)
+
+
+def _preview_text(html: str | None, limit: int = 100) -> str:
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    text = " ".join(unescape(text).split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _get_academic_history(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    if user_id is None:
+        return {"error": "Academic history requires an authenticated user context"}
+    return load_academic_history(user_id)
+
+
+def _get_cached_grades(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    if user_id is None:
+        return {"error": "Cached grades require an authenticated user context"}
+
+    snapshot_rows = load_grades_snapshot(user_id)
+    if not snapshot_rows:
+        return {"courses": [], "errors": [], "fetched_at": None}
+
+    fetched_values = [row.get("fetched_at") for row in snapshot_rows if row.get("fetched_at")]
+    fetched_at = max(fetched_values) if fetched_values else None
+
+    return {
+        "courses": [
+            {
+                "course_id": row["course_id"],
+                "course_name": row.get("course_name"),
+                "course_code": row.get("course_code"),
+                "current_grade": row.get("current_grade"),
+                "letter": row.get("letter_grade"),
+                "graded_weight": None,
+            }
+            for row in snapshot_rows
+        ],
+        "errors": [],
+        "fetched_at": fetched_at,
+    }
+
+
+def _get_all_grades(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    if user_id is not None:
+        return get_grade_snapshot(user_id, client._token)
+
+    courses = client.get_courses()
+    grades = []
+    errors = []
+
+    for course in courses:
+        try:
+            grades.append(_build_grade_summary(course, client))
+        except Exception as exc:
+            errors.append({
+                "course_id": course["id"],
+                "course_name": course["name"],
+                "course_code": course.get("course_code"),
+                "error": str(exc),
+            })
+
+    return {
+        "courses": grades,
+        "errors": errors,
+    }
+
+
+def _refresh_grades(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    if user_id is None:
+        return _get_all_grades(inp, client, user_id=None)
+
+    invalidate_grade_snapshot(user_id)
+    fresh = get_grade_snapshot(user_id, client._token, force_refresh=True)
+    save_snapshot(user_id, fresh.get("courses", []))
+    return fresh
+
+
+def _get_course_announcements(inp: dict, client: QuercusClient) -> dict:
+    course_id = inp["course_id"]
+    announcements = client.get_course_announcements(course_id, limit=10)
+    return {
+        "course_id": course_id,
+        "course_name": inp.get("course_name"),
+        "announcements": [
+            {
+                "id": announcement.get("id"),
+                "title": announcement.get("title") or "Untitled announcement",
+                "posted_at": announcement.get("posted_at"),
+                "preview": _preview_text(announcement.get("message"), limit=100),
+            }
+            for announcement in announcements
+        ],
+    }
+
+
+def _get_announcement_detail(inp: dict, client: QuercusClient) -> dict:
+    course_id = inp["course_id"]
+    announcement_id = inp["announcement_id"]
+    announcement = client.get_announcement_detail(announcement_id)
+    return {
+        "course_id": course_id,
+        "announcement_id": announcement_id,
+        "title": announcement.get("title") or "Untitled announcement",
+        "posted_at": announcement.get("posted_at"),
+        "body": " ".join(unescape(re.sub(r"<[^>]+>", " ", announcement.get("message") or "")).split()),
+        "url": announcement.get("html_url") or announcement.get("url"),
+    }
 
 
 def _get_grade_scenarios(inp: dict, client: QuercusClient) -> dict:
@@ -184,18 +397,26 @@ def _get_grade_scenarios(inp: dict, client: QuercusClient) -> dict:
 
 _HANDLERS = {
     "get_courses":         _get_courses,
+    "get_academic_history": _get_academic_history,
+    "get_cached_grades":   _get_cached_grades,
+    "get_all_grades":      _get_all_grades,
+    "refresh_grades":      _refresh_grades,
+    "get_course_announcements": _get_course_announcements,
+    "get_announcement_detail": _get_announcement_detail,
     "get_course_weights":  _get_course_weights,
     "get_current_grade":   _get_current_grade,
     "get_grade_scenarios": _get_grade_scenarios,
 }
 
 
-def execute_tool(tool_name: str, tool_input: dict, client: QuercusClient):
+def execute_tool(tool_name: str, tool_input: dict, client: QuercusClient, user_id: str | int | None = None):
     """Dispatch a tool call and return a JSON-serialisable result."""
     handler = _HANDLERS.get(tool_name)
     if handler is None:
         return {"error": f"Unknown tool: {tool_name}"}
     try:
+        if tool_name in {"get_cached_grades", "get_all_grades", "refresh_grades", "get_academic_history"}:
+            return handler(tool_input, client, user_id=user_id)
         return handler(tool_input, client)
     except Exception as exc:
         return {"error": str(exc)}

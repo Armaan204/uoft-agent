@@ -668,7 +668,11 @@ tfoot td:not(:first-child),
   font-weight: 600;
   line-height: 1.28;
   letter-spacing: -0.35px;
-  text-wrap: balance;
+  min-height: calc(2 * 1em * 1.28);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .badge {
@@ -826,6 +830,7 @@ tfoot td:not(:first-child),
 
 .deadlines {
   overflow: hidden;
+  overflow-y: auto;
 }
 
 .announcements {
@@ -851,10 +856,16 @@ tfoot td:not(:first-child),
   display: grid;
   grid-template-columns: 110px 1fr auto;
   gap: 18px;
+  width: 100%;
   padding: 18px 24px;
   border-bottom: 1px solid var(--border);
-  text-decoration: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  background: transparent;
+  text-align: left;
   color: inherit;
+  cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease;
   position: relative;
   overflow: hidden;
@@ -913,6 +924,112 @@ tfoot td:not(:first-child),
   border: 1px solid oklch(30% 0.03 245);
   border-radius: 999px;
   padding: 6px 10px;
+}
+
+.announcement-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: oklch(6% 0.015 255 / 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.announcement-modal {
+  width: min(920px, 100%);
+  max-height: min(88vh, 920px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border2);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, oklch(16% 0.022 260 / 0.99), oklch(13.5% 0.018 260 / 0.99));
+  box-shadow: 0 36px 90px -40px oklch(5% 0.02 260 / 0.98);
+  overflow: hidden;
+}
+
+.announcement-modal-head,
+.announcement-modal-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 28px;
+}
+
+.announcement-modal-head {
+  border-bottom: 1px solid var(--border);
+}
+
+.announcement-modal-date {
+  margin-top: 8px;
+  color: var(--muted2);
+  font-size: 13px;
+}
+
+.announcement-modal-title {
+  margin: 12px 0 0;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.7px;
+}
+
+.announcement-modal-close {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: oklch(17% 0.024 252 / 0.9);
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.announcement-modal-body {
+  overflow-y: auto;
+  padding: 28px;
+}
+
+.announcement-loading-card {
+  min-height: 220px;
+}
+
+.announcement-modal-content {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.announcement-modal-content > :first-child {
+  margin-top: 0;
+}
+
+.announcement-modal-content > :last-child {
+  margin-bottom: 0;
+}
+
+.announcement-modal-content a {
+  color: oklch(76% 0.13 235);
+}
+
+.announcement-modal-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.announcement-modal-content table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.announcement-modal-actions {
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
 }
 
 .dl-code {
@@ -1085,27 +1202,45 @@ tfoot td {
   padding: 22px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
+  gap: 18px;
 }
 
 .whatif-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.whatif-title svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.projected-grade {
+  gap: 14px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .proj-val {
-  font-size: 26px;
-  font-weight: 500;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 600;
 }
 
 .proj-letter {
-  padding: 3px 9px;
-  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
   background: var(--green-bg);
   color: var(--green);
   font-size: 13px;
+  line-height: 1;
 }
 
 .slider-row {
@@ -1158,7 +1293,7 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .acorn-page {
-  max-width: 1480px;
+  max-width: 1520px;
 }
 
 .acorn-hero,
@@ -1622,8 +1757,10 @@ input[type='range']::-webkit-slider-thumb {
 .app-sidebar {
   width: 286px;
   flex-shrink: 0;
+  align-self: flex-start;
   position: sticky;
   top: 0;
+  height: 100vh;
   min-height: 100vh;
   background:
     linear-gradient(180deg, oklch(12% 0.017 260 / 0.98), oklch(10.5% 0.015 260 / 0.98));
@@ -1699,6 +1836,9 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .chat-page {
+  width: 100%;
+  max-width: 1520px;
+  margin: 0 auto;
   min-height: 100vh;
   padding: 0;
 }
@@ -1782,6 +1922,110 @@ input[type='range']::-webkit-slider-thumb {
   border-radius: 18px;
   font-size: 16px;
   line-height: 1.7;
+}
+
+.msg-markdown > :first-child {
+  margin-top: 0;
+}
+
+.msg-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.msg-markdown h3,
+.msg-markdown h4 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.25px;
+}
+
+.msg-markdown h4 {
+  font-size: 16px;
+}
+
+.msg-markdown p {
+  margin: 0 0 12px;
+}
+
+.msg-markdown ul,
+.msg-markdown ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.msg-markdown li + li {
+  margin-top: 6px;
+}
+
+.msg-markdown hr {
+  border: none;
+  height: 1px;
+  margin: 14px 0;
+  background: linear-gradient(90deg, transparent, var(--border2), transparent);
+}
+
+.msg-markdown code {
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: oklch(18% 0.024 252 / 0.95);
+  border: 1px solid var(--border);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.92em;
+}
+
+.msg-markdown pre {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  border-radius: 14px;
+  background: oklch(11.5% 0.016 260);
+  border: 1px solid var(--border);
+}
+
+.msg-markdown pre code {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.msg-markdown a {
+  color: oklch(76% 0.13 235);
+}
+
+.msg-table-wrap {
+  margin: 0 0 14px;
+  overflow-x: auto;
+}
+
+.msg-table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.msg-table th,
+.msg-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.msg-table th {
+  background: oklch(18% 0.024 252 / 0.92);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+}
+
+.msg-table tr:last-child td {
+  border-bottom: none;
 }
 
 .msg-bubble.ai {

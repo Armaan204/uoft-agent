@@ -16,13 +16,13 @@ function formatDue(dueAt) {
   }).format(new Date(dueAt))
 }
 
-export default function DeadlineList({ deadlines }) {
+export default function DeadlineList({ deadlines, maxHeight }) {
   if (!deadlines.length) {
     return <div className="empty-card">No assignments due in the next 14 days.</div>
   }
 
   return (
-    <div className="deadlines rise">
+    <div className="deadlines rise" style={maxHeight ? { maxHeight: `${maxHeight}px` } : undefined}>
       {deadlines.map((deadline) => {
         const tone = deadlineTone(deadline.due_at)
         return (

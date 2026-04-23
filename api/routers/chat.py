@@ -46,6 +46,7 @@ async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_us
             lambda: run_agent(
                 payload.message,
                 token=quercus_token,
+                user_id=current_user["user_id"],
                 verbose=False,
                 return_tool_calls=True,
             ),

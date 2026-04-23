@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from html import unescape
 from typing import Any
 
+from bs4 import BeautifulSoup
 from auth.user_store import UserStoreError, get_quercus_token
 from calculator.grades import GradeCalculator, UOFT_THRESHOLDS
 from integrations.quercus import QuercusClient, QuercusError
@@ -138,6 +139,34 @@ def get_dashboard_announcements(quercus_token: str, courses: list[dict[str, Any]
 
     announcements.sort(key=lambda item: item["posted_at"] or "", reverse=True)
     return announcements
+
+
+def get_latest_course_announcement(quercus_token: str, course_id: int | str) -> dict[str, Any]:
+    client = UncachedQuercusClient(token=quercus_token)
+    raw_announcements = client.get_latest_announcements([course_id])
+
+    for announcement in raw_announcements:
+        context_code = announcement.get("context_code", "")
+        if context_code != f"course_{course_id}":
+            continue
+
+        posted_at = announcement.get("posted_at")
+        try:
+            posted_dt = datetime.fromisoformat(posted_at.replace("Z", "+00:00")) if posted_at else None
+        except ValueError:
+            posted_dt = None
+
+        message_html = announcement.get("message") or ""
+        return {
+            "course_id": int(course_id),
+            "title": announcement.get("title") or "Untitled announcement",
+            "body_html": _sanitize_announcement_html(message_html),
+            "body_text": _announcement_text(message_html),
+            "url": announcement.get("html_url") or announcement.get("url"),
+            "posted_at": posted_dt.isoformat() if posted_dt else None,
+        }
+
+    raise CourseServiceError("No recent announcement found for this course")
 
 
 def get_course_weights(quercus_token: str, course_id: int | str) -> dict[str, Any]:
@@ -309,11 +338,35 @@ def _get_upcoming_deadlines(
 
 
 def _announcement_preview(html: str | None, limit: int = 180) -> str:
-    text = re.sub(r"<[^>]+>", " ", html or "")
-    text = " ".join(unescape(text).split())
+    text = _announcement_text(html)
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+def _announcement_text(html: str | None) -> str:
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    return " ".join(unescape(text).split())
+
+
+def _sanitize_announcement_html(html: str | None) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+
+    for tag in soup.find_all(["script", "style", "iframe", "object", "embed", "form", "input", "button"]):
+        tag.decompose()
+
+    for tag in soup.find_all(True):
+        attrs_to_remove = []
+        for attr_name, attr_value in list(tag.attrs.items()):
+            if attr_name.lower().startswith("on"):
+                attrs_to_remove.append(attr_name)
+                continue
+            if attr_name.lower() in {"href", "src"} and isinstance(attr_value, str) and attr_value.strip().lower().startswith("javascript:"):
+                attrs_to_remove.append(attr_name)
+        for attr_name in attrs_to_remove:
+            tag.attrs.pop(attr_name, None)
+
+    return str(soup)
 
 
 def parse_syllabus_weights_uncached(
@@ -398,12 +451,13 @@ def _grade_from_points(groups: list[dict[str, Any]], submissions: list[dict[str,
         total_possible += group_possible
 
     if total_possible == 0:
-        return {"weighted_grade": 0.0, "letter": "N/A", "group_breakdown": {}, "graded_weight": 0.0}
+        return {"weighted_grade": 0.0, "letter": "N/A", "gpa_points": None, "group_breakdown": {}, "graded_weight": 0.0}
 
     pct = total_earned / total_possible * 100
     return {
         "weighted_grade": round(pct, 2),
         "letter": _calc._to_letter(pct),
+        "gpa_points": _calc._to_gpa_points(pct),
         "group_breakdown": group_breakdown,
         "graded_weight": 100.0,
         "_total_earned": total_earned,
@@ -418,6 +472,7 @@ def _grade_from_components(components: list[dict[str, Any]]) -> dict[str, Any]:
         return {
             "weighted_grade": 0.0,
             "letter": "N/A",
+            "gpa_points": None,
             "group_breakdown": {},
             "graded_weight": 0.0,
         }
@@ -427,6 +482,7 @@ def _grade_from_components(components: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "weighted_grade": round(weighted_grade, 2),
         "letter": _calc._to_letter(weighted_grade),
+        "gpa_points": _calc._to_gpa_points(weighted_grade),
         "group_breakdown": {
             component["name"]: {
                 "earned": component["earned"],

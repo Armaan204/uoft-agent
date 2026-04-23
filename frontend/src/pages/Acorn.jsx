@@ -583,7 +583,10 @@ export default function Acorn() {
   if (acornQuery.isLoading) {
     return (
       <div className="page dashboard-page acorn-page">
-        <div className="empty-card">Loading ACORN data…</div>
+        <div className="dashboard-loading-card" aria-live="polite">
+          <div className="loading-spinner" aria-hidden="true" />
+          <div className="dashboard-loading-copy">Loading ACORN data…</div>
+        </div>
       </div>
     )
   }

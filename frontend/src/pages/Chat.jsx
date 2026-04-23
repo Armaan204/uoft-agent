@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 
 import client from '../api/client'
+import MarkdownMessage from '../components/MarkdownMessage'
 import ToolCallBlock from '../components/ToolCallBlock'
+import { useAuth } from '../hooks/useAuth'
+import { getInitials } from '../utils/initials'
 
 const suggestions = [
   "What's my GPA this semester?",
@@ -12,6 +15,7 @@ const suggestions = [
 ]
 
 export default function Chat() {
+  const { user } = useAuth()
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState([
     {
@@ -22,6 +26,7 @@ export default function Chat() {
     },
   ])
   const scrollRef = useRef(null)
+  const userInitials = getInitials(user?.name || user?.email)
 
   const mutation = useMutation({
     mutationFn: async (message) => {
@@ -72,7 +77,6 @@ export default function Chat() {
               <div className="chat-header-title">UofT Agent</div>
               <div className="chat-header-sub">Knows your courses, grades, and deadlines</div>
             </div>
-            <span className="model-tag">Claude</span>
           </div>
         </div>
 
@@ -81,7 +85,7 @@ export default function Chat() {
             {messages.map((message) => (
               <div className={`msg-row ${message.role === 'user' ? 'user' : 'ai'}`} key={message.id}>
                 <div className={`msg-avatar ${message.role === 'user' ? 'user' : 'ai'}`}>
-                  {message.role === 'user' ? 'You' : 'AI'}
+                  {message.role === 'user' ? userInitials : 'AI'}
                 </div>
                 <div className="msg-bubble-wrap">
                   {message.toolCalls.length > 0 && (
@@ -91,7 +95,9 @@ export default function Chat() {
                       ))}
                     </div>
                   )}
-                  <div className={`msg-bubble ${message.role === 'user' ? 'user' : 'ai'}`}>{message.text}</div>
+                  <div className={`msg-bubble ${message.role === 'user' ? 'user' : 'ai'}`}>
+                    {message.role === 'assistant' ? <MarkdownMessage text={message.text} /> : message.text}
+                  </div>
                 </div>
               </div>
             ))}

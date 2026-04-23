@@ -1,5 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+
+import client from '../api/client'
 import { displayCourseCode } from '../utils/courseCode'
+
+const COURSE_DETAIL_STALE_TIME_MS = 5 * 60 * 1000
 
 function badgeClass(flag) {
   if (flag === 'Safe') return 'safe'
@@ -19,8 +24,20 @@ function displayCourseName(name, courseCode) {
 }
 
 export default function CourseCard({ course }) {
+  const queryClient = useQueryClient()
   const badge = badgeClass(course.risk_flag)
   const grade = typeof course.current_grade === 'number' ? Math.round(course.current_grade) : '--'
+
+  function prefetchCourseDetail() {
+    queryClient.prefetchQuery({
+      queryKey: ['course-grades', String(course.id)],
+      queryFn: async () => {
+        const response = await client.get(`/api/courses/${course.id}/grades`)
+        return response.data
+      },
+      staleTime: COURSE_DETAIL_STALE_TIME_MS,
+    })
+  }
 
   return (
     <article className="course-card rise">
@@ -38,7 +55,13 @@ export default function CourseCard({ course }) {
       <div className="progress-wrap">
         <div className={`progress-fill fill-${badge}`} style={{ width: `${Math.max(0, Math.min(100, grade || 0))}%` }} />
       </div>
-      <Link className="btn-view" to={`/courses/${course.id}`}>
+      <Link
+        className="btn-view"
+        to={`/courses/${course.id}`}
+        onMouseEnter={prefetchCourseDetail}
+        onFocus={prefetchCourseDetail}
+        onTouchStart={prefetchCourseDetail}
+      >
         View breakdown
         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M2 6h8M6 2l4 4-4 4" />

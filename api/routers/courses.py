@@ -17,10 +17,12 @@ from api.services.course_service import (
     get_dashboard_announcements,
     get_dashboard_course,
     get_course_grades,
+    get_latest_course_announcement,
     get_course_scenarios,
     get_course_weights,
     list_current_term_courses,
 )
+from api.services.grades_snapshot_service import GradesSnapshotServiceError, save_snapshot
 from auth.user_store import (
     UserStoreError,
     delete_quercus_token,
@@ -161,6 +163,14 @@ async def dashboard_courses(
         tasks = [asyncio.to_thread(get_dashboard_course, token, course) for course in courses]
         dashboard = await asyncio.gather(*tasks)
         announcements = await asyncio.to_thread(get_dashboard_announcements, token, courses)
+        try:
+            await asyncio.to_thread(save_snapshot, current_user["user_id"], dashboard)
+        except GradesSnapshotServiceError as exc:
+            logger.warning(
+                "Failed to persist grades snapshot user_id=%s error=%s",
+                current_user.get("user_id"),
+                exc,
+            )
         logger.info(
             "Completed dashboard load user_id=%s courses=%s announcements=%s",
             current_user.get("user_id"),
@@ -195,6 +205,19 @@ def course_grades(
     token = _resolve_token(quercus_token, current_user)
     try:
         return get_course_grades(token, course_id)
+    except (CourseServiceError, QuercusError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/{course_id}/announcements/latest")
+def latest_course_announcement(
+    course_id: int,
+    quercus_token: str | None = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+):
+    token = _resolve_token(quercus_token, current_user)
+    try:
+        return get_latest_course_announcement(token, course_id)
     except (CourseServiceError, QuercusError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

@@ -39,6 +39,7 @@ An AI academic assistant for University of Toronto students.
   - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`
   - `api/routers/acorn.py` — public ACORN routes matching `api_server.py` exactly
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers (bypasses `st.cache_data`)
+  - `api/services/grade_snapshot_cache.py` — 5-minute in-memory per-user cache for aggregate semester grade snapshots used by chat tools
   - `api/services/acorn_service.py` — ACORN business logic for the FastAPI router
   - `api/services/auth_service.py` — user lookup/creation and JWT signing helpers
 - `frontend/` — Vite + React frontend deployed at `https://uoft-agent.com`
@@ -59,6 +60,8 @@ An AI academic assistant for University of Toronto students.
 - Session state still caches the active token and derived dashboard data for the current run
 - Quercus submissions and assignment groups are cached briefly to speed up dashboard refreshes without making grades feel stale
 - Parsed syllabus weights are cached both in-process and persistently in Supabase to avoid repeated Anthropic parsing for the same course source
+- Chat uses a cached aggregate grade snapshot tool for multi-course questions; the cache is keyed per user and can be explicitly refreshed
+- UofT GPA mapping is deterministic in code (`A+` and `A` both map to `4.0`) rather than inferred by the LLM
 - FastAPI course routes accept `?quercus_token=...` directly from the client; fall back to the Supabase-stored token if omitted
 - `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass `st.cache_data` decorators without touching the original integration files
 - JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
@@ -157,12 +160,14 @@ Implemented:
 - FastAPI protected routes now use Bearer JWT auth in Swagger UI instead of the broken password-flow form
 - `GET /api/courses/dashboard` aggregates dashboard cards plus upcoming deadlines and recent announcements in one request
 - `POST /api/chat` can use the saved Supabase Quercus token when `quercus_token` is omitted
+- Agent now has aggregate semester-grade tools: `get_all_grades` uses a cached per-user snapshot and `refresh_grades` forces a fresh pull
 - React frontend scaffolded with Vite, React Router, Axios, and TanStack Query
 - React login page implemented and wired to FastAPI Google OAuth
 - React Quercus onboarding flow implemented: checks for saved token, validates new token, persists it, and redirects into the app
 - React dashboard implemented with course cards, upcoming deadlines rail, recent announcements section, and profile dropdown
-- React course-detail page implemented with real grade breakdown data and what-if sliders
-- React chat page implemented against `POST /api/chat` with tool-call blocks and suggestion chips
+- React course-detail page implemented with real grade breakdown data and what-if sliders; graded components can expand into individual Quercus assessments when a syllabus weight maps to a broader bucket
+- React chat page implemented against `POST /api/chat` with tool-call blocks, suggestion chips, and Markdown-style rendering for assistant responses
+- React dashboard announcements now open an in-app modal that lazy-loads the full announcement body, with a fallback link to open the original Quercus announcement
 - Shared React app shell implemented with sidebar navigation for Dashboard, Chat, and ACORN
 - React ACORN page implemented with onboarding/claim flow, summary cards, GPA chart, sortable course table, and re-import flow
 - Frontend and backend deployment scaffolding added for Railway: `Procfile`, frontend Dockerfile, nginx static config, and production API URL support

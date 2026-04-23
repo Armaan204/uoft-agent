@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import client from '../api/client'
@@ -6,13 +6,25 @@ import AnnouncementList from '../components/AnnouncementList'
 import CourseCard from '../components/CourseCard'
 import DeadlineList from '../components/DeadlineList'
 
+const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
+const DASHBOARD_GC_TIME_MS = 30 * 60 * 1000
+
+async function fetchDashboard() {
+  const response = await client.get('/api/courses/dashboard')
+  return response.data
+}
+
 export default function Dashboard() {
+  const courseGridRef = useRef(null)
+  const deadlinesLabelRef = useRef(null)
+  const [deadlinesMaxHeight, setDeadlinesMaxHeight] = useState(null)
+
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: async () => {
-      const response = await client.get('/api/courses/dashboard')
-      return response.data
-    },
+    queryFn: fetchDashboard,
+    staleTime: DASHBOARD_STALE_TIME_MS,
+    gcTime: DASHBOARD_GC_TIME_MS,
+    refetchOnWindowFocus: false,
   })
 
   const deadlines = useMemo(
@@ -20,6 +32,33 @@ export default function Dashboard() {
     [data],
   )
   const announcements = data?.announcements ?? []
+
+  useEffect(() => {
+    if (!courseGridRef.current || !deadlinesLabelRef.current) return undefined
+
+    const updateDeadlinesHeight = () => {
+      const gridHeight = courseGridRef.current?.getBoundingClientRect().height ?? 0
+      const labelHeight = deadlinesLabelRef.current?.getBoundingClientRect().height ?? 0
+      const labelMarginBottom = Number.parseFloat(window.getComputedStyle(deadlinesLabelRef.current).marginBottom) || 0
+      const nextHeight = Math.max(160, Math.floor(gridHeight - labelHeight - labelMarginBottom))
+      setDeadlinesMaxHeight(nextHeight)
+    }
+
+    updateDeadlinesHeight()
+
+    const observer = new ResizeObserver(() => {
+      updateDeadlinesHeight()
+    })
+
+    observer.observe(courseGridRef.current)
+    observer.observe(deadlinesLabelRef.current)
+    window.addEventListener('resize', updateDeadlinesHeight)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateDeadlinesHeight)
+    }
+  }, [data])
 
   return (
     <div className="page dashboard-page">
@@ -45,15 +84,15 @@ export default function Dashboard() {
       {!isLoading && !error && (
         <div className="dashboard-main">
           <section className="dashboard-top">
-            <section className="course-grid">
+            <section className="course-grid" ref={courseGridRef}>
               {(data?.courses ?? []).map((course) => (
                 <CourseCard course={course} key={course.id} />
               ))}
             </section>
 
             <aside className="dashboard-rail">
-              <div className="section-label rise">Upcoming Deadlines</div>
-              <DeadlineList deadlines={deadlines} />
+              <div className="section-label rise" ref={deadlinesLabelRef}>Upcoming Deadlines</div>
+              <DeadlineList deadlines={deadlines} maxHeight={deadlinesMaxHeight} />
             </aside>
           </section>
 

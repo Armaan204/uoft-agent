@@ -130,6 +130,50 @@ def get_latest_import_for_user(user_id: str | int) -> dict | None:
     return data
 
 
+def get_academic_history(user_id: str | int) -> dict[str, Any]:
+    """Return structured academic history for one user from the latest claimed ACORN import."""
+    latest = get_latest_import_for_user(user_id)
+    if not latest:
+        return {"terms": [], "credits_earned": 0.0}
+
+    raw_terms = latest.get("terms") or []
+    structured_terms = []
+    total_credits = 0.0
+
+    for term in raw_terms:
+        courses = []
+        for course in term.get("courses") or []:
+            credits_raw = course.get("credits")
+            try:
+                credits_value = float(credits_raw) if credits_raw is not None else None
+            except (TypeError, ValueError):
+                credits_value = None
+
+            if credits_value is not None:
+                total_credits += credits_value
+
+            courses.append({
+                "code": course.get("courseCode"),
+                "title": course.get("title"),
+                "credits": credits_raw,
+                "grade": course.get("grade"),
+                "mark": course.get("mark"),
+            })
+
+        structured_terms.append({
+            "term": term.get("term"),
+            "sessional_gpa": term.get("sessionalGpa"),
+            "cumulative_gpa": term.get("cumulativeGpa"),
+            "courses": courses,
+        })
+
+    return {
+        "terms": structured_terms,
+        "credits_earned": round(total_credits, 2),
+        "imported_at": latest.get("importedAt"),
+    }
+
+
 def claim_latest_import_for_user(import_code: str, user_id: str | int) -> dict | None:
     """Attach the newest import for one import code to the given user account."""
     if not import_code or not str(import_code).strip():

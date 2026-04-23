@@ -29,6 +29,7 @@ MODEL = "claude-sonnet-4-6"
 def run(
     user_message: str,
     token: str = None,
+    user_id: str | int | None = None,
     verbose: bool = True,
     return_tool_calls: bool = False,
 ) -> "str | tuple[str, list[dict]]":
@@ -82,7 +83,7 @@ def run(
             if verbose:
                 print(f"\n[tool call]  {block.name}({json.dumps(block.input, indent=2)})")
 
-            result = execute_tool(block.name, block.input, quercus_client)
+            result = execute_tool(block.name, block.input, quercus_client, user_id=user_id)
 
             if verbose:
                 result_preview = json.dumps(result, indent=2)

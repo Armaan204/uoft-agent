@@ -22,6 +22,22 @@ UOFT_THRESHOLDS = [
     ("F",   0),
 ]
 
+UOFT_GPA_POINTS = {
+    "A+": 4.0,
+    "A": 4.0,
+    "A-": 3.7,
+    "B+": 3.3,
+    "B": 3.0,
+    "B-": 2.7,
+    "C+": 2.3,
+    "C": 2.0,
+    "C-": 1.7,
+    "D+": 1.3,
+    "D": 1.0,
+    "D-": 0.7,
+    "F": 0.0,
+}
+
 
 class GradeCalculator:
     """Pure-math grade calculations for a single course."""
@@ -101,6 +117,7 @@ class GradeCalculator:
             return {
                 "weighted_grade":  0.0,
                 "letter":          "N/A",
+                "gpa_points":      None,
                 "group_breakdown": {},
                 "graded_weight":   0.0,
                 "dropped_assignment_ids": [],
@@ -114,6 +131,7 @@ class GradeCalculator:
         return {
             "weighted_grade":  round(weighted_sum, 2),
             "letter":          self._to_letter(weighted_sum),
+            "gpa_points":      self._to_gpa_points(weighted_sum),
             "group_breakdown": group_breakdown,
             "graded_weight":   graded_weight,
             "dropped_assignment_ids": sorted(dropped_assignment_ids),
@@ -314,6 +332,10 @@ class GradeCalculator:
             if pct >= threshold:
                 return letter
         return "F"
+
+    @staticmethod
+    def _to_gpa_points(pct: float) -> float:
+        return UOFT_GPA_POINTS[GradeCalculator._to_letter(pct)]
 
     # Stop words excluded from fuzzy keyword matching
     _STOP_WORDS = {"the", "and", "to", "of", "a", "an", "in", "on", "for",

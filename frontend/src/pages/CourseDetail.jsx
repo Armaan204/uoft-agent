@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import client from '../api/client'
 import { displayCourseCode } from '../utils/courseCode'
+
+const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
+const COURSE_DATA_STALE_TIME_MS = 5 * 60 * 1000
+const COURSE_DATA_GC_TIME_MS = 30 * 60 * 1000
 
 const thresholds = [
   ['A+', 90],
@@ -38,6 +42,7 @@ function displayCourseName(name, courseCode) {
 export default function CourseDetail() {
   const { id } = useParams()
   const [sliderValues, setSliderValues] = useState({})
+  const queryClient = useQueryClient()
 
   const courseQuery = useQuery({
     queryKey: ['courses'],
@@ -45,6 +50,9 @@ export default function CourseDetail() {
       const response = await client.get('/api/courses')
       return response.data.courses
     },
+    staleTime: COURSE_DATA_STALE_TIME_MS,
+    gcTime: COURSE_DATA_GC_TIME_MS,
+    refetchOnWindowFocus: false,
   })
 
   const gradesQuery = useQuery({
@@ -53,14 +61,49 @@ export default function CourseDetail() {
       const response = await client.get(`/api/courses/${id}/grades`)
       return response.data
     },
+    staleTime: COURSE_DATA_STALE_TIME_MS,
+    gcTime: COURSE_DATA_GC_TIME_MS,
+    refetchOnWindowFocus: false,
   })
 
+  const dashboardCourse = useMemo(
+    () => (queryClient.getQueryData(['dashboard'])?.courses ?? []).find((entry) => String(entry.id) === id),
+    [id, queryClient],
+  )
+
   const course = useMemo(
-    () => (courseQuery.data ?? []).find((entry) => String(entry.id) === id),
-    [courseQuery.data, id],
+    () => (courseQuery.data ?? []).find((entry) => String(entry.id) === id) ?? dashboardCourse,
+    [courseQuery.data, dashboardCourse, id],
   )
 
   const components = gradesQuery.data?.component_model?.components ?? []
+  const assignmentsByComponent = gradesQuery.data?.component_model?.assignments_by_component ?? {}
+  const gradedComponents = components.filter((component) => component.status === 'graded')
+  const gradeBreakdownRows = useMemo(() => {
+    return gradedComponents.flatMap((component) => {
+      const assignmentRows = (assignmentsByComponent[component.component_key] ?? []).filter(
+        (row) => row.status === 'graded',
+      )
+
+      if (!assignmentRows.length) {
+        return [{
+          key: component.component_key,
+          name: component.name,
+          weight: component.weight,
+          pct: component.pct,
+        }]
+      }
+
+      const perAssignmentWeight = component.weight / assignmentRows.length
+
+      return assignmentRows.map((row) => ({
+        key: `${component.component_key}:${row.assignment_id}`,
+        name: row.name || component.name,
+        weight: perAssignmentWeight,
+        pct: row.pct,
+      }))
+    })
+  }, [assignmentsByComponent, gradedComponents])
   const projected = useMemo(() => {
     if (!components.length) return null
     return components.reduce((total, component) => {
@@ -72,18 +115,36 @@ export default function CourseDetail() {
 
   const remainingComponents = components.filter((component) => component.status === 'ungraded')
 
-  if (courseQuery.isLoading || gradesQuery.isLoading) {
-    return <div className="detail-page page"><div className="empty-card">Loading course details…</div></div>
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: ['dashboard'],
+      queryFn: async () => {
+        const response = await client.get('/api/courses/dashboard')
+        return response.data
+      },
+      staleTime: DASHBOARD_STALE_TIME_MS,
+    })
+  }, [queryClient])
+
+  if (gradesQuery.isLoading) {
+    return (
+      <div className="detail-page page">
+        <div className="dashboard-loading-card" aria-live="polite">
+          <div className="loading-spinner" aria-hidden="true" />
+          <div className="dashboard-loading-copy">Loading course details…</div>
+        </div>
+      </div>
+    )
   }
 
-  if (courseQuery.error || gradesQuery.error || !gradesQuery.data) {
+  if (gradesQuery.error || !gradesQuery.data) {
     return <div className="detail-page page"><div className="empty-card">Failed to load course details.</div></div>
   }
 
   const grade = gradesQuery.data.grade
   const currentGrade = grade?.weighted_grade ?? 0
-  const letter = grade?.letter ?? 'N/A'
-  const gradedWeight = grade?.graded_weight ?? 0
+  const projectedDefault = projected ?? currentGrade
+  const projectedLetter = toLetter(projectedDefault)
 
   return (
     <div className="detail-page page">
@@ -105,11 +166,10 @@ export default function CourseDetail() {
         </div>
         <div className="grade-hero">
           <div className="grade-big">
-            {currentGrade.toFixed(1)}
+            {projectedDefault.toFixed(1)}
             <span>%</span>
           </div>
-          <div className="grade-letter-hero">{letter}</div>
-          <div className="grade-sub">{gradedWeight}% of course graded</div>
+          <div className="grade-letter-hero">{projectedLetter}</div>
         </div>
       </div>
 
@@ -123,47 +183,22 @@ export default function CourseDetail() {
               <th>Component</th>
               <th>Weight</th>
               <th>Score</th>
-              <th>Contribution</th>
             </tr>
           </thead>
           <tbody>
-            {components.map((component) => {
-              const isGraded = component.status === 'graded'
-              const contribution = isGraded ? ((component.pct ?? 0) * component.weight) / 100 : null
+            {gradeBreakdownRows.map((row) => {
               return (
-                <tr key={component.component_key}>
+                <tr key={row.key}>
                   <td className="comp-name">
-                    {component.name}
-                    <span className={`comp-tag ${isGraded ? 'tag-done' : 'tag-remaining'}`}>
-                      {isGraded ? 'Graded' : 'Remaining'}
-                    </span>
+                    {row.name}
+                    <span className="comp-tag tag-done">Graded</span>
                   </td>
-                  <td>{component.weight}%</td>
-                  <td className={isGraded ? 'score-cell' : 'score-na'}>{isGraded ? `${component.pct}%` : 'Not yet'}</td>
-                  <td className={`contrib-cell ${isGraded ? 'contrib-positive' : ''}`}>
-                    {isGraded ? (
-                      <div className="mini-bar-wrap">
-                        {contribution.toFixed(1)}%
-                        <div className="mini-bar">
-                          <div className="mini-bar-fill" style={{ width: `${component.pct}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
+                  <td>{row.weight.toFixed(2).replace(/\.00$/, '')}%</td>
+                  <td className="score-cell">{row.pct}%</td>
                 </tr>
               )
             })}
           </tbody>
-          <tfoot>
-            <tr>
-              <td className="total-label">Graded so far ({gradedWeight}%)</td>
-              <td />
-              <td />
-              <td className="total-score">{currentGrade.toFixed(1)}%</td>
-            </tr>
-          </tfoot>
         </table>
       </div>
 
@@ -178,14 +213,14 @@ export default function CourseDetail() {
           </div>
           <div className="projected-grade">
             <span className="proj-label">If you score these marks:</span>
-            <span className="proj-val">{projected?.toFixed(1) ?? currentGrade.toFixed(1)}%</span>
-            <span className="proj-letter A">{toLetter(projected ?? currentGrade)}</span>
+            <span className="proj-val">{projectedDefault.toFixed(1)}%</span>
+            <span className="proj-letter A">{projectedLetter}</span>
           </div>
         </div>
         <div className="whatif-body">
           {remainingComponents.length ? (
             remainingComponents.map((component) => {
-              const value = sliderValues[component.component_key] ?? 85
+              const value = sliderValues[component.component_key] ?? 100
               return (
                 <div className="slider-row" key={component.component_key}>
                   <div>

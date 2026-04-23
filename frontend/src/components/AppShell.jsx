@@ -3,15 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import Logo from './Logo'
 import ProfileMenu from './ProfileMenu'
 import { useAuth } from '../hooks/useAuth'
-
-function initials(nameOrEmail) {
-  return (nameOrEmail || 'UA')
-    .replace(/@.*$/, '')
-    .split(/[.\s_-]+/)
-    .map((part) => part[0]?.toUpperCase())
-    .join('')
-    .slice(0, 2)
-}
+import { getInitials } from '../utils/initials'
 
 export default function AppShell() {
   const { user, logout } = useAuth()
@@ -37,7 +29,7 @@ export default function AppShell() {
         </nav>
 
         <div className="sidebar-bottom">
-          <ProfileMenu displayName={displayName} initials={initials(displayName)} onLogout={logout} dropUp />
+          <ProfileMenu displayName={displayName} initials={getInitials(displayName)} onLogout={logout} dropUp />
         </div>
       </aside>
 

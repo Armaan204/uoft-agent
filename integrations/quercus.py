@@ -372,3 +372,22 @@ class QuercusClient:
             params.append(("context_codes[]", f"course_{course_id}"))
 
         return self._get("/announcements", params=params)
+
+    def get_course_announcements(self, course_id: int | str, limit: int = 10, days_back: int = 180) -> list[dict]:
+        """Return recent announcements for one course."""
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=days_back)).date().isoformat()
+        end_date = now.date().isoformat()
+        params = [
+            ("active_only", "true"),
+            ("start_date", start_date),
+            ("end_date", end_date),
+            ("context_codes[]", f"course_{course_id}"),
+        ]
+        announcements = self._get("/announcements", params=params)
+        announcements.sort(key=lambda item: item.get("posted_at") or "", reverse=True)
+        return announcements[:limit]
+
+    def get_announcement_detail(self, announcement_id: int | str) -> dict:
+        """Return one announcement by Canvas announcement ID."""
+        return self._get(f"/announcements/{announcement_id}")
