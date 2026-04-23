@@ -7,7 +7,7 @@ const IMPORT_CODE_KEY = 'uoft-agent-acorn-import-code'
 const ACORN_EXTENSION_URL =
   'https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb'
 
-const UNEARNED_GRADES = new Set(['IPR', 'NGA'])
+const UNEARNED_GRADES = new Set(["NCR", "NGA", "IPR", "LWD", "GWR", "SDF", "WD", "FL%", "NC%", "F"])
 const TERM_ORDER = {
   winter: 0,
   spring: 1,
@@ -149,13 +149,44 @@ function buildAreaPath(points, baselineY) {
   return `${linePath} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`
 }
 
+function isEarnedCourse(course) {
+  const grade = String(course?.grade || '').trim().toUpperCase()
+  if (UNEARNED_GRADES.has(grade) || grade === 'F') return false
+
+  const mark = Number.parseFloat(course?.mark)
+  if (Number.isFinite(mark) && mark < 50) return false
+
+  const credits = Number.parseFloat(course?.credits)
+  if (!Number.isFinite(credits) || credits <= 0) return false
+
+  return true
+}
+
+function shouldDeduplicateCourseCode(courseCode) {
+  return Boolean(courseCode) && !courseCode.includes('***')
+}
+
 function renderCredits(courses) {
-  return (courses ?? []).reduce((total, course) => {
+  const creditsByCourseCode = new Map()
+  let totalCredits = 0
+
+  for (const course of courses ?? []) {
+    const courseCode = String(course?.courseCode || '').trim().toUpperCase()
+    if (!courseCode || !isEarnedCourse(course)) continue
+
     const credits = Number.parseFloat(course?.credits)
-    const grade = String(course?.grade || '').toUpperCase()
-    if (!Number.isFinite(credits) || UNEARNED_GRADES.has(grade)) return total
-    return total + credits
-  }, 0)
+    if (!shouldDeduplicateCourseCode(courseCode)) {
+      totalCredits += credits
+      continue
+    }
+
+    const current = creditsByCourseCode.get(courseCode) ?? 0
+    if (credits > current) {
+      creditsByCourseCode.set(courseCode, credits)
+    }
+  }
+
+  return totalCredits + Array.from(creditsByCourseCode.values()).reduce((total, credits) => total + credits, 0)
 }
 
 const ACORN_COLUMNS = [
@@ -207,6 +238,33 @@ function compareAcornRows(left, right, sortKey, type, direction) {
     sensitivity: 'base',
   })
   return isDescending ? -result : result
+}
+
+function escapeCsvValue(value) {
+  const normalized = String(value ?? '')
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, '""')}"`
+  }
+  return normalized
+}
+
+function downloadCoursesCsv(rows) {
+  const header = ACORN_COLUMNS.map((column) => escapeCsvValue(column.label)).join(',')
+  const body = rows.map((course) =>
+    ACORN_COLUMNS.map((column) => escapeCsvValue(course?.[column.key] ?? '—')).join(','),
+  )
+  const csv = [header, ...body].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const stamp = new Date().toISOString().slice(0, 10)
+
+  link.href = url
+  link.download = `acorn-courses-${stamp}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
 }
 
 function SummaryCard({ label, value, hint }) {
@@ -472,6 +530,11 @@ function AcornLanding({ data, onReimport }) {
             <div className="acorn-panel-title">Imported courses</div>
             <div className="acorn-panel-sub">Your saved ACORN history, grouped as a clean read-only reference.</div>
           </div>
+          {rows.length ? (
+            <button className="acorn-secondary-btn" type="button" onClick={() => downloadCoursesCsv(rows)}>
+              Download CSV
+            </button>
+          ) : null}
         </div>
 
         {rows.length ? (

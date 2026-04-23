@@ -20,6 +20,9 @@ class AcornServiceError(RuntimeError):
     """Raised when the ACORN storage layer is misconfigured or fails."""
 
 
+UNEARNED_GRADES = {"IPR", "NGA", "LWD"}
+
+
 def _get_supabase() -> Client:
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
@@ -130,6 +133,63 @@ def get_latest_import_for_user(user_id: str | int) -> dict | None:
     return data
 
 
+def _parse_credits(value: Any) -> float | None:
+    try:
+        credits = float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+    if credits is None or credits <= 0:
+        return None
+    return credits
+
+
+def _parse_mark(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_earned_course(course: dict[str, Any]) -> bool:
+    grade = str(course.get("grade") or "").strip().upper()
+    if grade in UNEARNED_GRADES or grade == "F":
+        return False
+
+    mark = _parse_mark(course.get("mark"))
+    if mark is not None and mark < 50:
+        return False
+
+    return _parse_credits(course.get("credits")) is not None
+
+
+def _should_deduplicate_course_code(course_code: str) -> bool:
+    return bool(course_code) and "***" not in course_code
+
+
+def _calculate_earned_credits(courses: list[dict[str, Any]]) -> float:
+    credits_by_course_code: dict[str, float] = {}
+    total_credits = 0.0
+
+    for course in courses:
+        course_code = str(course.get("courseCode") or course.get("code") or "").strip().upper()
+        if not course_code or not _is_earned_course(course):
+            continue
+
+        credits = _parse_credits(course.get("credits"))
+        if credits is None:
+            continue
+
+        if not _should_deduplicate_course_code(course_code):
+            total_credits += credits
+            continue
+
+        current = credits_by_course_code.get(course_code, 0.0)
+        if credits > current:
+            credits_by_course_code[course_code] = credits
+
+    return round(total_credits + sum(credits_by_course_code.values()), 2)
+
+
 def get_academic_history(user_id: str | int) -> dict[str, Any]:
     """Return structured academic history for one user from the latest claimed ACORN import."""
     latest = get_latest_import_for_user(user_id)
@@ -138,19 +198,12 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
 
     raw_terms = latest.get("terms") or []
     structured_terms = []
-    total_credits = 0.0
+    all_courses: list[dict[str, Any]] = []
 
     for term in raw_terms:
         courses = []
         for course in term.get("courses") or []:
             credits_raw = course.get("credits")
-            try:
-                credits_value = float(credits_raw) if credits_raw is not None else None
-            except (TypeError, ValueError):
-                credits_value = None
-
-            if credits_value is not None:
-                total_credits += credits_value
 
             courses.append({
                 "code": course.get("courseCode"),
@@ -159,6 +212,7 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
                 "grade": course.get("grade"),
                 "mark": course.get("mark"),
             })
+            all_courses.append(course)
 
         structured_terms.append({
             "term": term.get("term"),
@@ -169,7 +223,7 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
 
     return {
         "terms": structured_terms,
-        "credits_earned": round(total_credits, 2),
+        "credits_earned": _calculate_earned_credits(all_courses),
         "imported_at": latest.get("importedAt"),
     }
 

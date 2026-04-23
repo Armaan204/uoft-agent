@@ -3,7 +3,7 @@ function normalizeText(value) {
 }
 
 function isGradeToken(token) {
-  return /^(A|B|C|D|F)[+-]?$/i.test(token) || ["NCR", "CR", "NGA", "IPR"].includes(token.toUpperCase());
+  return /^(A|B|C|D|F)[+-]?$/i.test(token) || ["NCR", "CR", "NGA", "IPR", "LWD", "GWR", "SDF", "WD", "P", "FL%", "NC%", "F"].includes(token.toUpperCase());
 }
 
 function isCreditToken(token) {
@@ -83,7 +83,7 @@ export function parseCourseSegment(segment) {
   } else {
     // CR/NCR courses are worth 0.5 credits even when ACORN shows 0.00.
     const gradeUpper = grade ? grade.toUpperCase() : null;
-    if ((gradeUpper === "CR" || gradeUpper === "NCR") && credits === "0.00") {
+    if ((gradeUpper === "CR") && credits === "0.00") {
       credits = "0.50";
     }
   }
