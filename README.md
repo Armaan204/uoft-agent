@@ -18,83 +18,93 @@ UofT Agent Connector is published on the Chrome Web Store:
 
 https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb
 
-## What It Does
+## Overview
 
-UofT Agent combines live academic data, deterministic grade math, and an Anthropic tool-calling loop.
+UofT Agent combines live Quercus data, deterministic grade math, ACORN academic-history import, and an Anthropic-powered tool-calling assistant.
 
 Current capabilities:
 
-- Quercus course retrieval
-- Encrypted Quercus-token persistence per logged-in user
-- Assignment and submission retrieval
-- Canvas assignment-group weight resolution
-- Syllabus PDF, DOCX, and Canvas-page discovery when Canvas weights are missing
-- Current-grade and target-grade calculations
-- Dashboard cards, announcements, deadlines, and per-course what-if views
-- ACORN academic-history import via browser extension and backend API
-- Published Chrome Web Store extension for ACORN academic-history import
+- Google sign-in through the FastAPI + React app
+- Encrypted Quercus-token persistence per logged-in user in Supabase
+- Dashboard with current courses, grades, announcements, and upcoming deadlines
+- Per-course grade breakdowns and what-if calculations
+- ACORN academic-history import via the Chrome extension and backend API
+- In-app chat that can answer questions using Quercus grades, academic history, and announcements
 
 ## Core Flow
 
 1. The student signs in with Google through the deployed FastAPI + React flow.
 2. On first use, the student enters a Quercus personal access token.
 3. The app validates the token, encrypts it, and stores it in Supabase for that logged-in user.
-4. On later visits, the app restores the saved token automatically and skips the token prompt.
-5. The app loads current courses and grade data from Quercus.
-6. If Canvas weights are missing, the app searches for a syllabus and extracts weights with Anthropic.
-7. Deterministic Python code computes grades and scenarios.
-8. The chat agent can call the same tools to answer natural-language questions.
+4. The dashboard loads current courses, grade data, deadlines, and recent announcements from Quercus.
+5. If Canvas weights are missing, the app searches for a syllabus and extracts weights with Anthropic.
+6. Deterministic Python code computes grades, projected outcomes, and target-grade scenarios.
+7. The chat agent uses tool calls to answer questions about current grades, academic history, and course news.
 
-## Project Structure
+## Architecture
 
-- [`app.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py) — Streamlit UI, dashboard, chat, ACORN tab
-- [`auth/user_store.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/auth/user_store.py) — Supabase-backed user lookup and encrypted Quercus-token persistence
-- [`agent/agent.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/agent.py) — Anthropic agent loop
-- [`agent/tools.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent/tools.py) — tool schemas and dispatch
-- [`calculator/grades.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/calculator/grades.py) — deterministic grade engine
-- [`integrations/quercus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/quercus.py) — Quercus / Canvas API client
-- [`integrations/syllabus.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus.py) — syllabus discovery and parsing
-- [`integrations/syllabus_cache.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations/syllabus_cache.py) — persistent Supabase cache for parsed syllabus weights
-- [`api_server.py`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/api_server.py) — ACORN import backend
-- [`uoft-acorn-extension/`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/uoft-acorn-extension) — Chrome extension, published on the Chrome Web Store
+- [`frontend/`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/frontend) — Vite + React frontend deployed at `https://uoft-agent.com`
+  - login, onboarding, dashboard, course detail, chat, and ACORN pages
+  - TanStack Query for client-side fetching and caching
+  - Markdown-style rendering for assistant responses
+- [`api/`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/api) — FastAPI backend powering the deployed app
+  - Google OAuth + JWT auth
+  - Quercus token CRUD and course-grade routes
+  - chat route that runs the Anthropic tool-calling agent
+  - ACORN routes used by the extension and frontend
+- [`agent/`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/agent) — Anthropic agent loop, prompt, and tool definitions
+- [`calculator/`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/calculator) — deterministic grade engine and explicit UofT GPA mapping
+- [`integrations/`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/integrations) — Quercus client and syllabus discovery/parsing
+- [`auth/user_store.py`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/auth/user_store.py) — Supabase-backed user lookup and encrypted Quercus-token persistence
+- [`uoft-acorn-extension/`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/uoft-acorn-extension) — published Chrome extension for ACORN import
+
+## Key Product Decisions
+
+- The LLM handles orchestration and extraction tasks; Python handles arithmetic
+- Grade calculations are deterministic and use explicit UofT percentage-to-letter and letter-to-GPA mappings
+- Weighted grades are shown only when the component model is reliable enough
+- Multi-course chat questions prefer cached grade snapshots instead of repeated live Quercus calls
+- Recent announcements can be previewed on the dashboard and opened in-app for full detail
+- ACORN history is imported through the extension flow, then attached to the logged-in user in Supabase
 
 ## Auth
 
-The app uses Streamlit's built-in auth APIs:
+The primary app uses FastAPI Google OAuth plus frontend JWT auth:
 
-- `st.login("google")`
-- `st.user`
-- `st.logout()`
+1. The frontend sends the user to `GET /auth/google`
+2. FastAPI redirects to Google
+3. Google returns to FastAPI at `REDIRECT_URI`
+4. FastAPI signs a JWT and redirects to `${FRONTEND_URL}/auth/callback?token=...`
+5. The React app stores the token locally and uses it for protected API calls
 
-This is not a Supabase Auth flow and not a custom auth module.
+After login, the app checks whether the user already has a saved Quercus token. If not, the user is sent to onboarding.
 
-If you still run the legacy Streamlit app, configure secrets like this:
+## Data and Caching
 
-```toml
-ANTHROPIC_API_KEY = "..."
-SUPABASE_URL = "..."
-SUPABASE_KEY = "..."
-ENCRYPTION_KEY = "..."
+- Quercus tokens are encrypted before being stored in Supabase
+- Parsed syllabus weights are cached in-process and persisted in Supabase
+- Dashboard-grade snapshots are persisted in Supabase in `grades_snapshot`
+- Chat tools can use:
+  - cached dashboard snapshots from Supabase for fast current-grade answers
+  - short-lived in-memory aggregate grade caching per user
+  - live Quercus refresh when the user explicitly asks for updated grades
+- ACORN academic history is stored in Supabase and exposed to the chat agent through a service layer
 
-[auth]
-redirect_uri = "https://uoft-agent.com/oauth2callback"
-cookie_secret = "..."
+## Chat Tools
 
-[auth.google]
-client_id = "..."
-client_secret = "..."
-server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
-```
+The agent has deterministic tools for:
 
-Important:
+- current semester grade overviews
+- per-course current grades and what-if scenarios
+- cached grade snapshots and explicit grade refresh
+- academic-history lookup from imported ACORN data
+- recent course announcements and full announcement detail
 
-- App secrets such as `ANTHROPIC_API_KEY` must stay at the top level
-- Do not place them under `[auth]` or `[auth.google]`
-- The app also uses `SUPABASE_URL`, `SUPABASE_KEY`, and `ENCRYPTION_KEY` to persist encrypted Quercus tokens
+This reduces hallucination on numeric questions and keeps multi-course responses fast.
 
 ## Local Development
 
-Install dependencies:
+Install Python dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -104,19 +114,35 @@ Create a local `.env`:
 
 ```env
 ANTHROPIC_API_KEY=your_anthropic_key
-QUERCUS_API_TOKEN=your_quercus_token
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_supabase_service_role_key
 ENCRYPTION_KEY=your_fernet_key
+JWT_SECRET=your_jwt_secret
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+REDIRECT_URI=http://localhost:8001/auth/callback
+FRONTEND_URL=http://localhost:5173
 ```
 
-Run the Streamlit app:
+Run the FastAPI backend:
 
 ```bash
-streamlit run app.py
+uvicorn api.main:app --reload --port 8001
 ```
 
-Run the ACORN backend locally:
+Swagger UI is available at `http://localhost:8001/docs`.
+
+Run the React frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend is available at `http://localhost:5173`.
+
+If you are testing the standalone ACORN import backend directly, you can also run:
 
 ```bash
 python api_server.py
@@ -124,44 +150,36 @@ python api_server.py
 
 ## Deployment
 
-Recommended split:
+Current production shape:
 
-- Streamlit app on Streamlit Cloud
-- ACORN backend on Railway
-- ACORN import storage in Supabase Postgres
-- User records and encrypted Quercus tokens in Supabase Postgres
-- Persistent parsed syllabus weights in Supabase Postgres
+- React frontend served at `https://uoft-agent.com`
+- FastAPI backend serving auth, courses, chat, and ACORN routes
+- Supabase Postgres for users, encrypted Quercus tokens, syllabus cache, ACORN imports, and grade snapshots
+- Chrome extension for ACORN academic-history import
 
-The backend supports:
+Key backend routes include:
 
-- `POST /api/acorn/import`
-- `GET /api/acorn/latest?import_code=...`
-- `GET /api/acorn/status?import_code=...`
+- `GET /auth/google`
+- `GET /auth/callback`
+- `GET /auth/me`
+- `GET /api/courses/dashboard`
+- `GET /api/courses/{course_id}/grades`
+- `POST /api/chat`
+- `GET /api/acorn/*`
 
-The Railway entrypoint is [`Procfile`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/Procfile):
+## Legacy Streamlit App
 
-```text
-web: python api_server.py
-```
+[`app.py`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/app.py) is now legacy and is being phased out. The primary maintained product is the React + FastAPI app.
 
-## Notes On Grade Resolution
-
-- Canvas `group_weight` is preferred whenever it exists
-- Syllabus parsing is a fallback for courses with incomplete LMS metadata
-- The syllabus fallback can now parse linked Canvas pages in addition to PDFs and DOCX files
-- Weighted overview grades are shown only when the component mapping is reliable enough
-- Module-based syllabus discovery now prefers actual file metadata and can deterministically select a unique best candidate before falling back to an LLM chooser
-- Assignment groups and submissions are cached for 5 minutes to improve dashboard performance
-- Parsed syllabus weights are cached for 1 hour in-process and also persisted in Supabase for reuse across sessions
+Keep Streamlit only if you need to reference or migrate behavior from the older UI.
 
 ## Current Limitations
 
-- Gradescope and MarkUs integrations are still placeholders
+- Gradescope and MarkUs integrations are still not implemented
 - Some courses intentionally show no weighted overview grade when syllabus-to-assignment mapping is too ambiguous
-- ACORN import currently uses import codes rather than a full user account model
-- The Streamlit ACORN tab is currently shown as a "Coming Soon" placeholder while the extension flow is under review
-- If a saved Quercus token is revoked or expires, the app clears it and asks the user to enter a new one
-- Quercus-posted grade changes can take up to about 5 minutes to appear because of short-lived API caching
+- ACORN data supports history, GPA, and course readback, but not full graduation-audit logic
+- Quercus-posted grade changes can take a few minutes to appear because of short-lived caching
+- The frontend currently stores the auth JWT in localStorage; this works, but it is not the final hardened auth posture
 
 ## Support
 
@@ -170,4 +188,4 @@ or [open an issue](https://github.com/armaan204/uoft-agent/issues).
 
 ## License
 
-MIT. See [`LICENSE`](/C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/LICENSE).
+MIT. See [`LICENSE`](C:/Users/armaa/OneDrive/Documents/Armaan/UofT/uoft-agent/LICENSE).
