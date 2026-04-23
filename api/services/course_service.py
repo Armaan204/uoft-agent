@@ -79,25 +79,42 @@ def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str
     groups = client.get_assignment_groups(course_id)
     submissions = client.get_submissions(course_id)
     weights, _source = _resolve_course_weights_uncached(course_id, client)
+    current_grade = 0.0
+    projected_grade = 0.0
+    displayed_grade = 0.0
+    displayed_letter = "N/A"
 
     if weights:
         component_model = _calc.build_weighted_components(groups, submissions, weights)
         if component_model["reliable"]:
             grade = _grade_from_components(component_model["components"])
+            current_grade = grade["weighted_grade"]
+            projected_grade = _calc.projected_grade(component_model["components"], {})
+            displayed_grade = projected_grade
+            displayed_letter = _calc._to_letter(projected_grade)
         else:
             grade = _grade_from_points(groups, submissions)
+            current_grade = grade["weighted_grade"]
+            projected_grade = current_grade
+            displayed_grade = current_grade
+            displayed_letter = grade["letter"]
     else:
         grade = _grade_from_points(groups, submissions)
+        current_grade = grade["weighted_grade"]
+        projected_grade = current_grade
+        displayed_grade = current_grade
+        displayed_letter = grade["letter"]
 
     upcoming_deadlines = _get_upcoming_deadlines(client, course_id, course.get("course_code"))
-    current_grade = grade["weighted_grade"]
     return {
         "id": course_id,
         "course_code": course.get("course_code"),
         "name": course.get("name"),
         "current_grade": current_grade,
-        "letter_grade": grade["letter"],
-        "risk_flag": _risk_flag(current_grade, grade["letter"] != "N/A"),
+        "projected_grade": projected_grade,
+        "display_grade": displayed_grade,
+        "letter_grade": displayed_letter,
+        "risk_flag": _risk_flag(displayed_grade, displayed_letter != "N/A"),
         "progress_pct": round(grade.get("graded_weight", 0.0), 2),
         "deadlines": upcoming_deadlines,
     }

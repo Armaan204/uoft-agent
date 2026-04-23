@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import client from '../api/client'
 import AnnouncementList from '../components/AnnouncementList'
@@ -8,6 +8,7 @@ import DeadlineList from '../components/DeadlineList'
 
 const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
 const DASHBOARD_GC_TIME_MS = 30 * 60 * 1000
+const COURSE_DETAIL_STALE_TIME_MS = 5 * 60 * 1000
 
 async function fetchDashboard() {
   const response = await client.get('/api/courses/dashboard')
@@ -15,6 +16,7 @@ async function fetchDashboard() {
 }
 
 export default function Dashboard() {
+  const queryClient = useQueryClient()
   const courseGridRef = useRef(null)
   const deadlinesLabelRef = useRef(null)
   const [deadlinesMaxHeight, setDeadlinesMaxHeight] = useState(null)
@@ -32,6 +34,47 @@ export default function Dashboard() {
     [data],
   )
   const announcements = data?.announcements ?? []
+
+  useEffect(() => {
+    if (isLoading || error || !(data?.courses?.length)) return undefined
+
+    let cancelled = false
+    const timers = []
+
+    const prefetchCourseDetails = () => {
+      data.courses.forEach((course, index) => {
+        const timer = window.setTimeout(() => {
+          if (cancelled) return
+          queryClient.prefetchQuery({
+            queryKey: ['course-grades', String(course.id)],
+            queryFn: async () => {
+              const response = await client.get(`/api/courses/${course.id}/grades`)
+              return response.data
+            },
+            staleTime: COURSE_DETAIL_STALE_TIME_MS,
+          })
+        }, 250 + index * 150)
+        timers.push(timer)
+      })
+    }
+
+    if (typeof window.requestIdleCallback === 'function') {
+      const idleId = window.requestIdleCallback(prefetchCourseDetails, { timeout: 1500 })
+      return () => {
+        cancelled = true
+        window.cancelIdleCallback(idleId)
+        timers.forEach((timer) => window.clearTimeout(timer))
+      }
+    }
+
+    const fallbackTimer = window.setTimeout(prefetchCourseDetails, 400)
+    timers.push(fallbackTimer)
+
+    return () => {
+      cancelled = true
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [data, error, isLoading, queryClient])
 
   useEffect(() => {
     if (!courseGridRef.current || !deadlinesLabelRef.current) return undefined

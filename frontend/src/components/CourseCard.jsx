@@ -26,7 +26,8 @@ function displayCourseName(name, courseCode) {
 export default function CourseCard({ course }) {
   const queryClient = useQueryClient()
   const badge = badgeClass(course.risk_flag)
-  const grade = typeof course.current_grade === 'number' ? Math.round(course.current_grade) : '--'
+  const gradeValue = typeof course.display_grade === 'number' ? course.display_grade : course.current_grade
+  const grade = typeof gradeValue === 'number' ? Math.round(gradeValue) : '--'
 
   function prefetchCourseDetail() {
     queryClient.prefetchQuery({
