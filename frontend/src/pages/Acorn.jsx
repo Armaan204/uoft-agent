@@ -279,6 +279,26 @@ function SummaryCard({ label, value, hint }) {
 
 function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim, onRefreshCode }) {
   const detected = Boolean(status?.exists)
+  const [copyState, setCopyState] = useState('idle')
+
+  useEffect(() => {
+    if (copyState !== 'copied') return undefined
+
+    const timer = window.setTimeout(() => {
+      setCopyState('idle')
+    }, 1800)
+
+    return () => window.clearTimeout(timer)
+  }, [copyState])
+
+  async function handleCopyCode() {
+    try {
+      await navigator.clipboard?.writeText(importCode)
+      setCopyState('copied')
+    } catch {
+      setCopyState('error')
+    }
+  }
 
   return (
     <div className="page dashboard-page acorn-page">
@@ -306,8 +326,15 @@ function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim
         <section className="acorn-onboarding-card rise">
           <div className="acorn-panel-title">How it works</div>
           <ol className="acorn-steps">
-            <li>Install the UofT Agent Chrome extension.</li>
+            <li>
+              Install the{' '}
+              <a href={ACORN_EXTENSION_URL} target="_blank" rel="noreferrer">
+                UofT Agent Chrome extension
+              </a>
+              .
+            </li>
             <li>Open your ACORN Academic History page in another tab.</li>
+            <li>Click on <strong>Complete Academic History</strong>.</li>
             <li>Paste this import code into the extension popup.</li>
             <li>Click import, then return here and confirm.</li>
           </ol>
@@ -329,14 +356,20 @@ function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim
             <button
               className="acorn-secondary-btn"
               type="button"
-              onClick={() => navigator.clipboard?.writeText(importCode)}
+              onClick={handleCopyCode}
             >
-              Copy code
+              {copyState === 'copied' ? 'Copied' : 'Copy code'}
             </button>
             <button className="acorn-primary-btn" type="button" onClick={onClaim} disabled={claimPending}>
               {claimPending ? 'Checking import…' : "I've completed the import"}
             </button>
           </div>
+          {copyState === 'copied' ? (
+            <div className="acorn-inline-success">Code copied to clipboard.</div>
+          ) : null}
+          {copyState === 'error' ? (
+            <div className="acorn-inline-error">Could not copy automatically. Copy the code manually.</div>
+          ) : null}
           {claimError ? <div className="acorn-inline-error">{claimError}</div> : null}
           {!claimError && !detected ? (
             <div className="acorn-inline-note">

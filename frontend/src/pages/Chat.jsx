@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 
 import client from '../api/client'
 import MarkdownMessage from '../components/MarkdownMessage'
@@ -7,12 +7,13 @@ import ToolCallBlock from '../components/ToolCallBlock'
 import { useAuth } from '../hooks/useAuth'
 import { getInitials } from '../utils/initials'
 
-const suggestions = [
-  "What's my GPA this semester?",
-  'Show upcoming deadlines',
-  'How to improve MATB44?',
-  'Compare my courses by grade',
-]
+const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
+const DASHBOARD_GC_TIME_MS = 30 * 60 * 1000
+
+async function fetchDashboard() {
+  const response = await client.get('/api/courses/dashboard')
+  return response.data
+}
 
 export default function Chat() {
   const { user } = useAuth()
@@ -27,6 +28,38 @@ export default function Chat() {
   ])
   const scrollRef = useRef(null)
   const userInitials = getInitials(user?.name || user?.email)
+
+  const dashboardQuery = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: fetchDashboard,
+    staleTime: DASHBOARD_STALE_TIME_MS,
+    gcTime: DASHBOARD_GC_TIME_MS,
+    refetchOnWindowFocus: false,
+  })
+
+  const suggestions = useMemo(() => {
+    const items = [
+      "What's my GPA this semester?",
+      'Show upcoming deadlines',
+      'Compare my courses by grade',
+    ]
+
+    const courses = dashboardQuery.data?.courses ?? []
+    const lowestCourse = courses.reduce((lowest, course) => {
+      const grade = typeof course.display_grade === 'number' ? course.display_grade : course.current_grade
+      if (typeof grade !== 'number') return lowest
+      if (!lowest || grade < lowest.grade) {
+        return { courseCode: course.course_code, grade }
+      }
+      return lowest
+    }, null)
+
+    if (lowestCourse?.courseCode) {
+      items.splice(2, 0, `How to improve ${String(lowestCourse.courseCode).slice(0, 6)}?`)
+    }
+
+    return items
+  }, [dashboardQuery.data?.courses])
 
   const mutation = useMutation({
     mutationFn: async (message) => {

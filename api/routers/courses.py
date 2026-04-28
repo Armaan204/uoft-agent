@@ -21,7 +21,9 @@ from api.services.course_service import (
     get_course_scenarios,
     get_course_weights,
     list_current_term_courses,
+    save_course_grade_overrides,
 )
+from integrations.grades_cache import GradesCacheError
 from api.services.grades_snapshot_service import GradesSnapshotServiceError, save_snapshot
 from auth.user_store import (
     UserStoreError,
@@ -36,6 +38,16 @@ logger = logging.getLogger(__name__)
 
 class QuercusTokenBody(BaseModel):
     token: str
+
+
+class GradeOverrideItem(BaseModel):
+    component_key: str
+    manual_score: float
+    manual_possible: float
+
+
+class GradeOverridesBody(BaseModel):
+    overrides: list[GradeOverrideItem]
 
 
 def _token_debug_value(token: str | None) -> str:
@@ -204,8 +216,28 @@ def course_grades(
 ):
     token = _resolve_token(quercus_token, current_user)
     try:
-        return get_course_grades(token, course_id)
-    except (CourseServiceError, QuercusError) as exc:
+        return get_course_grades(token, course_id, current_user["user_id"])
+    except (CourseServiceError, QuercusError, GradesCacheError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/{course_id}/grade-overrides")
+def write_course_grade_overrides(
+    course_id: int,
+    body: GradeOverridesBody,
+    quercus_token: str | None = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+):
+    token = _resolve_token(quercus_token, current_user)
+    try:
+        save_course_grade_overrides(
+            token,
+            current_user["user_id"],
+            course_id,
+            [override.model_dump() for override in body.overrides],
+        )
+        return get_course_grades(token, course_id, current_user["user_id"])
+    except (CourseServiceError, QuercusError, GradesCacheError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 

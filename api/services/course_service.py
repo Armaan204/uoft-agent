@@ -12,6 +12,13 @@ from typing import Any
 from bs4 import BeautifulSoup
 from auth.user_store import UserStoreError, get_quercus_token
 from calculator.grades import GradeCalculator, UOFT_THRESHOLDS
+from integrations.grades_cache import (
+    detect_new_grades,
+    get_grade_overrides,
+    get_saved_grades,
+    save_grade_override,
+    save_grades,
+)
 from integrations.quercus import QuercusClient, QuercusError
 from integrations.syllabus import (
     SyllabusError,
@@ -196,15 +203,26 @@ def get_course_weights(quercus_token: str, course_id: int | str) -> dict[str, An
     }
 
 
-def get_course_grades(quercus_token: str, course_id: int | str) -> dict[str, Any]:
+def get_course_grades(quercus_token: str, course_id: int | str, user_id: str | int | None = None) -> dict[str, Any]:
     client = UncachedQuercusClient(token=quercus_token)
     groups = client.get_assignment_groups(course_id)
     submissions = client.get_submissions(course_id)
     weights, source = _resolve_course_weights_uncached(course_id, client)
     enrollment = client.get_grades(course_id)
+    saved_grades: dict[str, dict[str, Any]] = {}
+    overrides: dict[str, dict[str, Any]] = {}
+    new_grade_keys: list[str] = []
+    live_components: list[dict[str, Any]] = []
 
     if weights:
         component_model = _calc.build_weighted_components(groups, submissions, weights)
+        if user_id:
+            saved_grades = get_saved_grades(user_id, course_id)
+            overrides = get_grade_overrides(user_id, course_id)
+            live_components = [_with_component_key(component) for component in component_model["components"]]
+            applied_components = _apply_grade_overrides(live_components, overrides)
+            new_grade_keys = detect_new_grades(user_id, course_id, live_components)
+            component_model = {**component_model, "components": applied_components}
         grade = _grade_from_components(component_model["components"])
     else:
         component_model = None
@@ -217,6 +235,10 @@ def get_course_grades(quercus_token: str, course_id: int | str) -> dict[str, Any
         "grade": grade,
         "components": component_model["components"] if component_model else [],
         "component_model": component_model,
+        "saved_grades": saved_grades,
+        "overrides": overrides,
+        "new_grade_keys": new_grade_keys,
+        "live_components": live_components,
         "enrollment": {
             "current_score": enrollment.get("current_score"),
             "current_grade": enrollment.get("current_grade"),
@@ -224,6 +246,58 @@ def get_course_grades(quercus_token: str, course_id: int | str) -> dict[str, Any
             "final_grade": enrollment.get("final_grade"),
         },
     }
+
+
+def save_course_grade_overrides(
+    quercus_token: str,
+    user_id: str | int,
+    course_id: int | str,
+    overrides: list[dict[str, float | str]],
+) -> None:
+    client = UncachedQuercusClient(token=quercus_token)
+    groups = client.get_assignment_groups(course_id)
+    submissions = client.get_submissions(course_id)
+    weights, _source = _resolve_course_weights_uncached(course_id, client)
+    if not weights:
+        raise CourseServiceError("No Canvas weights or accessible syllabus weights found for this course")
+
+    component_model = _calc.build_weighted_components(groups, submissions, weights)
+    if not component_model["reliable"]:
+        raise CourseServiceError("This course's weighted components could not be mapped reliably enough for overrides")
+
+    live_components = [_with_component_key(component) for component in component_model["components"]]
+    graded_lookup = {
+        component["component_key"]: component
+        for component in live_components
+        if component.get("status") == "graded"
+    }
+
+    for override in overrides:
+        component_key = str(override.get("component_key") or "").strip()
+        manual_score = float(override.get("manual_score"))
+        manual_possible = float(override.get("manual_possible"))
+        if not component_key:
+            raise CourseServiceError("component_key must be provided")
+        if manual_possible <= 0:
+            raise CourseServiceError("manual_possible must be greater than 0")
+
+        live_component = graded_lookup.get(component_key)
+        if live_component is None:
+            raise CourseServiceError("Could not find a graded component matching that override")
+
+        expected_possible = float(live_component.get("possible") or 0.0)
+        if expected_possible <= 0:
+            raise CourseServiceError("This component does not have a valid possible score")
+        if abs(expected_possible - manual_possible) > 0.01:
+            raise CourseServiceError("Component points possible do not match the latest course data")
+
+        save_grade_override(user_id, course_id, component_key, manual_score, manual_possible)
+
+    save_grades(
+        user_id,
+        course_id,
+        [component for component in live_components if component.get("status") == "graded"],
+    )
 
 
 def get_course_scenarios(quercus_token: str, course_id: int | str) -> dict[str, Any]:
@@ -511,3 +585,43 @@ def _grade_from_components(components: list[dict[str, Any]]) -> dict[str, Any]:
         },
         "graded_weight": round(graded_weight, 2),
     }
+
+
+def _fallback_component_key(component: dict[str, Any]) -> str:
+    source = str(component.get("source") or "component").strip().lower() or "component"
+    group_name = str(component.get("group_name") or "").strip().lower()
+    name = str(component.get("name") or "").strip().lower()
+    status = str(component.get("status") or "").strip().lower()
+    possible = component.get("possible")
+    possible_part = "none" if possible in (None, "") else str(possible)
+    parts = [source, group_name, name, status, possible_part]
+    return "::".join(part.replace("::", ":") for part in parts if part)
+
+
+def _with_component_key(component: dict[str, Any]) -> dict[str, Any]:
+    clone = dict(component)
+    clone["component_key"] = str(clone.get("component_key") or "").strip() or _fallback_component_key(clone)
+    return clone
+
+
+def _apply_grade_overrides(components: list[dict[str, Any]], overrides: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    applied = []
+    for component in components:
+        clone = _with_component_key(component)
+        clone["is_manual"] = False
+        clone["manual_score"] = None
+        clone["manual_possible"] = None
+        override = overrides.get(clone["component_key"])
+        if override:
+            manual_score = override.get("manual_score")
+            manual_possible = override.get("manual_possible")
+            if manual_score is not None and manual_possible not in (None, 0):
+                clone["earned"] = float(manual_score)
+                clone["possible"] = float(manual_possible)
+                clone["pct"] = round((float(manual_score) / float(manual_possible)) * 100, 2)
+                clone["status"] = "graded"
+                clone["is_manual"] = True
+                clone["manual_score"] = float(manual_score)
+                clone["manual_possible"] = float(manual_possible)
+        applied.append(clone)
+    return applied

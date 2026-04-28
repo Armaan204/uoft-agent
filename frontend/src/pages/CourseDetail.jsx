@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import client from '../api/client'
 import { displayCourseCode } from '../utils/courseCode'
@@ -39,9 +39,17 @@ function displayCourseName(name, courseCode) {
   return name.replace(colonPrefix, '').replace(directPrefix, '').trim() || name
 }
 
+function parseScoreValue(rawValue) {
+  const parsed = Number.parseFloat(rawValue)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(0, Math.min(100, parsed))
+}
+
 export default function CourseDetail() {
   const { id } = useParams()
   const [sliderValues, setSliderValues] = useState({})
+  const [editingKey, setEditingKey] = useState(null)
+  const [draftScores, setDraftScores] = useState({})
   const queryClient = useQueryClient()
 
   const courseQuery = useQuery({
@@ -78,32 +86,17 @@ export default function CourseDetail() {
 
   const components = gradesQuery.data?.component_model?.components ?? []
   const assignmentsByComponent = gradesQuery.data?.component_model?.assignments_by_component ?? {}
-  const gradedComponents = components.filter((component) => component.status === 'graded')
-  const gradeBreakdownRows = useMemo(() => {
-    return gradedComponents.flatMap((component) => {
-      const assignmentRows = (assignmentsByComponent[component.component_key] ?? []).filter(
-        (row) => row.status === 'graded',
-      )
+  const gradedComponents = useMemo(
+    () =>
+      components
+        .filter((component) => component.status === 'graded')
+        .map((component) => ({
+          ...component,
+          assignmentRows: (assignmentsByComponent[component.component_key] ?? []).filter((row) => row.status === 'graded'),
+        })),
+    [assignmentsByComponent, components],
+  )
 
-      if (!assignmentRows.length) {
-        return [{
-          key: component.component_key,
-          name: component.name,
-          weight: component.weight,
-          pct: component.pct,
-        }]
-      }
-
-      const perAssignmentWeight = component.weight / assignmentRows.length
-
-      return assignmentRows.map((row) => ({
-        key: `${component.component_key}:${row.assignment_id}`,
-        name: row.name || component.name,
-        weight: perAssignmentWeight,
-        pct: row.pct,
-      }))
-    })
-  }, [assignmentsByComponent, gradedComponents])
   const projected = useMemo(() => {
     if (!components.length) return null
     return components.reduce((total, component) => {
@@ -115,6 +108,21 @@ export default function CourseDetail() {
 
   const remainingComponents = components.filter((component) => component.status === 'ungraded')
 
+  const saveOverrideMutation = useMutation({
+    mutationFn: async (override) => {
+      const response = await client.post(`/api/courses/${id}/grade-overrides`, {
+        overrides: [override],
+      })
+      return response.data
+    },
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['course-grades', id], data)
+      await queryClient.invalidateQueries({ queryKey: ['course-grades', id] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setEditingKey(null)
+    },
+  })
+
   useEffect(() => {
     queryClient.prefetchQuery({
       queryKey: ['dashboard'],
@@ -125,6 +133,22 @@ export default function CourseDetail() {
       staleTime: DASHBOARD_STALE_TIME_MS,
     })
   }, [queryClient])
+
+  useEffect(() => {
+    if (!gradedComponents.length) {
+      setDraftScores({})
+      setEditingKey(null)
+      return
+    }
+
+    setDraftScores((current) => {
+      const next = {}
+      gradedComponents.forEach((component) => {
+        next[component.component_key] = current[component.component_key] ?? String(component.pct ?? '')
+      })
+      return next
+    })
+  }, [gradedComponents])
 
   if (gradesQuery.isLoading) {
     return (
@@ -145,6 +169,40 @@ export default function CourseDetail() {
   const currentGrade = grade?.weighted_grade ?? 0
   const projectedDefault = projected ?? currentGrade
   const projectedLetter = toLetter(projectedDefault)
+
+  function startEditing(component) {
+    setDraftScores((current) => ({
+      ...current,
+      [component.component_key]: String(component.pct ?? ''),
+    }))
+    setEditingKey(component.component_key)
+  }
+
+  function cancelEditing(component) {
+    setDraftScores((current) => ({
+      ...current,
+      [component.component_key]: String(component.pct ?? ''),
+    }))
+    setEditingKey((current) => (current === component.component_key ? null : current))
+  }
+
+  function saveEditing(component) {
+    const nextPct = parseScoreValue(draftScores[component.component_key])
+    if (nextPct === null || typeof component.pct !== 'number') return
+    if (Math.abs(nextPct - component.pct) <= 0.01) {
+      setEditingKey(null)
+      return
+    }
+
+    const possible = Number(component.possible)
+    if (!Number.isFinite(possible) || possible <= 0) return
+
+    saveOverrideMutation.mutate({
+      component_key: component.component_key,
+      manual_score: Number(((possible * nextPct) / 100).toFixed(2)),
+      manual_possible: possible,
+    })
+  }
 
   return (
     <div className="detail-page page">
@@ -183,24 +241,111 @@ export default function CourseDetail() {
               <th>Component</th>
               <th>Weight</th>
               <th>Score</th>
+              <th className="score-action-head" aria-label="Edit action" />
             </tr>
           </thead>
           <tbody>
-            {gradeBreakdownRows.map((row) => {
+            {gradedComponents.map((row) => {
+              const isEditing = editingKey === row.component_key
+              const isSaving = saveOverrideMutation.isPending && saveOverrideMutation.variables?.component_key === row.component_key
+
               return (
-                <tr key={row.key}>
+                <tr className={isEditing ? 'grade-row-editing' : ''} key={row.component_key}>
                   <td className="comp-name">
-                    {row.name}
-                    <span className="comp-tag tag-done">Graded</span>
+                    <div className="comp-name-main">
+                      {row.name}
+                      <span className="comp-tag tag-done">Graded</span>
+                    </div>
+                    {row.assignmentRows.length > 1 ? (
+                      <div className="comp-subrows">
+                        {row.assignmentRows.map((assignment) => (
+                          <div className="comp-subrow" key={assignment.assignment_id}>
+                            {assignment.name || row.name} · {assignment.earned}/{assignment.possible} pts
+                            {typeof assignment.pct === 'number' ? ` (${assignment.pct}%)` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </td>
                   <td>{row.weight.toFixed(2).replace(/\.00$/, '')}%</td>
-                  <td className="score-cell">{row.pct}%</td>
+                  <td className="score-cell">
+                    <div className={`score-control ${isEditing ? 'editing' : ''}`}>
+                      <div className="score-field-shell">
+                        {isEditing ? (
+                          <>
+                            <input
+                              className="score-inline-input"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={draftScores[row.component_key] ?? ''}
+                              disabled={isSaving}
+                              onChange={(event) =>
+                                setDraftScores((current) => ({
+                                  ...current,
+                                  [row.component_key]: event.target.value,
+                                }))
+                              }
+                            />
+                            <span className="score-inline-suffix">%</span>
+                          </>
+                        ) : (
+                          <span className="score-chip">{row.pct}%</span>
+                        )}
+                      </div>
+
+                    </div>
+                  </td>
+                  <td className="score-action-cell">
+                    <div className="score-actions">
+                      {isEditing ? (
+                        <>
+                          <button
+                            className="score-action-btn save"
+                            type="button"
+                            onClick={() => saveEditing(row)}
+                            disabled={isSaving}
+                            aria-label={`Save adjusted score for ${row.name}`}
+                          >
+                            {isSaving ? '...' : '✓'}
+                          </button>
+                          <button
+                            className="score-action-btn cancel"
+                            type="button"
+                            onClick={() => cancelEditing(row)}
+                            disabled={isSaving}
+                            aria-label={`Cancel editing score for ${row.name}`}
+                          >
+                            ×
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="score-action-btn edit"
+                          type="button"
+                          onClick={() => startEditing(row)}
+                          aria-label={`Edit score for ${row.name}`}
+                        >
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                            <path d="M11.8 2.2a1.55 1.55 0 0 1 2.2 2.2l-7.6 7.6-3.4.5.5-3.4 7.6-7.6Z" />
+                            <path d="m10.6 3.4 2 2" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+      {saveOverrideMutation.error ? (
+        <div className="onboarding-error">
+          {saveOverrideMutation.error?.response?.data?.detail || 'Could not save adjusted grades.'}
+        </div>
+      ) : null}
 
       <div className="section-label">What-if Calculator</div>
       <div className="whatif-card rise">
