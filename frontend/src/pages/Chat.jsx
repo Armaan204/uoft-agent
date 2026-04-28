@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import client from '../api/client'
+import Logo from '../components/Logo'
 import MarkdownMessage from '../components/MarkdownMessage'
 import ToolCallBlock from '../components/ToolCallBlock'
 import { useAuth } from '../hooks/useAuth'
@@ -9,6 +10,12 @@ import { getInitials } from '../utils/initials'
 
 const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
 const DASHBOARD_GC_TIME_MS = 30 * 60 * 1000
+const WELCOME_MESSAGE = {
+  id: 'welcome',
+  role: 'assistant',
+  text: 'Hi. I have access to your courses, grades, and deadlines. Ask about finals, projections, or upcoming work.',
+  toolCalls: [],
+}
 
 async function fetchDashboard() {
   const response = await client.get('/api/courses/dashboard')
@@ -18,16 +25,14 @@ async function fetchDashboard() {
 export default function Chat() {
   const { user } = useAuth()
   const [draft, setDraft] = useState('')
-  const [messages, setMessages] = useState([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      text: 'Hi. I have access to your courses, grades, and deadlines. Ask about finals, projections, or upcoming work.',
-      toolCalls: [],
-    },
-  ])
+  const [messages, setMessages] = useState([WELCOME_MESSAGE])
+  const [isHydrated, setIsHydrated] = useState(false)
   const scrollRef = useRef(null)
   const userInitials = getInitials(user?.name || user?.email)
+  const storageKey = useMemo(() => {
+    const userKey = String(user?.email || user?.id || 'anonymous').trim().toLowerCase()
+    return `uoft-agent-chat:${userKey}`
+  }, [user?.email, user?.id])
 
   const dashboardQuery = useQuery({
     queryKey: ['dashboard'],
@@ -85,6 +90,40 @@ export default function Chat() {
     }
   }, [messages, mutation.isPending])
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey)
+      if (!raw) {
+        setMessages([WELCOME_MESSAGE])
+        setDraft('')
+        setIsHydrated(true)
+        return
+      }
+
+      const saved = JSON.parse(raw)
+      const nextMessages = Array.isArray(saved?.messages) && saved.messages.length ? saved.messages : [WELCOME_MESSAGE]
+      setMessages(nextMessages)
+      setDraft(typeof saved?.draft === 'string' ? saved.draft : '')
+    } catch {
+      setMessages([WELCOME_MESSAGE])
+      setDraft('')
+    } finally {
+      setIsHydrated(true)
+    }
+  }, [storageKey])
+
+  useEffect(() => {
+    if (!isHydrated) return
+
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        messages,
+        draft,
+      }),
+    )
+  }, [draft, isHydrated, messages, storageKey])
+
   function sendMessage(text = draft) {
     const trimmed = text.trim()
     if (!trimmed || mutation.isPending) return
@@ -118,7 +157,7 @@ export default function Chat() {
             {messages.map((message) => (
               <div className={`msg-row ${message.role === 'user' ? 'user' : 'ai'}`} key={message.id}>
                 <div className={`msg-avatar ${message.role === 'user' ? 'user' : 'ai'}`}>
-                  {message.role === 'user' ? userInitials : 'AI'}
+                  {message.role === 'user' ? userInitials : <Logo compact />}
                 </div>
                 <div className="msg-bubble-wrap">
                   {message.toolCalls.length > 0 && (
@@ -137,7 +176,7 @@ export default function Chat() {
 
             {mutation.isPending && (
               <div className="msg-row ai">
-                <div className="msg-avatar ai">AI</div>
+                <div className="msg-avatar ai"><Logo compact /></div>
                 <div className="msg-bubble ai typing-bubble">
                   <span className="typing-dot" />
                   <span className="typing-dot" />

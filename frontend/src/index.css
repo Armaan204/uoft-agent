@@ -2019,6 +2019,7 @@ input[type='range']::-webkit-slider-thumb {
   margin: 0 auto;
   min-height: 100vh;
   padding: 0;
+  min-width: 0;
 }
 
 .chat-header {
@@ -2044,7 +2045,8 @@ input[type='range']::-webkit-slider-thumb {
 .messages-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 0 16px;
+  padding: 28px 0 18px;
+  min-height: 0;
 }
 
 .messages-inner {
@@ -2081,6 +2083,22 @@ input[type='range']::-webkit-slider-thumb {
   background: linear-gradient(135deg, oklch(20% 0.06 245), oklch(16% 0.04 260));
   border: 1px solid oklch(28% 0.05 245);
   color: var(--accent);
+}
+
+.msg-avatar.ai .brand {
+  gap: 0;
+}
+
+.msg-avatar.ai .brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  box-shadow: 0 0 10px -5px var(--accent);
+}
+
+.msg-avatar.ai .brand-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .msg-avatar.user {
@@ -2303,8 +2321,14 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .input-area {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   border-top: 1px solid var(--border);
   padding: 18px 34px 24px;
+  background:
+    linear-gradient(180deg, oklch(13.5% 0.018 260 / 0.78), oklch(13.5% 0.018 260 / 0.96) 22%, oklch(13.5% 0.018 260 / 0.99));
+  backdrop-filter: blur(14px);
 }
 
 .chips {
