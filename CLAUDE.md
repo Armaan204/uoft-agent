@@ -36,7 +36,7 @@ An AI academic assistant for University of Toronto students.
   - `api/dependencies.py` — JWT-based `get_current_user` dependency
   - `api/routers/auth.py` — Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
   - `api/routers/courses.py` — course, grade, scenario, weight routes + Quercus token CRUD
-  - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`
+  - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`, persists exchanges by `conversation_id`, and exposes chat-history list/detail/delete routes
   - `api/routers/acorn.py` — public ACORN routes matching `api_server.py` exactly
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers (bypasses `st.cache_data`)
   - `api/services/grade_snapshot_cache.py` — 5-minute in-memory per-user cache for aggregate semester grade snapshots used by chat tools
@@ -66,7 +66,7 @@ An AI academic assistant for University of Toronto students.
 - `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass `st.cache_data` decorators without touching the original integration files
 - JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
 - FastAPI Google OAuth now redirects back to the React frontend using `FRONTEND_URL`, and the frontend stores the returned JWT in localStorage
-- The React chat page currently persists the active conversation and unsent draft in browser `localStorage`, keyed per logged-in user, so tab switches and refreshes do not clear the thread
+- The React chat page now keeps the active in-progress conversation and unsent draft in browser `sessionStorage`, keyed per logged-in user and conversation ID, so refreshes within the tab keep the live thread without persisting it across browser restarts
 - Swagger auth uses HTTP Bearer so developers can paste JWTs directly while testing the FastAPI API
 - Production frontend is served at `https://uoft-agent.com`; backend CORS allows `FRONTEND_URL` and optional `CORS_ORIGINS`
 
@@ -169,6 +169,9 @@ Implemented:
 - React course-detail page implemented with real grade breakdown data and what-if sliders; graded components can expand into individual Quercus assessments when a syllabus weight maps to a broader bucket
 - React course-detail page now supports inline per-component score adjustments backed by persisted grade overrides; default score cells remain read-only until the user enters edit mode
 - React chat page implemented against `POST /api/chat` with tool-call blocks, suggestion chips, and Markdown-style rendering for assistant responses
+- React chat live-thread state now uses `sessionStorage` with a frontend `conversationId` and a `New chat` reset boundary
+- FastAPI chat now accepts `conversation_id`, persists successful exchanges to Supabase-backed `chat_conversations` / `chat_messages`, and exposes history list/detail/delete endpoints
+- React chat history is implemented as a dedicated `/chat/history` route with resume/delete flows; resumed conversations load under `/chat/:conversationId`
 - React chat composer is now sticky at the bottom of the page while the message list scrolls independently
 - React dashboard announcements now open an in-app modal that lazy-loads the full announcement body, with a fallback link to open the original Quercus announcement
 - Shared React app shell implemented with sidebar navigation for Dashboard, Chat, and ACORN
@@ -178,7 +181,7 @@ Implemented:
 Not implemented yet:
 
 - React frontend polish and completion of remaining product flows
-- Deliberate chat history product: move the live chat thread to `sessionStorage`, then persist ended / prior conversations in Supabase-backed chat history with a dedicated history UI from the Chat page
+- Chat history polish such as rename support and any further navigation / UX refinement
 - Gradescope integration
 - MarkUs integration
 - ACORN-driven planning workflows beyond readback/import
@@ -192,7 +195,7 @@ Not implemented yet:
 - Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
 - Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
 - The React frontend currently stores the FastAPI JWT in localStorage; this is expedient for development but not the final hardened auth posture
-- The React chat thread currently lives in `localStorage`, so it persists across refreshes and browser restarts until explicitly replaced or cleared; planned chat-history work is expected to change this to `sessionStorage` for the live thread plus backend-backed saved history
+- Backend chat history requires the Supabase schema in `docs/chat_history_schema.sql` to be applied before list/detail/delete routes and persistence-backed history are available
 
 ## Local Usage
 

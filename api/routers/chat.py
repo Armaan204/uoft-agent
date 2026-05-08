@@ -5,20 +5,30 @@ api/routers/chat.py - Agent chat route.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from agent.agent import run as run_agent
 from api.dependencies import get_current_user
+from api.services.chat_history_service import (
+    ChatHistoryServiceError,
+    delete_conversation,
+    get_conversation,
+    list_conversations,
+    save_exchange,
+)
 from auth.user_store import UserStoreError, get_quercus_token
 
 router = APIRouter(tags=["chat"])
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
     message: str
     quercus_token: str | None = None
+    conversation_id: str | None = None
 
 
 def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
@@ -39,6 +49,7 @@ def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
 @router.post("")
 async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
     quercus_token = _resolve_token(payload.quercus_token, current_user)
+    conversation_id = str(payload.conversation_id or "").strip() or None
     loop = asyncio.get_event_loop()
     try:
         answer, tool_calls = await loop.run_in_executor(
@@ -53,4 +64,51 @@ async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_us
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-    return {"answer": answer, "tool_calls": tool_calls}
+
+    if conversation_id:
+        try:
+            save_exchange(
+                current_user["user_id"],
+                conversation_id,
+                payload.message,
+                answer,
+                tool_calls=tool_calls,
+            )
+        except ChatHistoryServiceError as exc:
+            logger.warning(
+                "Failed to persist chat exchange user_id=%s conversation_id=%s error=%s",
+                current_user.get("user_id"),
+                conversation_id,
+                exc,
+            )
+
+    return {"answer": answer, "tool_calls": tool_calls, "conversation_id": conversation_id}
+
+
+@router.get("/history")
+def history(current_user: dict = Depends(get_current_user)):
+    try:
+        return {"conversations": list_conversations(current_user["user_id"])}
+    except ChatHistoryServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/history/{conversation_id}")
+def history_detail(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        return get_conversation(current_user["user_id"], conversation_id)
+    except ChatHistoryServiceError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if detail == "Chat conversation not found" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+@router.delete("/history/{conversation_id}")
+def history_delete(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        delete_conversation(current_user["user_id"], conversation_id)
+    except ChatHistoryServiceError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if detail == "Chat conversation not found" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return {"status": "deleted"}

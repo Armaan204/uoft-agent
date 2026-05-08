@@ -18,7 +18,7 @@ export default function Login() {
           </svg>
         </div>
 
-        <h1>UofT Agent</h1>
+        <h1 className="login-title">UofT Agent</h1>
         <p className="tagline">Your AI academic assistant</p>
         <div className="divider" />
         <button className="btn-google" type="button" onClick={() => window.location.assign(googleAuthUrl)}>

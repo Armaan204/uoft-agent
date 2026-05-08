@@ -6,6 +6,7 @@ import { useAuth } from './hooks/useAuth'
 import { useQuercusStatus } from './hooks/useQuercusStatus'
 import Acorn from './pages/Acorn'
 import Chat from './pages/Chat'
+import ChatHistory from './pages/ChatHistory'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
@@ -112,6 +113,22 @@ export default function App() {
         />
         <Route
           path="/chat"
+          element={
+            <QuercusTokenRequired>
+              <Chat />
+            </QuercusTokenRequired>
+          }
+        />
+        <Route
+          path="/chat/history"
+          element={
+            <QuercusTokenRequired>
+              <ChatHistory />
+            </QuercusTokenRequired>
+          }
+        />
+        <Route
+          path="/chat/:conversationId"
           element={
             <QuercusTokenRequired>
               <Chat />
