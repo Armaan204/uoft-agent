@@ -34,6 +34,7 @@ export default function Chat() {
   const [messages, setMessages] = useState([WELCOME_MESSAGE])
   const [conversationId, setConversationId] = useState(null)
   const [isHydrated, setIsHydrated] = useState(false)
+  const [isMobileComposer, setIsMobileComposer] = useState(() => window.innerWidth < 768)
   const scrollRef = useRef(null)
   const queryClient = useQueryClient()
   const userInitials = getInitials(user?.name || user?.email)
@@ -111,6 +112,15 @@ export default function Chat() {
       navigate('/chat/history', { replace: true })
     },
   })
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobileComposer(window.innerWidth < 768)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -250,18 +260,20 @@ export default function Chat() {
       </div>
 
       <div className="input-area">
-        <div className="chips">
-          {suggestions.map((item) => (
-            <button className="chip" key={item} type="button" onClick={() => setDraft(item)}>
-              {item}
-            </button>
-          ))}
-        </div>
+        {!isMobileComposer && (
+          <div className="chips">
+            {suggestions.map((item) => (
+              <button className="chip" key={item} type="button" onClick={() => setDraft(item)}>
+                {item}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="input-row">
           <textarea
             className="input-box"
             rows="1"
-            placeholder="Ask about your grades, exams, deadlines…"
+            placeholder={isMobileComposer ? '' : 'Ask about your grades, exams, deadlines…'}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
