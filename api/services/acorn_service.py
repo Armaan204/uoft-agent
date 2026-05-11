@@ -225,6 +225,7 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
         "terms": structured_terms,
         "credits_earned": _calculate_earned_credits(all_courses),
         "imported_at": latest.get("importedAt"),
+        "programs": latest.get("programs") or [],
     }
 
 

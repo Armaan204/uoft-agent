@@ -387,8 +387,58 @@ function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim
   )
 }
 
+function ProgramsSection({ programs }) {
+  if (!programs?.length) return null
+  return (
+    <section className="acorn-table-card rise">
+      <div className="acorn-panel-head">
+        <div>
+          <div className="acorn-panel-title">Enrolled programs</div>
+          <div className="acorn-panel-sub">Degree programs on your ACORN academic record.</div>
+        </div>
+      </div>
+      <div className="acorn-program-list">
+        {programs.map((program, index) => (
+          <div key={index} className="acorn-program-item">
+            <div className="acorn-program-name">{program.programName ?? '—'}</div>
+            <div className="acorn-program-meta">
+              {program.enrollmentStatus ? (
+                <div className="acorn-program-field">
+                  <div className="acorn-program-label">Status</div>
+                  <div className={`acorn-program-status ${(program.enrollmentStatus || '').toLowerCase().replace(/\s+/g, '-')}`}>
+                    {program.enrollmentStatus}
+                  </div>
+                </div>
+              ) : null}
+              {program.institution ? (
+                <div className="acorn-program-field">
+                  <div className="acorn-program-label">Institution</div>
+                  <div className="acorn-program-value">{program.institution}</div>
+                </div>
+              ) : null}
+              {program.enrollmentPeriod ? (
+                <div className="acorn-program-field">
+                  <div className="acorn-program-label">Enrollment period</div>
+                  <div className="acorn-program-value">{program.enrollmentPeriod}</div>
+                </div>
+              ) : null}
+              {program.startSession ? (
+                <div className="acorn-program-field">
+                  <div className="acorn-program-label">Start session</div>
+                  <div className="acorn-program-value">{program.startSession}</div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function AcornLanding({ data, onReimport }) {
   const courses = data?.courses ?? []
+  const programs = data?.programs ?? []
   const terms = useMemo(() => [...(data?.terms ?? [])].sort(sortTerms), [data?.terms])
   const [gpaView, setGpaView] = useState('sessionalGpa')
   const [hoveredIndex, setHoveredIndex] = useState(null)
@@ -433,6 +483,8 @@ function AcornLanding({ data, onReimport }) {
           </button>
         </div>
       </div>
+
+      <ProgramsSection programs={programs} />
 
       <section className="acorn-summary-grid rise">
         <SummaryCard label="Courses Imported" value={String(courses.length)} />

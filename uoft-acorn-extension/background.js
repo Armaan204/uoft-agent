@@ -109,6 +109,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const payload = {
         terms: Array.isArray(extractionResult.terms) ? extractionResult.terms : undefined,
         courses: Array.isArray(extractionResult.courses) ? extractionResult.courses : [],
+        programs: Array.isArray(extractionResult.programs) ? extractionResult.programs : undefined,
         importCode: String(message.importCode || "").trim(),
         source: "acorn",
         capturedAt: new Date().toISOString(),

@@ -82,6 +82,22 @@ def validate_payload(payload: object) -> dict:
                 raise AcornStoreError(f"Course at index {i} is missing a valid courseCode")
             normalised_courses.append(_normalise_course(course, None))
 
+    # --- programs ---
+    normalised_programs = None
+    programs = payload.get("programs")
+    if isinstance(programs, list):
+        normalised_programs = []
+        for i, prog in enumerate(programs):
+            if not isinstance(prog, dict):
+                raise AcornStoreError(f"Program at index {i} must be an object")
+            normalised_programs.append({
+                "enrollmentPeriod": _clean_optional_str(prog.get("enrollmentPeriod")),
+                "institution": _clean_optional_str(prog.get("institution")),
+                "enrollmentStatus": _clean_optional_str(prog.get("enrollmentStatus")),
+                "startSession": _clean_optional_str(prog.get("startSession")),
+                "programName": _clean_optional_str(prog.get("programName")),
+            })
+
     imported_at = payload.get("importedAt") or payload.get("capturedAt") or payload.get("extractedAt")
     if not isinstance(imported_at, str) or not imported_at.strip():
         imported_at = datetime.now(timezone.utc).isoformat()
@@ -95,6 +111,8 @@ def validate_payload(payload: object) -> dict:
     }
     if normalised_terms is not None:
         result["terms"] = normalised_terms
+    if normalised_programs is not None:
+        result["programs"] = normalised_programs
     return result
 
 

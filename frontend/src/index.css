@@ -1945,6 +1945,74 @@ input[type='range']::-webkit-slider-thumb {
   color: var(--accent);
 }
 
+.acorn-program-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+
+.acorn-program-item {
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+}
+
+.acorn-program-item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.acorn-program-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.acorn-program-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 32px;
+}
+
+.acorn-program-field {
+  min-width: 120px;
+}
+
+.acorn-program-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.acorn-program-value {
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.acorn-program-status {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: oklch(22% 0.04 260);
+  color: var(--muted);
+}
+
+.acorn-program-status.in-progress {
+  background: oklch(24% 0.08 240);
+  color: var(--accent);
+}
+
+.acorn-program-status.graduated {
+  background: oklch(22% 0.08 150);
+  color: oklch(72% 0.18 150);
+}
+
 .app-shell {
   display: flex;
   min-height: 100vh;

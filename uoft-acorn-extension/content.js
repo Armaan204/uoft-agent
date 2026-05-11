@@ -48,6 +48,58 @@
     };
   }
 
+  // "2022 Fall - Honours Bachelor of Science (Statistics Co-op)"
+  const TERM_HEADING_RE = /^\d{4}\s+(?:Fall|Winter|Summer)\s+-\s+\S/i;
+  // "2022 Fall-2026 Winter: University of Toronto Scarborough"
+  const ENROLLMENT_PERIOD_RE = /^(\d{4}\s+(?:Fall|Winter|Summer))\s*-\s*(\d{4}\s+(?:Fall|Winter|Summer))\s*:\s*(.+)$/i;
+  // "In Progress - 2023 Summer - Specialist (Co-operative) Program in Statistics..."
+  const STATUS_LINE_RE = /^(In\s+Progress|Graduated|Suspended|Withdrawn|Transferred|Inactive)\s*-\s*(.+)$/i;
+  // "2023 Summer - Specialist (Co-operative) Program in Statistics..."
+  const SESSION_PREFIX_RE = /^(\d{4}\s+(?:Fall|Winter|Summer))\s*-\s*(.+)$/i;
+
+  function isTermHeading(text) {
+    return TERM_HEADING_RE.test(text);
+  }
+
+  function parsePrograms(infoSections) {
+    const programs = [];
+
+    for (let i = 0; i < infoSections.length; i++) {
+      const text = (infoSections[i].textContent || "").replace(/\s+/g, " ").trim();
+      const periodMatch = text.match(ENROLLMENT_PERIOD_RE);
+      if (!periodMatch) continue;
+
+      const enrollmentPeriod = `${periodMatch[1].trim()}-${periodMatch[2].trim()}`;
+      const institution = periodMatch[3].trim();
+      let enrollmentStatus = null;
+      let startSession = null;
+      let programName = null;
+
+      for (let j = i + 1; j < infoSections.length; j++) {
+        const nextText = (infoSections[j].textContent || "").replace(/\s+/g, " ").trim();
+        if (TERM_HEADING_RE.test(nextText) || ENROLLMENT_PERIOD_RE.test(nextText)) break;
+
+        const statusMatch = nextText.match(STATUS_LINE_RE);
+        if (statusMatch) {
+          enrollmentStatus = statusMatch[1].replace(/\s+/g, " ").trim();
+          const rest = statusMatch[2].trim();
+          const sessionMatch = rest.match(SESSION_PREFIX_RE);
+          if (sessionMatch) {
+            startSession = sessionMatch[1].trim();
+            programName = sessionMatch[2].trim();
+          } else {
+            programName = rest;
+          }
+          break;
+        }
+      }
+
+      programs.push({ enrollmentPeriod, institution, enrollmentStatus, startSession, programName });
+    }
+
+    return programs;
+  }
+
   /**
    * Parse courses from a div.courses.blok element.
    * Each course is tagged with the given termName.
@@ -82,13 +134,16 @@
     const terms = [];
     const processedBlocks = new Set();
 
+    const programs = parsePrograms(infoSections);
+    log("Parsed programs:", programs.length);
+
     for (const infoSection of infoSections) {
-      // "2022 Fall - Honours Bachelor of Science (Statistics Co-op)" → "2022 Fall"
-      const termText = (infoSection.textContent || "").trim();
-      const termName = termText.split(" - ")[0].trim();
-      if (!termName) {
+      const termText = (infoSection.textContent || "").replace(/\s+/g, " ").trim();
+      if (!isTermHeading(termText)) {
         continue;
       }
+      // "2022 Fall - Honours Bachelor of Science (Statistics Co-op)" → "2022 Fall"
+      const termName = termText.split(" - ")[0].trim();
 
       const termData = {
         term: termName,
@@ -143,6 +198,7 @@
       ok: true,
       terms,
       courses: allCourses,
+      programs,
     };
   }
 
@@ -164,6 +220,7 @@
           ok: true,
           terms: result.terms,
           courses: result.courses,
+          programs: result.programs,
         });
       } catch (error) {
         sendResponse({
