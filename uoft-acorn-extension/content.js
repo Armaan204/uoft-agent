@@ -126,6 +126,10 @@
       return { error: "Not on supported ACORN page" };
     }
 
+    if (document.querySelector('a[data-ng-click="$ctrl.getComplete()"]')) {
+      return { error: "Click on Complete Academic History." };
+    }
+
     await waitForCourses();
 
     const infoSections = Array.from(document.querySelectorAll("p.info-section"));

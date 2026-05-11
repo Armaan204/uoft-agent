@@ -1739,7 +1739,8 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .acorn-summary-grid,
-.acorn-chart-card {
+.acorn-chart-card,
+.acorn-table-card {
   margin-bottom: 24px;
 }
 
@@ -1948,7 +1949,7 @@ input[type='range']::-webkit-slider-thumb {
 .acorn-program-list {
   display: flex;
   flex-direction: column;
-  margin-top: 24px;
+  margin-top: 14px;
 }
 
 .acorn-program-item {

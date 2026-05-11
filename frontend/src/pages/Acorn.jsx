@@ -391,12 +391,7 @@ function ProgramsSection({ programs }) {
   if (!programs?.length) return null
   return (
     <section className="acorn-table-card rise">
-      <div className="acorn-panel-head">
-        <div>
-          <div className="acorn-panel-title">Enrolled programs</div>
-          <div className="acorn-panel-sub">Degree programs on your ACORN academic record.</div>
-        </div>
-      </div>
+      <div className="acorn-panel-title">Enrolled programs</div>
       <div className="acorn-program-list">
         {programs.map((program, index) => (
           <div key={index} className="acorn-program-item">
