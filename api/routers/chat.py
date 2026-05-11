@@ -16,6 +16,7 @@ from api.services.chat_history_service import (
     ChatHistoryServiceError,
     delete_conversation,
     get_conversation,
+    get_conversation_messages,
     list_conversations,
     save_exchange,
 )
@@ -50,6 +51,15 @@ def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
 async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
     quercus_token = _resolve_token(payload.quercus_token, current_user)
     conversation_id = str(payload.conversation_id or "").strip() or None
+
+    history: list[dict] = []
+    if conversation_id:
+        try:
+            history = get_conversation_messages(current_user["user_id"], conversation_id)
+        except ChatHistoryServiceError as exc:
+            logger.warning("Failed to load chat history for context user_id=%s conversation_id=%s error=%s",
+                           current_user.get("user_id"), conversation_id, exc)
+
     loop = asyncio.get_event_loop()
     try:
         answer, tool_calls = await loop.run_in_executor(
@@ -60,6 +70,7 @@ async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_us
                 user_id=current_user["user_id"],
                 verbose=False,
                 return_tool_calls=True,
+                history=history,
             ),
         )
     except Exception as exc:

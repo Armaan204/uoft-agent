@@ -199,19 +199,23 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
     raw_terms = latest.get("terms") or []
     structured_terms = []
     all_courses: list[dict[str, Any]] = []
+    flat_courses: list[dict[str, Any]] = []
 
     for term in raw_terms:
         courses = []
         for course in term.get("courses") or []:
             credits_raw = course.get("credits")
-
-            courses.append({
+            entry = {
                 "code": course.get("courseCode"),
                 "title": course.get("title"),
+                "term": term.get("term"),
                 "credits": credits_raw,
                 "grade": course.get("grade"),
                 "mark": course.get("mark"),
-            })
+                "course_average": course.get("courseAverage"),
+            }
+            courses.append(entry)
+            flat_courses.append(entry)
             all_courses.append(course)
 
         structured_terms.append({
@@ -221,8 +225,12 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
             "courses": courses,
         })
 
+    graded = [c for c in flat_courses if _parse_mark(c.get("mark")) is not None]
+    graded.sort(key=lambda c: _parse_mark(c["mark"]))
+
     return {
         "terms": structured_terms,
+        "courses_by_mark": graded,
         "credits_earned": _calculate_earned_credits(all_courses),
         "imported_at": latest.get("importedAt"),
         "programs": latest.get("programs") or [],

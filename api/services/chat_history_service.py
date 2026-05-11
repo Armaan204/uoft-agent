@@ -201,6 +201,45 @@ def get_conversation(user_id: str | int, conversation_id: str) -> dict[str, Any]
     }
 
 
+def get_conversation_messages(
+    user_id: str | int,
+    conversation_id: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Return the most recent `limit` messages for a conversation, oldest-first.
+
+    Returns an empty list if the conversation does not exist or belongs to another user.
+    """
+    user_id = _require_user_id(user_id)
+    conversation_id = _require_conversation_id(conversation_id)
+    try:
+        conv_resp = (
+            get_supabase_client()
+            .table("chat_conversations")
+            .select("id")
+            .eq("id", conversation_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not (getattr(conv_resp, "data", None) or []):
+            return []
+        msg_resp = (
+            get_supabase_client()
+            .table("chat_messages")
+            .select("role,text")
+            .eq("conversation_id", conversation_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+    except (UserStoreError, Exception) as exc:
+        raise ChatHistoryServiceError("Failed to load conversation messages") from exc
+
+    msgs = getattr(msg_resp, "data", None) or []
+    return list(reversed(msgs))
+
+
 def delete_conversation(user_id: str | int, conversation_id: str) -> None:
     user_id = _require_user_id(user_id)
     conversation_id = _require_conversation_id(conversation_id)

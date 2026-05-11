@@ -171,6 +171,7 @@ Implemented:
 - React chat page implemented against `POST /api/chat` with tool-call blocks, suggestion chips, and Markdown-style rendering for assistant responses
 - React chat live-thread state now uses `sessionStorage` with a frontend `conversationId` and a `New chat` reset boundary
 - FastAPI chat now accepts `conversation_id`, persists successful exchanges to Supabase-backed `chat_conversations` / `chat_messages`, and exposes history list/detail/delete endpoints
+- Chat context is threaded into every request: `POST /api/chat` loads the prior 10 messages for the conversation from Supabase and passes them to the agent as history, enabling follow-up questions within the same thread; the agent caps history at 10 messages (5 exchanges) to stay within context limits
 - React chat history is implemented as a dedicated `/chat/history` route with resume/delete flows; resumed conversations load under `/chat/:conversationId`
 - React chat composer is now sticky at the bottom of the page while the message list scrolls independently
 - React dashboard announcements now open an in-app modal that lazy-loads the full announcement body, with a fallback link to open the original Quercus announcement

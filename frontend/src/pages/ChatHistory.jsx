@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
@@ -17,6 +17,8 @@ export default function ChatHistory() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const storageKey = useMemo(() => getChatStorageKey(user), [user])
+  const [toast, setToast] = useState(false)
+  const toastTimer = useRef(null)
   const activeThread = useMemo(() => {
     try {
       return loadStoredThread(storageKey)
@@ -43,6 +45,10 @@ export default function ChatHistory() {
       if (activeThread?.conversationId === deletedConversationId) {
         saveStoredThread(storageKey, buildWelcomeThread())
       }
+
+      clearTimeout(toastTimer.current)
+      setToast(true)
+      toastTimer.current = setTimeout(() => setToast(false), 2500)
     },
   })
 
@@ -143,6 +149,18 @@ export default function ChatHistory() {
           </div>
         )}
       </div>
+
+      {deleteMutation.isPending && <div className="chat-delete-backdrop" aria-hidden="true" />}
+
+      {toast && (
+        <div className="chat-delete-toast" role="status" aria-live="polite">
+          <svg className="chat-delete-toast-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" strokeOpacity="0.4" />
+            <path d="M5.5 8.2l1.8 1.8 3.2-3.2" />
+          </svg>
+          Chat deleted
+        </div>
+      )}
     </div>
   )
 }

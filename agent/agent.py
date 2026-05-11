@@ -24,6 +24,7 @@ load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 MODEL = "claude-sonnet-4-6"
+_MAX_HISTORY_MESSAGES = 10  # 5 prior exchanges (user + assistant each)
 
 
 def run(
@@ -32,6 +33,7 @@ def run(
     user_id: str | int | None = None,
     verbose: bool = True,
     return_tool_calls: bool = False,
+    history: list[dict] | None = None,
 ) -> "str | tuple[str, list[dict]]":
     """Send a user message through the agent loop and return the final answer.
 
@@ -42,6 +44,9 @@ def run(
     return_tool_calls : if True, return (answer, tool_calls) instead of just
                         the answer string.  tool_calls is a list of dicts with
                         keys 'name', 'input', and 'result'.
+    history           : prior conversation turns as a list of dicts with 'role'
+                        and 'text' keys (as stored in chat_messages). Capped to
+                        the most recent _MAX_HISTORY_MESSAGES entries.
 
     Returns
     -------
@@ -50,7 +55,13 @@ def run(
     """
     client         = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     quercus_client = QuercusClient(token=token)
-    messages       = [{"role": "user", "content": user_message}]
+
+    prior = [
+        {"role": msg["role"], "content": msg["text"]}
+        for msg in (history or [])[-_MAX_HISTORY_MESSAGES:]
+        if msg.get("role") in {"user", "assistant"} and msg.get("text")
+    ]
+    messages: list[dict] = [*prior, {"role": "user", "content": user_message}]
     all_tool_calls: list[dict] = []
 
     while True:

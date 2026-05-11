@@ -53,7 +53,12 @@ TOOL_SCHEMAS = [
         "name": "get_academic_history",
         "description": (
             "Return the student's saved ACORN academic history, including course history, "
-            "credits earned, and GPA by term. Prefer this for past performance and GPA history questions."
+            "credits earned, and GPA by term. Each course includes the student's own mark and grade, "
+            "plus a course_average field which is the class-wide average (how the course performed overall), "
+            "not the student's personal score. The response also includes a courses_by_mark list — all graded "
+            "courses sorted ascending by numerical mark (lowest = worst at index 0, highest = best at end). "
+            "Use courses_by_mark for best/worst/ranking questions instead of sorting yourself. "
+            "Prefer this for past performance and GPA history questions."
         ),
         "input_schema": {
             "type": "object",

@@ -539,8 +539,37 @@ function AcornLanding({ data, onReimport }) {
                 })}
                 <path className="acorn-area" d={chartData.areaPath} />
                 <path className="acorn-line" d={chartData.linePath} />
+                {chartData.points.map((point, index) => (
+                  <g key={point.label}>
+                    <circle
+                      className={`acorn-point ${index === chartData.points.length - 1 ? 'latest' : ''} ${hoveredIndex === index ? 'hovered' : ''}`}
+                      cx={point.x}
+                      cy={point.y}
+                      r={hoveredIndex === index ? '7' : index === chartData.points.length - 1 ? '6' : '5'}
+                    />
+                    <text
+                      className="acorn-point-value"
+                      x={point.x}
+                      y={point.y - 12}
+                      opacity={hoveredIndex === index ? 0 : 1}
+                    >
+                      {point.value.toFixed(2)}
+                    </text>
+                    <text className="acorn-axis-label" x={point.x} y="234" textAnchor="middle">
+                      {point.label}
+                    </text>
+                    <circle
+                      className="acorn-hit-area"
+                      cx={point.x}
+                      cy={point.y}
+                      r="18"
+                      onMouseEnter={() => setHoveredIndex(index)}
+                      onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                    />
+                  </g>
+                ))}
                 {hoveredPoint ? (
-                  <g className="acorn-hover-state">
+                  <g className="acorn-hover-state" pointerEvents="none">
                     <line
                       className="acorn-hover-line"
                       x1={hoveredPoint.x}
@@ -572,30 +601,6 @@ function AcornLanding({ data, onReimport }) {
                     </text>
                   </g>
                 ) : null}
-                {chartData.points.map((point, index) => (
-                  <g key={point.label}>
-                    <circle
-                      className={`acorn-point ${index === chartData.points.length - 1 ? 'latest' : ''} ${hoveredIndex === index ? 'hovered' : ''}`}
-                      cx={point.x}
-                      cy={point.y}
-                      r={hoveredIndex === index ? '7' : index === chartData.points.length - 1 ? '6' : '5'}
-                    />
-                    <text className="acorn-point-value" x={point.x} y={point.y - 12}>
-                      {point.value.toFixed(2)}
-                    </text>
-                    <text className="acorn-axis-label" x={point.x} y="234" textAnchor="middle">
-                      {point.label}
-                    </text>
-                    <circle
-                      className="acorn-hit-area"
-                      cx={point.x}
-                      cy={point.y}
-                      r="18"
-                      onMouseEnter={() => setHoveredIndex(index)}
-                      onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                    />
-                  </g>
-                ))}
               </svg>
             </div>
           ) : (
