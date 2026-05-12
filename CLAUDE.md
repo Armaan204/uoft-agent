@@ -40,6 +40,7 @@ An AI academic assistant for University of Toronto students.
   - `api/routers/acorn.py` — public ACORN routes matching `api_server.py` exactly
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers (bypasses `st.cache_data`)
   - `api/services/grade_snapshot_cache.py` — 5-minute in-memory per-user cache for aggregate semester grade snapshots used by chat tools
+  - `api/services/grades_snapshot_service.py` — Supabase-backed persistence layer for dashboard and course detail snapshots; `grades_snapshot` table stores `dashboard_data`, `announcements`, and `course_detail_data` JSONB columns per `(user_id, course_id)` row
   - `api/services/acorn_service.py` — ACORN business logic for the FastAPI router
   - `api/services/auth_service.py` — user lookup/creation and JWT signing helpers
 - `frontend/` — Vite + React frontend deployed at `https://uoft-agent.com`
@@ -63,6 +64,11 @@ An AI academic assistant for University of Toronto students.
 - Chat uses a cached aggregate grade snapshot tool for multi-course questions; the cache is keyed per user and can be explicitly refreshed
 - UofT GPA mapping is deterministic in code (`A+` and `A` both map to `4.0`) rather than inferred by the LLM
 - FastAPI course routes accept `?quercus_token=...` directly from the client; fall back to the Supabase-stored token if omitted
+- Dashboard and course grade data use a 3-tier cache: (1) per-user in-memory Python dict (instant, lost on restart), (2) Supabase `grades_snapshot` JSONB snapshot (fast, survives restarts), (3) live Quercus fetch (slow, only on first load or force refresh). Each tier fires a background refresh to keep the next load fast.
+- On every authenticated app load, `App.jsx` fires a background `GET /api/courses/dashboard` and staggered per-course `GET /api/courses/{id}/grades` requests to keep the Supabase snapshot current, so incognito and new-device loads hit Layer 2 instead of Layer 3
+- The frontend uses `PersistQueryClientProvider` with a localStorage persister (24h `gcTime` and `maxAge`) so TanStack Query cache survives tab refreshes and browser restarts
+- Manual dashboard refresh fetches directly and calls `setQueryData` on completion so existing data (including announcements) stays visible the entire time the refresh is in flight
+- Grade overrides immediately update both the in-memory cache and Supabase snapshot so overridden grades are reflected on all subsequent cache hits
 - `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass `st.cache_data` decorators without touching the original integration files
 - JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
 - FastAPI Google OAuth now redirects back to the React frontend using `FRONTEND_URL`, and the frontend stores the returned JWT in localStorage
@@ -165,7 +171,7 @@ Implemented:
 - React frontend scaffolded with Vite, React Router, Axios, and TanStack Query
 - React login page implemented and wired to FastAPI Google OAuth
 - React Quercus onboarding flow implemented: checks for saved token, validates new token, persists it, and redirects into the app
-- React dashboard implemented with course cards, upcoming deadlines rail, recent announcements section, and profile dropdown
+- React dashboard implemented with course cards, upcoming deadlines rail, recent announcements section, and profile dropdown; loads instantly on repeat visits via 3-tier server cache + TanStack localStorage persistence
 - React course-detail page implemented with real grade breakdown data and what-if sliders; graded components can expand into individual Quercus assessments when a syllabus weight maps to a broader bucket
 - React course-detail page now supports inline per-component score adjustments backed by persisted grade overrides; default score cells remain read-only until the user enters edit mode
 - React chat page implemented against `POST /api/chat` with tool-call blocks, suggestion chips, and Markdown-style rendering for assistant responses

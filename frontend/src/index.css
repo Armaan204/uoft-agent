@@ -547,6 +547,59 @@ h1 {
   letter-spacing: 0.35px;
 }
 
+.dashboard-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.dashboard-age {
+  font-size: 12px;
+  color: var(--muted2);
+  min-width: 0;
+}
+
+.dashboard-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid oklch(32% 0.03 260);
+  background: oklch(16% 0.02 260 / 0.6);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dashboard-refresh-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: oklch(20% 0.025 260);
+  border-color: oklch(42% 0.06 240);
+}
+
+.dashboard-refresh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dashboard-refresh-btn.refreshing {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(oklch(16% 0.02 260), oklch(16% 0.02 260)) padding-box,
+    conic-gradient(from var(--btn-rotate), transparent 65%, oklch(65% 0.22 240) 80%, oklch(72% 0.18 210) 85%, transparent 95%) border-box;
+  animation: btn-border-spin 1.4s linear infinite;
+  color: oklch(72% 0.14 230);
+  opacity: 1;
+  cursor: default;
+  transition: none;
+}
+
 .loading-spinner {
   width: 28px;
   height: 28px;
@@ -2856,6 +2909,16 @@ input[type='range']::-webkit-slider-thumb {
   to {
     transform: rotate(360deg);
   }
+}
+
+@property --btn-rotate {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes btn-border-spin {
+  to { --btn-rotate: 360deg; }
 }
 
 .empty-card,

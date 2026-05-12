@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -24,7 +25,13 @@ from api.services.course_service import (
     save_course_grade_overrides,
 )
 from integrations.grades_cache import GradesCacheError
-from api.services.grades_snapshot_service import GradesSnapshotServiceError, save_snapshot
+from api.services.grades_snapshot_service import (
+    GradesSnapshotServiceError,
+    get_course_detail_snapshot,
+    get_dashboard_snapshot,
+    save_course_detail_snapshot,
+    save_snapshot,
+)
 from auth.user_store import (
     UserStoreError,
     delete_quercus_token,
@@ -34,6 +41,12 @@ from auth.user_store import (
 
 router = APIRouter(tags=["courses"])
 logger = logging.getLogger(__name__)
+
+# Per-user in-memory dashboard cache (full response, survives tab refreshes, cleared on restart)
+_dashboard_cache: dict[str, dict] = {}
+
+# Per-user per-course in-memory cache keyed by "{user_id}:{course_id}"
+_course_grades_cache: dict[str, dict] = {}
 
 
 class QuercusTokenBody(BaseModel):
@@ -159,41 +172,89 @@ def list_courses(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+async def _live_fetch_dashboard(token: str) -> tuple[list, list]:
+    """Fetch courses and announcements from Quercus. Returns (dashboard, announcements)."""
+    courses = await asyncio.to_thread(list_current_term_courses, token)
+    tasks = [asyncio.to_thread(get_dashboard_course, token, course) for course in courses]
+    dashboard = list(await asyncio.gather(*tasks))
+    announcements = await asyncio.to_thread(get_dashboard_announcements, token, courses)
+    return dashboard, announcements
+
+
+async def _background_refresh_dashboard(token: str, user_id: str) -> None:
+    try:
+        dashboard, announcements = await _live_fetch_dashboard(token)
+        _dashboard_cache[user_id] = {
+            "courses": dashboard,
+            "announcements": announcements,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            await asyncio.to_thread(save_snapshot, user_id, dashboard, announcements)
+        except GradesSnapshotServiceError as exc:
+            logger.warning("Background snapshot save failed user_id=%s error=%s", user_id, exc)
+        logger.info("Background dashboard refresh completed user_id=%s", user_id)
+    except Exception:
+        logger.exception("Background dashboard refresh failed user_id=%s", user_id)
+
+
 @router.get("/dashboard")
 async def dashboard_courses(
+    force_refresh: bool = Query(default=False),
     quercus_token: str | None = Query(default=None, description="Quercus personal access token"),
     current_user: dict = Depends(get_current_user),
 ):
     token = _resolve_token(quercus_token, current_user)
+    user_id = current_user["user_id"]
+
+    # Layer 1: in-memory cache — survives tab refreshes, instant
+    if not force_refresh and user_id in _dashboard_cache:
+        logger.info("Serving in-memory cached dashboard user_id=%s", user_id)
+        asyncio.create_task(_background_refresh_dashboard(token, user_id))
+        return _dashboard_cache[user_id]
+
+    # Layer 2: Supabase snapshot — survives server restarts, no Quercus calls needed
+    if not force_refresh:
+        try:
+            snapshot = await asyncio.to_thread(get_dashboard_snapshot, user_id, 60 * 24)
+        except Exception:
+            logger.exception("Supabase snapshot read failed user_id=%s", user_id)
+            snapshot = None
+        if snapshot is not None:
+            _dashboard_cache[user_id] = snapshot
+            logger.info("Serving Supabase snapshot user_id=%s fetched_at=%s", user_id, snapshot["fetched_at"])
+            asyncio.create_task(_background_refresh_dashboard(token, user_id))
+            return snapshot
+
     try:
         logger.info(
-            "Starting dashboard load user_id=%s token=%s",
-            current_user.get("user_id"),
+            "Starting live dashboard load user_id=%s token=%s force=%s",
+            user_id,
             _token_debug_value(token),
+            force_refresh,
         )
-        courses = list_current_term_courses(token)
-        tasks = [asyncio.to_thread(get_dashboard_course, token, course) for course in courses]
-        dashboard = await asyncio.gather(*tasks)
-        announcements = await asyncio.to_thread(get_dashboard_announcements, token, courses)
+        dashboard, announcements = await _live_fetch_dashboard(token)
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        _dashboard_cache[user_id] = {
+            "courses": dashboard,
+            "announcements": announcements,
+            "fetched_at": fetched_at,
+        }
         try:
-            await asyncio.to_thread(save_snapshot, current_user["user_id"], dashboard)
+            await asyncio.to_thread(save_snapshot, user_id, dashboard, announcements)
         except GradesSnapshotServiceError as exc:
-            logger.warning(
-                "Failed to persist grades snapshot user_id=%s error=%s",
-                current_user.get("user_id"),
-                exc,
-            )
+            logger.warning("Failed to persist grades snapshot user_id=%s error=%s", user_id, exc)
         logger.info(
-            "Completed dashboard load user_id=%s courses=%s announcements=%s",
-            current_user.get("user_id"),
+            "Completed live dashboard load user_id=%s courses=%s announcements=%s",
+            user_id,
             len(dashboard),
             len(announcements),
         )
-        return {"courses": dashboard, "announcements": announcements}
+        return _dashboard_cache[user_id]
     except (CourseServiceError, QuercusError) as exc:
         logger.exception(
             "Dashboard load failed user_id=%s token=%s error=%s",
-            current_user.get("user_id"),
+            user_id,
             _token_debug_value(token),
             exc,
         )
@@ -201,22 +262,61 @@ async def dashboard_courses(
     except Exception as exc:
         logger.exception(
             "Unexpected dashboard load failure user_id=%s token=%s error=%s",
-            current_user.get("user_id"),
+            user_id,
             _token_debug_value(token),
             exc,
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected dashboard error") from exc
 
 
+async def _background_refresh_course_grades(token: str, user_id: str, course_id: int) -> None:
+    try:
+        data = await asyncio.to_thread(get_course_grades, token, course_id, user_id)
+        _course_grades_cache[f"{user_id}:{course_id}"] = data
+        await asyncio.to_thread(save_course_detail_snapshot, user_id, course_id, data)
+        logger.info("Background course grades refresh completed user_id=%s course_id=%s", user_id, course_id)
+    except Exception:
+        logger.exception("Background course grades refresh failed user_id=%s course_id=%s", user_id, course_id)
+
+
 @router.get("/{course_id}/grades")
-def course_grades(
+async def course_grades(
     course_id: int,
+    force_refresh: bool = Query(default=False),
     quercus_token: str | None = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
     token = _resolve_token(quercus_token, current_user)
+    user_id = current_user["user_id"]
+    cache_key = f"{user_id}:{course_id}"
+
+    # Layer 1: in-memory
+    if not force_refresh and cache_key in _course_grades_cache:
+        asyncio.create_task(_background_refresh_course_grades(token, user_id, course_id))
+        return _course_grades_cache[cache_key]
+
+    # Layer 2: Supabase snapshot
+    if not force_refresh:
+        try:
+            snapshot = await asyncio.to_thread(get_course_detail_snapshot, user_id, course_id, 60 * 24)
+        except Exception:
+            logger.exception("Course detail snapshot read failed user_id=%s course_id=%s", user_id, course_id)
+            snapshot = None
+        if snapshot is not None:
+            _course_grades_cache[cache_key] = snapshot
+            logger.info("Serving Supabase course detail user_id=%s course_id=%s", user_id, course_id)
+            asyncio.create_task(_background_refresh_course_grades(token, user_id, course_id))
+            return snapshot
+
+    # Layer 3: live fetch
     try:
-        return get_course_grades(token, course_id, current_user["user_id"])
+        data = await asyncio.to_thread(get_course_grades, token, course_id, user_id)
+        _course_grades_cache[cache_key] = data
+        try:
+            await asyncio.to_thread(save_course_detail_snapshot, user_id, course_id, data)
+        except GradesSnapshotServiceError as exc:
+            logger.warning("Failed to save course detail snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
+        return data
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -229,14 +329,22 @@ def write_course_grade_overrides(
     current_user: dict = Depends(get_current_user),
 ):
     token = _resolve_token(quercus_token, current_user)
+    user_id = current_user["user_id"]
+    cache_key = f"{user_id}:{course_id}"
     try:
         save_course_grade_overrides(
             token,
-            current_user["user_id"],
+            user_id,
             course_id,
             [override.model_dump() for override in body.overrides],
         )
-        return get_course_grades(token, course_id, current_user["user_id"])
+        data = get_course_grades(token, course_id, user_id)
+        _course_grades_cache[cache_key] = data
+        try:
+            save_course_detail_snapshot(user_id, course_id, data)
+        except GradesSnapshotServiceError as exc:
+            logger.warning("Failed to persist grade override snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
+        return data
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

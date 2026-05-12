@@ -10,7 +10,8 @@
       "Bash(python:*)",
       "Bash(uvicorn api.main:app --reload --port 8001)",
       "Bash(curl -s http://localhost:8001/)",
-      "Bash(curl -s http://localhost:8001/openapi.json)"
+      "Bash(curl -s http://localhost:8001/openapi.json)",
+      "Bash(npm install *)"
     ]
   }
 }

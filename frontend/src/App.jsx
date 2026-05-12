@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 
 import AppShell from './components/AppShell'
+import client from './api/client'
 import { useAuth } from './hooks/useAuth'
 import { useQuercusStatus } from './hooks/useQuercusStatus'
 import Acorn from './pages/Acorn'
@@ -72,7 +74,32 @@ function QuercusTokenMissing({ children }) {
 }
 
 export default function App() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isReady } = useAuth()
+  const queryClient = useQueryClient()
+
+  // On every app load while logged in, fire a background request to keep the
+  // Supabase dashboard snapshot current. This ensures incognito / new-device
+  // loads always hit the fast Supabase layer instead of the full live fetch.
+  useEffect(() => {
+    if (!isReady || !isAuthenticated) return
+
+    client.get('/api/courses/dashboard')
+      .then(({ data }) => {
+        queryClient.setQueryData(['dashboard'], data)
+        // Warm each course's grade breakdown so the detail page is instant.
+        // Staggered 400 ms apart to avoid flooding Quercus with simultaneous requests.
+        ;(data.courses ?? []).forEach((course, index) => {
+          setTimeout(() => {
+            client.get(`/api/courses/${course.id}/grades`)
+              .then(({ data: gradesData }) => {
+                queryClient.setQueryData(['course-grades', String(course.id)], gradesData)
+              })
+              .catch(() => {})
+          }, (index + 1) * 400)
+        })
+      })
+      .catch(() => {})
+  }, [isAuthenticated, isReady, queryClient])
 
   return (
     <Routes>

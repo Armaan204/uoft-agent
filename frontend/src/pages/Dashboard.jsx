@@ -1,18 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-
 import client from '../api/client'
 import AnnouncementList from '../components/AnnouncementList'
 import CourseCard from '../components/CourseCard'
 import DeadlineList from '../components/DeadlineList'
 
 const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
-const DASHBOARD_GC_TIME_MS = 30 * 60 * 1000
-const COURSE_DETAIL_STALE_TIME_MS = 5 * 60 * 1000
 
-async function fetchDashboard() {
-  const response = await client.get('/api/courses/dashboard')
+async function fetchDashboard(forceRefresh = false) {
+  const url = forceRefresh ? '/api/courses/dashboard?force_refresh=true' : '/api/courses/dashboard'
+  const response = await client.get(url)
   return response.data
+}
+
+function formatAge(isoString) {
+  if (!isoString) return null
+  const diffMs = Date.now() - new Date(isoString).getTime()
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`
+  const days = Math.floor(hours / 24)
+  return days === 1 ? '1 day ago' : `${days} days ago`
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M1.5 7a5.5 5.5 0 1 0 1.1-3.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M1.5 2.5v4h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 export default function Dashboard() {
@@ -20,14 +39,27 @@ export default function Dashboard() {
   const courseGridRef = useRef(null)
   const deadlinesLabelRef = useRef(null)
   const [deadlinesMaxHeight, setDeadlinesMaxHeight] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboard,
     staleTime: DASHBOARD_STALE_TIME_MS,
-    gcTime: DASHBOARD_GC_TIME_MS,
     refetchOnWindowFocus: false,
   })
+
+  const fetchedAt = data?.fetched_at ?? null
+
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    try {
+      const fresh = await fetchDashboard(true)
+      queryClient.setQueryData(['dashboard'], fresh)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [queryClient, isRefreshing])
 
   const deadlines = useMemo(
     () => (data?.courses ?? []).flatMap((course) => course.deadlines ?? []).sort((a, b) => a.due_at.localeCompare(b.due_at)),
@@ -35,46 +67,6 @@ export default function Dashboard() {
   )
   const announcements = data?.announcements ?? []
 
-  useEffect(() => {
-    if (isLoading || error || !(data?.courses?.length)) return undefined
-
-    let cancelled = false
-    const timers = []
-
-    const prefetchCourseDetails = () => {
-      data.courses.forEach((course, index) => {
-        const timer = window.setTimeout(() => {
-          if (cancelled) return
-          queryClient.prefetchQuery({
-            queryKey: ['course-grades', String(course.id)],
-            queryFn: async () => {
-              const response = await client.get(`/api/courses/${course.id}/grades`)
-              return response.data
-            },
-            staleTime: COURSE_DETAIL_STALE_TIME_MS,
-          })
-        }, 250 + index * 150)
-        timers.push(timer)
-      })
-    }
-
-    if (typeof window.requestIdleCallback === 'function') {
-      const idleId = window.requestIdleCallback(prefetchCourseDetails, { timeout: 1500 })
-      return () => {
-        cancelled = true
-        window.cancelIdleCallback(idleId)
-        timers.forEach((timer) => window.clearTimeout(timer))
-      }
-    }
-
-    const fallbackTimer = window.setTimeout(prefetchCourseDetails, 400)
-    timers.push(fallbackTimer)
-
-    return () => {
-      cancelled = true
-      timers.forEach((timer) => window.clearTimeout(timer))
-    }
-  }, [data, error, isLoading, queryClient])
 
   useEffect(() => {
     if (!courseGridRef.current || !deadlinesLabelRef.current) return undefined
@@ -108,12 +100,21 @@ export default function Dashboard() {
       <div className="semester-row rise">
         <span className="semester-title">Winter 2026</span>
         <span className="semester-tag">Active</span>
-        {isFetching && !isLoading ? (
-          <span className="dashboard-refresh-indicator" aria-live="polite">
-            <span className="loading-spinner small" aria-hidden="true" />
-            Refreshing
-          </span>
-        ) : null}
+        <div className="dashboard-freshness">
+          {fetchedAt ? (
+            <span className="dashboard-age">Updated {formatAge(fetchedAt)}</span>
+          ) : null}
+          <button
+            type="button"
+            className={`dashboard-refresh-btn${isRefreshing ? ' refreshing' : ''}`}
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            aria-label="Refresh dashboard"
+          >
+            <RefreshIcon />
+            {isRefreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {isLoading && (
