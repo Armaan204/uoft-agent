@@ -13,7 +13,11 @@
       "Bash(curl -s http://localhost:8001/openapi.json)",
       "Bash(npm install *)",
       "PowerShell(git *)",
-      "PowerShell(git -C \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\" commit -m $msg)"
+      "PowerShell(git -C \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\" commit -m $msg)",
+      "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\dashboard.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\dashboard.png\")",
+      "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\chat.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\chat.png\")",
+      "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\gradebreakdown.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\gradebreakdown.png\")",
+      "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\acorn.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\acorn.png\")"
     ]
   }
 }

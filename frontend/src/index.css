@@ -218,6 +218,269 @@ h1 {
   color: oklch(35% 0.015 260);
 }
 
+/* ── Full-screen slider login ───────────────────────────── */
+
+.login-screen--full {
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+}
+
+.login-bg-slider {
+  position: absolute;
+  top: 80px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+}
+
+.login-bg-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-bg-slide--active {
+  opacity: 1;
+}
+
+.login-bg-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+
+.login-overlay {
+  position: absolute;
+  top: 80px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  background:
+    linear-gradient(
+      to bottom,
+      oklch(6% 0.01 260 / 0.05) 0%,
+      oklch(6% 0.01 260 / 0.1) 65%,
+      oklch(6% 0.01 260 / 0.96) 100%
+    );
+  pointer-events: none;
+}
+
+.login-nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 80px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: oklch(8% 0.015 260 / 0.72);
+  border-bottom: 1px solid oklch(100% 0 0 / 0.12);
+  box-shadow: 0 1px 0 oklch(100% 0 0 / 0.04), 0 8px 32px -8px oklch(4% 0.01 260 / 0.5);
+}
+
+.login-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.login-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-github {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid oklch(100% 0 0 / 0.13);
+  background: oklch(100% 0 0 / 0.05);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-github:hover {
+  background: oklch(100% 0 0 / 0.11);
+  border-color: oklch(100% 0 0 / 0.22);
+}
+
+.btn-google--nav {
+  width: auto;
+  min-height: auto;
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 10px;
+  margin-bottom: 0;
+}
+
+@media (max-width: 520px) {
+  .login-nav {
+    padding: 0 20px;
+    height: 64px;
+  }
+
+  .login-bg-slider,
+  .login-overlay {
+    top: 64px;
+  }
+
+  .btn-github-label {
+    display: none;
+  }
+
+  .btn-github {
+    padding: 8px 10px;
+  }
+}
+
+.login-arrow {
+  position: absolute;
+  top: calc(50% + 40px);
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: oklch(100% 0 0 / 0.07);
+  border: 1px solid oklch(100% 0 0 / 0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: oklch(88% 0.006 260);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.login-arrow:hover {
+  background: oklch(100% 0 0 / 0.14);
+  border-color: oklch(100% 0 0 / 0.24);
+  color: oklch(100% 0 0);
+}
+
+.login-arrow--prev { left: 24px; }
+.login-arrow--next { right: 24px; }
+
+
+@media (max-width: 520px) {
+  .login-arrow { display: none; }
+}
+
+.login-slide-footer {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.login-caption-stack {
+  display: grid;
+  text-align: center;
+}
+
+.login-caption {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transition: opacity 0.65s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.login-caption--active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.login-slide-label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-radius: 6px;
+  padding: 3px 10px;
+}
+
+.login-slide-text {
+  margin: 0;
+  font-size: 13px;
+  color: oklch(72% 0.01 260);
+  font-weight: 300;
+}
+
+.login-slide-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.login-slide-dot {
+  height: 3px;
+  width: 20px;
+  border-radius: 2px;
+  background: oklch(45% 0.015 260 / 0.6);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.35s ease, width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-slide-dot--active {
+  background: var(--accent);
+  width: 38px;
+}
+
+@media (max-width: 480px) {
+  .login-slide-footer {
+    display: none;
+  }
+
+  .login-screen--full .login-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--surface);
+  }
+}
+
+/* ── End full-screen slider login ───────────────────────── */
+
 .onboarding-copy {
   margin-bottom: 10px;
 }
