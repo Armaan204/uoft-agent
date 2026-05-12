@@ -11,28 +11,11 @@ from supabase import Client, create_client
 
 load_dotenv()
 
-try:
-    import streamlit as st
-    from streamlit.errors import StreamlitSecretNotFoundError
-except Exception:  # pragma: no cover - streamlit import is expected in app usage
-    st = None
-
-    class StreamlitSecretNotFoundError(Exception):
-        pass
-
-
 class SyllabusCacheError(RuntimeError):
     """Raised when the persistent syllabus cache is misconfigured or fails."""
 
 
 def _secret_or_env(name: str) -> str | None:
-    if st is not None:
-        try:
-            value = st.secrets.get(name)
-        except StreamlitSecretNotFoundError:
-            value = None
-        if value:
-            return value
     return os.getenv(name)
 
 

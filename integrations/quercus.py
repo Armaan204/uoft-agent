@@ -12,7 +12,6 @@ from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 
 import requests
-import streamlit as st
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -50,7 +49,6 @@ def _cached_paginated_get(token: str, path: str, params: dict | list | None = No
     return results
 
 
-@st.cache_data(ttl=300, show_spinner=False)
 def _cached_get_assignment_groups(_token: str, token_cache_key: str, course_id: int | str) -> list:
     """Cached assignment-group lookup scoped by token and course."""
     return _cached_paginated_get(
@@ -60,7 +58,6 @@ def _cached_get_assignment_groups(_token: str, token_cache_key: str, course_id: 
     )
 
 
-@st.cache_data(ttl=300, show_spinner=False)
 def _cached_get_submissions(_token: str, token_cache_key: str, course_id: int | str) -> list:
     """Cached submission lookup scoped by token and course."""
     return _cached_paginated_get(
