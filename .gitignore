@@ -13,7 +13,10 @@ dist/
 build/
 
 # Streamlit
-.streamlit/secrets.toml
+.streamlit/
+
+# Build artifacts
+*.zip
 
 # Local data imports
 data/
