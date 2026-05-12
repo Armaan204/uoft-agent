@@ -442,6 +442,8 @@ h1 {
 .profile-dropdown.drop-up {
   top: auto;
   bottom: calc(100% + 10px);
+  right: auto;
+  left: 0;
 }
 
 .profile-dropdown-item {

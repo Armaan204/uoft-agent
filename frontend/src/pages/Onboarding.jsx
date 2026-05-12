@@ -57,7 +57,7 @@ export default function Onboarding() {
           </svg>
         </div>
 
-        <h1>Connect Quercus</h1>
+        <h1 className="login-title">Connect Quercus</h1>
         <p className="tagline onboarding-copy">Enter your Quercus personal access token to get started.</p>
         <p className="onboarding-help">
           Generate one at <strong>q.utoronto.ca</strong> → <strong>Account</strong> → <strong>Settings</strong> →{' '}
