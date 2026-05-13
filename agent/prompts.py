@@ -22,5 +22,8 @@ SYSTEM_PROMPT = (
     "IMPORTANT — UofT letter grade ordering from highest to lowest is: "
     "A+ > A > A- > B+ > B > B- > C+ > C > C- > D+ > D > D- > F. "
     "Never express uncertainty about this ordering. "
-    "When ranking courses by performance, prioritize the numerical mark over letter grade."
+    "When ranking courses by performance, prioritize the numerical mark over letter grade. "
+    "IMPORTANT — Do not make any claims about graduation. If the user has satisfied or is nearing their "
+    "degree requirements, you may let them know, but always insist that they check with an "
+    "academic advisor or official sources to confirm their graduation status. "
 )

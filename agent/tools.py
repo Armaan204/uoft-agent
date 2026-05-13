@@ -12,6 +12,8 @@ from html import unescape
 from api.services.acorn_service import get_academic_history as load_academic_history
 from api.services.grade_snapshot_cache import get_grade_snapshot, invalidate_grade_snapshot
 from api.services.grades_snapshot_service import get_snapshot as load_grades_snapshot, save_snapshot
+from integrations.graduation_service import check_graduation_progress as _check_grad_progress
+from integrations.graduation_service import get_program_requirements as _get_prog_reqs
 from integrations.quercus import QuercusClient
 from integrations.syllabus import parse_syllabus_weights
 from calculator.grades import GradeCalculator
@@ -168,6 +170,22 @@ TOOL_SCHEMAS = [
                 "course_name": {"type": "string",  "description": "Human-readable course name for context"},
             },
             "required": ["course_id", "course_name"],
+        },
+    },
+    {
+        "name": "check_graduation_progress",
+        "description": (
+            "Check the student's graduation progress against their program requirements. "
+            "Requires ACORN academic history to be imported. Returns a breakdown of each "
+            "requirement group showing which requirements are satisfied, in-progress, or "
+            "remaining, plus overall credits completed vs. required. "
+            "Use this when the student asks about graduation, program completion, degree "
+            "requirements, or how many credits they need to graduate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
 ]
@@ -333,6 +351,32 @@ def _get_announcement_detail(inp: dict, client: QuercusClient) -> dict:
     }
 
 
+def _check_graduation_progress(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    if user_id is None:
+        return {"error": "Graduation progress requires an authenticated user context"}
+
+    acorn_data = load_academic_history(user_id)
+    programs = acorn_data.get("programs") or []
+    if not programs:
+        return {
+            "error": "No ACORN data found. Please import your ACORN academic history "
+                     "using the ACORN tab before checking graduation progress."
+        }
+
+    program_name = (programs[0].get("programName") or "").strip()
+    if not program_name:
+        return {"error": "Could not determine program name from ACORN data."}
+
+    requirements = _get_prog_reqs(program_name)
+    if requirements is None:
+        return {
+            "error": f"Could not find calendar requirements for: {program_name}. "
+                     "The program may not be supported yet or the calendar page could not be reached."
+        }
+
+    return _check_grad_progress(requirements, acorn_data)
+
+
 def _get_grade_scenarios(inp: dict, client: QuercusClient) -> dict:
     course_id   = inp["course_id"]
     groups      = client.get_assignment_groups(course_id)
@@ -401,16 +445,22 @@ def _get_grade_scenarios(inp: dict, client: QuercusClient) -> dict:
 # ---------------------------------------------------------------------------
 
 _HANDLERS = {
-    "get_courses":         _get_courses,
-    "get_academic_history": _get_academic_history,
-    "get_cached_grades":   _get_cached_grades,
-    "get_all_grades":      _get_all_grades,
-    "refresh_grades":      _refresh_grades,
+    "get_courses":              _get_courses,
+    "get_academic_history":     _get_academic_history,
+    "get_cached_grades":        _get_cached_grades,
+    "get_all_grades":           _get_all_grades,
+    "refresh_grades":           _refresh_grades,
     "get_course_announcements": _get_course_announcements,
-    "get_announcement_detail": _get_announcement_detail,
-    "get_course_weights":  _get_course_weights,
-    "get_current_grade":   _get_current_grade,
-    "get_grade_scenarios": _get_grade_scenarios,
+    "get_announcement_detail":  _get_announcement_detail,
+    "get_course_weights":       _get_course_weights,
+    "get_current_grade":        _get_current_grade,
+    "get_grade_scenarios":      _get_grade_scenarios,
+    "check_graduation_progress": _check_graduation_progress,
+}
+
+_USER_ID_TOOLS = {
+    "get_cached_grades", "get_all_grades", "refresh_grades",
+    "get_academic_history", "check_graduation_progress",
 }
 
 
@@ -420,7 +470,7 @@ def execute_tool(tool_name: str, tool_input: dict, client: QuercusClient, user_i
     if handler is None:
         return {"error": f"Unknown tool: {tool_name}"}
     try:
-        if tool_name in {"get_cached_grades", "get_all_grades", "refresh_grades", "get_academic_history"}:
+        if tool_name in _USER_ID_TOOLS:
             return handler(tool_input, client, user_id=user_id)
         return handler(tool_input, client)
     except Exception as exc:

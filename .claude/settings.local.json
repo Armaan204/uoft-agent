@@ -17,7 +17,10 @@
       "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\dashboard.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\dashboard.png\")",
       "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\chat.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\chat.png\")",
       "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\gradebreakdown.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\gradebreakdown.png\")",
-      "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\acorn.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\acorn.png\")"
+      "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\acorn.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\acorn.png\")",
+      "WebSearch",
+      "WebFetch(domain:utsc.calendar.utoronto.ca)",
+      "PowerShell(Head *)"
     ]
   }
 }

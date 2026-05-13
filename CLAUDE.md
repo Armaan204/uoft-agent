@@ -49,8 +49,10 @@ An AI academic assistant for University of Toronto students.
 - `frontend/src/hooks/useAuth.jsx` — localStorage-backed auth state and login completion
 - `frontend/src/hooks/useQuercusStatus.jsx` — checks whether the logged-in user has a saved Quercus token
 - `frontend/src/components/` — reusable UI pieces including sidebar shell, profile menu, cards, lists, and tool-call rendering
-- `frontend/src/pages/` — Login, Quercus onboarding, Dashboard, Course Detail, Chat, and ACORN pages
+- `frontend/src/pages/` — Login, Quercus onboarding, Dashboard, Course Detail, Chat, ACORN, and Degree Planner pages
 - `frontend/src/index.css` — shared design system, typography, layout, and animation styles, including the sticky chat composer and inline course-grade editing states
+- `integrations/graduation_service.py` — graduation planning service: URL discovery, LLM-based requirements extraction, and course matching
+- `api/routers/graduation.py` — `GET /api/graduation/progress` and `DELETE /api/graduation/cache`
 
 ## Key Decisions
 
@@ -75,6 +77,11 @@ An AI academic assistant for University of Toronto students.
 - The React chat page now keeps the active in-progress conversation and unsent draft in browser `sessionStorage`, keyed per logged-in user and conversation ID, so refreshes within the tab keep the live thread without persisting it across browser restarts
 - Swagger auth uses HTTP Bearer so developers can paste JWTs directly while testing the FastAPI API
 - Production frontend is served at `https://uoft-agent.com`; backend CORS allows `FRONTEND_URL` and optional `CORS_ORIGINS`
+- Graduation planning uses a three-step pipeline: (1) URL discovery via UTSC-convention slug generation with a multi-turn Anthropic web_search fallback, (2) LLM extraction of structured requirements from the calendar page, (3) greedy matching of ACORN courses against requirements with no double-counting within the program
+- For co-op programs the co-op overlay page is found first, then the base specialist page is derived by stripping `co-operative-` from the URL slug and probing variants (with/without `-science` suffix); the base page provides the academic requirements and the co-op page provides the work-term supplement
+- Requirements are cached per `acorn_name` in the `program_requirements_cache` Supabase table; the Degree Planner page never auto-refetches (all TanStack Query auto-refetch options disabled) to avoid burning API credits
+- Three requirement types: `required` (OR alternatives), `n_credits_from_list` (earn N credits from a list), `open_pool` (earn N credits from courses matching department+level filters, with optional sub-requirements)
+- Co-op status is tracked as satisfied/in_progress/remaining; course matching is greedy with most-constrained requirements first
 
 ## Auth
 
@@ -184,6 +191,7 @@ Implemented:
 - Shared React app shell implemented with sidebar navigation for Dashboard, Chat, and ACORN
 - React ACORN page implemented with onboarding/claim flow, summary cards, GPA chart, sortable course table, and re-import flow
 - Frontend and backend deployment scaffolding added for Railway: `Procfile`, frontend Dockerfile, nginx static config, and production API URL support
+- Degree Planner page (`/degree-planner`) implemented: fetches graduation progress from `/api/graduation/progress`, shows program credit summary with progress bar, collapsible requirement groups, and a Re-analyze button that clears the cache and re-extracts
 
 Not implemented yet:
 

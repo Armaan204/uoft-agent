@@ -34,6 +34,9 @@ export default function AppShell() {
           <NavLink className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`} to="/acorn">
             ACORN
           </NavLink>
+          <NavLink className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`} to="/degree-planner">
+            Degree Planner
+          </NavLink>
         </nav>
 
         <div className="sidebar-bottom">
@@ -65,6 +68,14 @@ export default function AppShell() {
             <path d="M7 11.5 9 9.5l2 2 2.5-3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span>ACORN</span>
+        </NavLink>
+        <NavLink className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`} to="/degree-planner">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+            <path d="M3 5h14M3 10h9M3 15h6" strokeLinecap="round" />
+            <circle cx="15.5" cy="13.5" r="3" />
+            <path d="M15.5 12v1.5l1 1" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>Planner</span>
         </NavLink>
       </nav>
     </div>

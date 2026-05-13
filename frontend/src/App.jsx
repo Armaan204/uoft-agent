@@ -11,6 +11,7 @@ import Chat from './pages/Chat'
 import ChatHistory from './pages/ChatHistory'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
+import DegreePlanner from './pages/DegreePlanner'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
 
@@ -163,6 +164,7 @@ export default function App() {
           }
         />
         <Route path="/acorn" element={<Acorn />} />
+        <Route path="/degree-planner" element={<DegreePlanner />} />
       </Route>
     </Routes>
   )

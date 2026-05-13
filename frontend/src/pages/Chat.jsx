@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import client from '../api/client'
 import { fetchConversation, sendChatMessage } from '../api/chat'
@@ -28,9 +28,10 @@ async function fetchDashboard() {
 
 export default function Chat() {
   const { user } = useAuth()
+  const location = useLocation()
   const navigate = useNavigate()
   const { conversationId: routeConversationId } = useParams()
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState(location.state?.initialMessage || '')
   const [messages, setMessages] = useState([WELCOME_MESSAGE])
   const [conversationId, setConversationId] = useState(null)
   const [isHydrated, setIsHydrated] = useState(false)
@@ -129,20 +130,40 @@ export default function Chat() {
   }, [messages, mutation.isPending])
 
   useEffect(() => {
+    const initialMessage = location.state?.initialMessage
+
     try {
       const saved = loadStoredThread(storageKey)
       setConversationId(saved.conversationId)
       setMessages(saved.messages)
-      setDraft(saved.draft)
+      
+      if (initialMessage) {
+        saved.draft = initialMessage
+        setDraft(initialMessage)
+        navigate(location.pathname, { replace: true, state: {} })
+      } else {
+        setDraft(saved.draft)
+      }
+      
       saveStoredThread(storageKey, saved)
     } catch {
       const fallback = buildWelcomeThread()
       setConversationId(fallback.conversationId)
       setMessages(fallback.messages)
-      setDraft(fallback.draft)
+      
+      if (initialMessage) {
+        fallback.draft = initialMessage
+        setDraft(initialMessage)
+        navigate(location.pathname, { replace: true, state: {} })
+      } else {
+        setDraft(fallback.draft)
+      }
+      
+      saveStoredThread(storageKey, fallback)
     } finally {
       setIsHydrated(true)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey])
 
   useEffect(() => {
