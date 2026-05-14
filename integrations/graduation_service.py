@@ -679,10 +679,31 @@ def _course_credits(course: dict) -> float:
     except (TypeError, ValueError):
         return 0.5
 
+# Maps the first digit of a St. George/UTM 3-digit course number to its UTSC level letter.
+# 100-level → A, 200-level → B, 300-level → C, 400-level → D.
+_NUMERIC_LEVEL_MAP = {'1': 'A', '2': 'B', '3': 'C', '4': 'D'}
+
+
 def _parse_dept_level(code: str) -> tuple[str, str] | None:
-    """Return (department, level) for a UTSC-style course code, or None."""
-    if len(code) >= 5 and code[:3].isalpha() and code[3].isalpha():
+    """Return (department, level-letter) for any UofT course code, or None.
+
+    UTSC codes use a 4-letter dept where position 3 is the level letter:
+      CSCA08H3 → ('CSC', 'A'),  STAC33H3 → ('STA', 'C')
+
+    St. George / UTM codes use a 3-letter dept + 3-digit number whose first
+    digit encodes the level (1→A, 2→B, 3→C, 4→D):
+      CSC300H1 → ('CSC', 'C'),  STA302H1 → ('STA', 'C'),  MAT401H5 → ('MAT', 'D')
+    """
+    if len(code) < 5:
+        return None
+    if code[:3].isalpha() and code[3].isalpha():
+        # UTSC-style: 4-letter dept, level is the 4th character
         return code[:3].upper(), code[3].upper()
+    if code[:3].isalpha() and code[3].isdigit():
+        # St. George / UTM-style: 3-letter dept, level from first digit of course number
+        level = _NUMERIC_LEVEL_MAP.get(code[3])
+        if level:
+            return code[:3].upper(), level
     return None
 
 def _matches_filter(code: str, departments: set, levels: set, exclusions: set) -> bool:

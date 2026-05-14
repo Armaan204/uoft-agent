@@ -200,6 +200,10 @@ Not implemented yet:
 - Gradescope integration
 - MarkUs integration
 - ACORN-driven planning workflows beyond readback/import
+- UTM and St. George program support in the Degree Planner: the graduation pipeline currently only discovers and extracts UTSC calendar pages. When adding support for UTM (`utm.calendar.utoronto.ca`) or St. George (`artsci.calendar.utoronto.ca`) programs, two changes are required:
+  1. **Extraction prompt** (`integrations/graduation_service.py` → `_SCHEMA_HINT`): add an explicit instruction that `open_pool` level filters must always be expressed as UTSC letter notation (`A`/`B`/`C`/`D`) regardless of how the calendar phrases it — UTSC calendars say "C-level", but UTM/St. George calendars say "300-level". Without this instruction the LLM may extract `levels: ["3","4"]` instead of `["C","D"]`, causing all open-pool level comparisons to silently fail.
+  2. **`_parse_dept_level`** already handles the student-course side: non-UTSC codes like `CSC300H1` are mapped to `('CSC', 'C')` via `_NUMERIC_LEVEL_MAP`. No change needed there.
+  The extraction-side normalization (point 1) is the only remaining gap before UTM/St. George program requirements can be correctly matched against a student's courses.
 
 ## Known Constraints
 
