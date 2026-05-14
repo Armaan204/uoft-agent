@@ -618,6 +618,57 @@ def get_program_requirements(acorn_name: str, force_refresh: bool = False) -> di
     return requirements
 
 # ---------------------------------------------------------------------------
+# Exclusion-based equivalency
+# ---------------------------------------------------------------------------
+
+def collect_required_courses(requirements: dict) -> list[str]:
+    """
+    Return every course code that appears in a 'required' or 'n_credits_from_list'
+    item across all requirement groups.  Used by the router to know which required
+    courses to pre-fetch exclusions for.
+    """
+    codes: list[str] = []
+    for group in requirements.get("groups", []):
+        for item in group.get("items", []):
+            if item.get("type") in ("required", "n_credits_from_list"):
+                codes.extend(item.get("courses", []))
+    return codes
+
+
+def _campus_digit(code: str) -> str | None:
+    """Return the campus digit from a UofT course code suffix (H1→'1', H3→'3', H5→'5'), or None."""
+    m = re.search(r'[HY](\d)$', code)
+    return m.group(1) if m else None
+
+
+def _satisfies_via_exclusion(
+    taken_code: str,
+    required_code: str,
+    exclusions_map: dict[str, set[str]],
+) -> bool:
+    """
+    True if taken_code and required_code are cross-campus equivalents recognised
+    via the calendar Exclusion field.  Checks both directions:
+      1. required_code appears in taken_code's exclusion list
+      2. taken_code appears in required_code's exclusion list
+
+    Same-campus exclusions (both codes share the same campus digit) are intentionally
+    excluded — those are credit-conflict rules ("can't take both"), not equivalencies.
+    """
+    if taken_code == required_code:
+        return False
+    t_digit = _campus_digit(taken_code)
+    r_digit = _campus_digit(required_code)
+    if t_digit and r_digit and t_digit == r_digit:
+        return False  # same campus — not a cross-campus equivalency
+    if required_code in exclusions_map.get(taken_code, set()):
+        return True
+    if taken_code in exclusions_map.get(required_code, set()):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Matching algorithm
 # ---------------------------------------------------------------------------
 
@@ -640,10 +691,19 @@ def _matches_filter(code: str, departments: set, levels: set, exclusions: set) -
     parsed = _parse_dept_level(code)
     return parsed is not None and parsed[0] in departments and parsed[1] in levels
 
-def check_graduation_progress(requirements: dict, acorn_data: dict) -> dict:
+def check_graduation_progress(
+    requirements: dict,
+    acorn_data: dict,
+    exclusions_map: dict[str, set[str]] | None = None,
+) -> dict:
     """
     Match ACORN courses against program requirements.
     Each course is assigned to at most one requirement (no double counting within program).
+
+    exclusions_map — optional {course_code: set_of_excluded_codes} pre-fetched by the
+    caller; when provided, cross-campus equivalents are recognised via bidirectional
+    exclusion checks so e.g. CSC108H1 can satisfy a CSCA08H3 requirement.
+
     Returns {overall_status, credits_satisfied, credits_in_progress, credits_remaining, groups, coop}.
     """
     # Build completed / in-progress sets from ACORN terms
@@ -673,14 +733,15 @@ def check_graduation_progress(requirements: dict, acorn_data: dict) -> dict:
                 completed[code] = {"grade": grade, "credits": credits}
 
     used: set[str] = set()
+    excl = exclusions_map or {}
     group_results = []
 
     for group in requirements.get("groups", []):
-        group_results.append(_match_group(group, completed, in_progress, used))
+        group_results.append(_match_group(group, completed, in_progress, used, excl))
 
     coop_result = None
     if requirements.get("is_coop") and requirements.get("coop"):
-        coop_result = _match_coop(requirements["coop"], completed, in_progress, used)
+        coop_result = _match_coop(requirements["coop"], completed, in_progress, used, excl)
 
     total_req = float(requirements.get("program_credits_required") or 13.0)
     total_sat = sum(g["credits_satisfied"] for g in group_results)
@@ -709,7 +770,13 @@ def check_graduation_progress(requirements: dict, acorn_data: dict) -> dict:
 # Group / item matching helpers
 # ---------------------------------------------------------------------------
 
-def _match_group(group: dict, completed: dict, in_progress: set, used: set) -> dict:
+def _match_group(
+    group: dict,
+    completed: dict,
+    in_progress: set,
+    used: set,
+    exclusions_map: dict[str, set[str]] | None = None,
+) -> dict:
     items = group.get("items", [])
     # Most constrained first: required + n_credits_from_list before open_pool
     priority = [i for i in items if i.get("type") != "open_pool"]
@@ -719,9 +786,9 @@ def _match_group(group: dict, completed: dict, in_progress: set, used: set) -> d
     for item in priority + pools:
         t = item.get("type")
         if t == "required":
-            r = _match_required(item, completed, in_progress, used)
+            r = _match_required(item, completed, in_progress, used, exclusions_map)
         elif t == "n_credits_from_list":
-            r = _match_n_credits_list(item, completed, in_progress, used)
+            r = _match_n_credits_list(item, completed, in_progress, used, exclusions_map)
         elif t == "open_pool":
             r = _match_open_pool(item, completed, in_progress, used)
         else:
@@ -747,10 +814,17 @@ def _match_group(group: dict, completed: dict, in_progress: set, used: set) -> d
     }
 
 
-def _match_required(item: dict, completed: dict, in_progress: set, used: set) -> dict:
+def _match_required(
+    item: dict,
+    completed: dict,
+    in_progress: set,
+    used: set,
+    exclusions_map: dict[str, set[str]] | None = None,
+) -> dict:
     courses = item.get("courses", [])
     credits = float(item.get("credits") or 0.5)
 
+    # Direct completed match
     for code in courses:
         if code in completed and code not in used:
             used.add(code)
@@ -759,6 +833,21 @@ def _match_required(item: dict, completed: dict, in_progress: set, used: set) ->
                 "credits_satisfied": credits, "credits_in_progress": 0.0,
                 "status": "satisfied", "satisfied_by": [code],
             }
+
+    # Cross-campus exclusion match (completed)
+    if exclusions_map:
+        for req_code in courses:
+            for taken_code in completed:
+                if taken_code not in used and _satisfies_via_exclusion(taken_code, req_code, exclusions_map):
+                    used.add(taken_code)
+                    return {
+                        "id": item["id"], "type": "required", "label": item.get("label"),
+                        "credits_satisfied": credits, "credits_in_progress": 0.0,
+                        "status": "satisfied", "satisfied_by": [taken_code],
+                        "satisfied_via_exclusion": req_code,
+                    }
+
+    # Direct in-progress match
     for code in courses:
         if code in in_progress and code not in used:
             return {
@@ -766,6 +855,19 @@ def _match_required(item: dict, completed: dict, in_progress: set, used: set) ->
                 "credits_satisfied": 0.0, "credits_in_progress": credits,
                 "status": "in_progress", "in_progress_by": [code],
             }
+
+    # Cross-campus exclusion match (in-progress)
+    if exclusions_map:
+        for req_code in courses:
+            for taken_code in in_progress:
+                if taken_code not in used and _satisfies_via_exclusion(taken_code, req_code, exclusions_map):
+                    return {
+                        "id": item["id"], "type": "required", "label": item.get("label"),
+                        "credits_satisfied": 0.0, "credits_in_progress": credits,
+                        "status": "in_progress", "in_progress_by": [taken_code],
+                        "in_progress_via_exclusion": req_code,
+                    }
+
     return {
         "id": item["id"], "type": "required", "label": item.get("label"),
         "credits_satisfied": 0.0, "credits_in_progress": 0.0,
@@ -773,7 +875,13 @@ def _match_required(item: dict, completed: dict, in_progress: set, used: set) ->
     }
 
 
-def _match_n_credits_list(item: dict, completed: dict, in_progress: set, used: set) -> dict:
+def _match_n_credits_list(
+    item: dict,
+    completed: dict,
+    in_progress: set,
+    used: set,
+    exclusions_map: dict[str, set[str]] | None = None,
+) -> dict:
     needed     = float(item.get("credits_needed") or 0.5)
     course_set = set(item.get("courses", []))
     sat = 0.0
@@ -781,21 +889,40 @@ def _match_n_credits_list(item: dict, completed: dict, in_progress: set, used: s
     sat_by: list[str] = []
     ip_by:  list[str] = []
 
-    for code in sorted(course_set):
+    for list_code in sorted(course_set):
         if sat >= needed:
             break
-        if code in completed and code not in used:
-            cr = completed[code]["credits"]
-            used.add(code)
+        # Direct completed match
+        if list_code in completed and list_code not in used:
+            cr = completed[list_code]["credits"]
+            used.add(list_code)
             sat += cr
-            sat_by.append(code)
+            sat_by.append(list_code)
+            continue
+        # Cross-campus exclusion match (completed)
+        if exclusions_map:
+            for taken_code, info in completed.items():
+                if taken_code not in used and _satisfies_via_exclusion(taken_code, list_code, exclusions_map):
+                    used.add(taken_code)
+                    sat += info["credits"]
+                    sat_by.append(taken_code)
+                    break
 
-    for code in sorted(course_set):
+    for list_code in sorted(course_set):
         if sat + ip >= needed:
             break
-        if code in in_progress and code not in used:
+        # Direct in-progress match
+        if list_code in in_progress and list_code not in used:
             ip += 0.5
-            ip_by.append(code)
+            ip_by.append(list_code)
+            continue
+        # Cross-campus exclusion match (in-progress)
+        if exclusions_map:
+            for taken_code in in_progress:
+                if taken_code not in used and _satisfies_via_exclusion(taken_code, list_code, exclusions_map):
+                    ip += 0.5
+                    ip_by.append(taken_code)
+                    break
 
     sat = min(sat, needed)
     status = "satisfied" if sat >= needed else (
@@ -906,7 +1033,13 @@ def _match_open_pool(item: dict, completed: dict, in_progress: set, used: set) -
     }
 
 
-def _match_coop(coop: dict, completed: dict, in_progress: set, used: set) -> dict:
+def _match_coop(
+    coop: dict,
+    completed: dict,
+    in_progress: set,
+    used: set,
+    exclusions_map: dict[str, set[str]] | None = None,
+) -> dict:
     sections = {
         "preparation":       coop.get("preparation", []),
         "search_courses":    coop.get("search_courses", []),
@@ -914,7 +1047,10 @@ def _match_coop(coop: dict, completed: dict, in_progress: set, used: set) -> dic
     }
     results: dict[str, list] = {}
     for name, items in sections.items():
-        results[name] = [_match_required(item, completed, in_progress, used) for item in items]
+        results[name] = [
+            _match_required(item, completed, in_progress, used, exclusions_map)
+            for item in items
+        ]
 
     done = sum(1 for r in results.get("work_term_courses", []) if r.get("status") == "satisfied")
     req  = int(coop.get("work_terms_required") or 3)

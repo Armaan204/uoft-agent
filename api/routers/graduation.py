@@ -11,14 +11,30 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_current_user
 from api.services.acorn_service import AcornServiceError, get_academic_history
+from integrations.course_exclusions import fetch_exclusions_batch
 from integrations.graduation_service import (
     check_graduation_progress,
     clear_cache,
+    collect_required_courses,
     get_program_requirements,
 )
 
 router = APIRouter(tags=["graduation"])
 logger = logging.getLogger(__name__)
+
+
+def _student_codes(acorn_data: dict) -> list[str]:
+    """Extract all course codes from an ACORN academic history dict."""
+    raw: list[dict] = []
+    for term in acorn_data.get("terms", []):
+        raw.extend(term.get("courses", []))
+    if not raw:
+        raw = acorn_data.get("courses", [])
+    return [
+        (c.get("code") or c.get("courseCode") or "").strip().upper()
+        for c in raw
+        if (c.get("code") or c.get("courseCode") or "").strip()
+    ]
 
 
 @router.get("/progress")
@@ -58,8 +74,19 @@ async def graduation_progress(
             return {"error": f"Requirements extraction error: {exc}", "program_name": name}
         if requirements is None:
             return {"error": f"Could not find calendar requirements for: {name}", "program_name": name}
+
+        # Fetch exclusion lists for all student courses + all explicitly listed required
+        # courses so the matcher can resolve cross-campus equivalencies bidirectionally.
+        all_codes = list({*_student_codes(acorn_data), *collect_required_courses(requirements)})
         try:
-            progress = await asyncio.to_thread(check_graduation_progress, requirements, acorn_data)
+            exclusions_map = await fetch_exclusions_batch(all_codes)
+        except Exception:
+            exclusions_map = {}
+
+        try:
+            progress = await asyncio.to_thread(
+                check_graduation_progress, requirements, acorn_data, exclusions_map
+            )
         except Exception as exc:
             logger.exception("graduation progress error user=%s program=%s", user_id, name)
             return {"error": f"Progress computation error: {exc}", "program_name": name}

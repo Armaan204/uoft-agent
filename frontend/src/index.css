@@ -667,14 +667,16 @@ h1 {
 
 .profile-menu {
   position: relative;
+  width: 100%;
 }
 
 .profile-trigger {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 8px 6px 12px;
   min-height: 44px;
+  width: 100%;
   border-radius: 999px;
   border: 1px solid oklch(28% 0.028 260);
   background: oklch(16% 0.018 260 / 0.92);
@@ -2422,10 +2424,28 @@ input[type='range']::-webkit-slider-thumb {
   box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.03);
 }
 
+.sidebar-feedback {
+  width: 100%;
+  margin-bottom: 4px;
+  color: oklch(78% 0.14 60) !important;
+  border: 1px solid oklch(72% 0.18 55 / 0.18) !important;
+  background: oklch(22% 0.06 50 / 0.25) !important;
+}
+
+.sidebar-feedback:hover {
+  background: oklch(26% 0.09 52 / 0.45) !important;
+  color: oklch(90% 0.18 65) !important;
+  border-color: oklch(72% 0.18 55 / 0.4) !important;
+  box-shadow: 0 2px 12px oklch(72% 0.2 55 / 0.15) !important;
+}
+
 .sidebar-bottom {
   margin-top: auto;
   border-top: 1px solid oklch(22% 0.022 260);
-  padding: 14px 10px 0;
+  padding: 12px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .app-content {
@@ -4017,6 +4037,7 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 /* --- Responsive ----------------------------------------------------------- */
+
 
 @media (max-width: 768px) {
   .grad-page {

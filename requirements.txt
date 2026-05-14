@@ -1,6 +1,7 @@
 # Runtime dependencies
 anthropic==0.89.0       # Claude API client
 requests==2.32.3        # HTTP for Quercus / ACORN
+httpx==0.28.1           # async HTTP for course exclusion lookups
 beautifulsoup4==4.13.5  # HTML scraping (ACORN, syllabus)
 pypdf==6.1.1            # PDF syllabus parsing
 python-dotenv==1.1.1    # load .env in development
