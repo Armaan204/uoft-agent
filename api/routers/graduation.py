@@ -27,15 +27,14 @@ async def graduation_progress(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Return the authenticated user's graduation progress.
+    Return the authenticated user's graduation progress for all enrolled programs.
 
-    On first call this may take 10-30 s while the program requirements are
-    discovered and extracted from the calendar. Subsequent calls return the
-    cached result instantly.
+    Returns a list of progress objects, one per program. On first call this may
+    take 10-30 s per program while requirements are discovered and extracted from
+    the calendar. Subsequent calls return cached results instantly.
     """
     user_id = current_user["user_id"]
 
-    # Load ACORN academic history
     try:
         acorn_data = await asyncio.to_thread(get_academic_history, user_id)
     except AcornServiceError as exc:
@@ -48,43 +47,41 @@ async def graduation_progress(
             detail="No ACORN program data found. Import your ACORN academic history first.",
         )
 
-    program_name = (programs[0].get("programName") or "").strip()
-    if not program_name:
-        raise HTTPException(
-            status_code=400,
-            detail="Could not determine program name from ACORN data.",
-        )
+    async def fetch_one(prog: dict) -> dict | None:
+        name = (prog.get("programName") or "").strip()
+        if not name:
+            return None
+        try:
+            requirements = await asyncio.to_thread(get_program_requirements, name, force_refresh)
+        except Exception as exc:
+            logger.exception("graduation requirements error user=%s program=%s", user_id, name)
+            return {"error": f"Requirements extraction error: {exc}", "program_name": name}
+        if requirements is None:
+            return {"error": f"Could not find calendar requirements for: {name}", "program_name": name}
+        try:
+            progress = await asyncio.to_thread(check_graduation_progress, requirements, acorn_data)
+        except Exception as exc:
+            logger.exception("graduation progress error user=%s program=%s", user_id, name)
+            return {"error": f"Progress computation error: {exc}", "program_name": name}
+        return progress
 
-    # Fetch (or extract) requirements
-    try:
-        requirements = await asyncio.to_thread(
-            get_program_requirements, program_name, force_refresh
-        )
-    except Exception as exc:
-        logger.exception("graduation requirements error user=%s program=%s", user_id, program_name)
-        raise HTTPException(status_code=500, detail=f"Requirements extraction error: {exc}")
+    results = await asyncio.gather(*[fetch_one(p) for p in programs])
+    valid = [r for r in results if r is not None]
 
-    if requirements is None:
+    if not valid:
         raise HTTPException(
             status_code=404,
-            detail=f"Could not find calendar requirements for: {program_name}",
+            detail="Could not find calendar requirements for any enrolled program.",
         )
 
-    # Compute progress
-    try:
-        progress = await asyncio.to_thread(check_graduation_progress, requirements, acorn_data)
-    except Exception as exc:
-        logger.exception("graduation progress error user=%s", user_id)
-        raise HTTPException(status_code=500, detail=f"Progress computation error: {exc}")
-
-    return progress
+    return valid
 
 
 @router.delete("/cache")
 async def clear_graduation_cache(
     current_user: dict = Depends(get_current_user),
 ):
-    """Force re-extraction for the current user's program on the next /progress call."""
+    """Force re-extraction for all of the current user's programs on the next /progress call."""
     user_id = current_user["user_id"]
     try:
         acorn_data = await asyncio.to_thread(get_academic_history, user_id)
@@ -95,8 +92,11 @@ async def clear_graduation_cache(
     if not programs:
         raise HTTPException(status_code=400, detail="No ACORN program data found.")
 
-    program_name = (programs[0].get("programName") or "").strip()
-    if program_name:
-        await asyncio.to_thread(clear_cache, program_name)
+    cleared = []
+    for prog in programs:
+        name = (prog.get("programName") or "").strip()
+        if name:
+            await asyncio.to_thread(clear_cache, name)
+            cleared.append(name)
 
-    return {"ok": True, "cleared": program_name}
+    return {"ok": True, "cleared": cleared}

@@ -248,13 +248,81 @@ function GradEmpty({ title, note, action }) {
 }
 
 // ---------------------------------------------------------------------------
-// Main page
+// Single program block
 // ---------------------------------------------------------------------------
 
 const SECTION_LABELS = {
   core:   'Core Requirements',
   stream: 'Stream Requirements',
 }
+
+function ProgramBlock({ prog }) {
+  const pct = prog.program_credits_required > 0
+    ? Math.min(100, (prog.credits_satisfied / prog.program_credits_required) * 100)
+    : 0
+  const fillClass = pct >= 75 ? 'fill-safe' : pct >= 40 ? 'fill-track' : 'fill-risk'
+
+  const sectionMap = new Map()
+  for (const group of (prog.groups ?? [])) {
+    const sec = group.section || 'other'
+    if (!sectionMap.has(sec)) sectionMap.set(sec, [])
+    sectionMap.get(sec).push(group)
+  }
+
+  return (
+    <div style={{ marginBottom: 48 }}>
+      <div className="grad-header">
+        <div className="grad-header-top">
+          <div>
+            <div className="course-code-tag">
+              <span className="status-pip" />
+              Degree Audit · {prog.academic_year || 'Current'}
+            </div>
+            <h1 className="grad-program-name">{prog.program_name || 'Degree Planner'}</h1>
+          </div>
+        </div>
+
+        <div className="grad-credit-summary">
+          <span className="grad-credit-main">
+            <strong>{prog.credits_satisfied}</strong>
+            <span className="grad-credit-denom"> / {prog.program_credits_required} credits</span>
+          </span>
+          {prog.credits_in_progress > 0 && (
+            <span className="grad-credit-ip">+{prog.credits_in_progress} IP</span>
+          )}
+        </div>
+
+        <div className="progress-wrap" style={{ height: 12, marginBottom: 0 }}>
+          <div className={`progress-fill ${fillClass}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      <div className="grad-groups">
+        {[...sectionMap.entries()].map(([sec, groups]) => (
+          <div key={sec} className="grad-section">
+            <div className="section-label">{SECTION_LABELS[sec] || sec}</div>
+            {groups.map(group => <GradGroup key={group.id} group={group} />)}
+          </div>
+        ))}
+
+        {prog.is_coop && prog.coop && <CoopSection coop={prog.coop} />}
+      </div>
+    </div>
+  )
+}
+
+function ProgramError({ prog }) {
+  return (
+    <div className="grad-header" style={{ marginBottom: 48 }}>
+      <h1 className="grad-program-name">{prog.program_name || 'Unknown program'}</h1>
+      <p style={{ color: 'var(--muted)', margin: '8px 0 0', fontSize: 14 }}>{prog.error}</p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function DegreePlanner() {
   const queryClient = useQueryClient()
@@ -279,7 +347,7 @@ export default function DegreePlanner() {
     },
   })
 
-  if (clearMutation.isPending) return <GradLoading forceAnalyze />
+  if (clearMutation.isPending) return <GradLoading />
   if (isLoading) return <GradLoading />
 
   if (isError) {
@@ -323,79 +391,41 @@ export default function DegreePlanner() {
     )
   }
 
-  const pct = data.program_credits_required > 0
-    ? Math.min(100, (data.credits_satisfied / data.program_credits_required) * 100)
-    : 0
-  const fillClass = pct >= 75 ? 'fill-safe' : pct >= 40 ? 'fill-track' : 'fill-risk'
-
-  // Group by section, preserving order
-  const sectionMap = new Map()
-  for (const group of (data.groups ?? [])) {
-    const sec = group.section || 'other'
-    if (!sectionMap.has(sec)) sectionMap.set(sec, [])
-    sectionMap.get(sec).push(group)
-  }
+  const programs = Array.isArray(data) ? data : [data]
 
   return (
     <div className="grad-page rise">
-      <div className="grad-header">
-        <div className="grad-header-top">
-          <div>
-            <div className="course-code-tag">
-              <span className="status-pip" />
-              Degree Audit · {data.academic_year || 'Current'}
-            </div>
-            <h1 className="grad-program-name">{data.program_name || 'Degree Planner'}</h1>
-          </div>
-          <button
-            type="button"
-            className={`dashboard-refresh-btn ${clearMutation.isPending ? 'refreshing' : ''}`}
-            onClick={() => clearMutation.mutate()}
-            disabled={clearMutation.isPending}
-            title="Re-extract requirements from the calendar"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={clearMutation.isPending ? 'refreshing' : ''}>
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-              <path d="M21 3v5h-5" />
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-              <path d="M3 21v-5h5" />
-            </svg>
-            {clearMutation.isPending ? 'Analyzing...' : 'Re-analyze'}
-          </button>
-        </div>
-
-        <div className="grad-credit-summary">
-          <span className="grad-credit-main">
-            <strong>{data.credits_satisfied}</strong>
-            <span className="grad-credit-denom"> / {data.program_credits_required} credits</span>
-          </span>
-          {data.credits_in_progress > 0 && (
-            <span className="grad-credit-ip">+{data.credits_in_progress} IP</span>
-          )}
-        </div>
-
-        <div className="progress-wrap" style={{ height: 12, marginBottom: 0 }}>
-          <div className={`progress-fill ${fillClass}`} style={{ width: `${pct}%` }} />
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+        <button
+          type="button"
+          className={`dashboard-refresh-btn ${clearMutation.isPending ? 'refreshing' : ''}`}
+          onClick={() => clearMutation.mutate()}
+          disabled={clearMutation.isPending}
+          title="Re-extract requirements from the calendar"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={clearMutation.isPending ? 'refreshing' : ''}>
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+            <path d="M3 21v-5h5" />
+          </svg>
+          {clearMutation.isPending ? 'Analyzing...' : 'Re-analyze'}
+        </button>
       </div>
 
-      <div className="grad-groups">
-        {[...sectionMap.entries()].map(([sec, groups]) => (
-          <div key={sec} className="grad-section">
-            <div className="section-label">{SECTION_LABELS[sec] || sec}</div>
-            {groups.map(group => <GradGroup key={group.id} group={group} />)}
-          </div>
-        ))}
+      {programs.map((prog, i) => (
+        prog.error
+          ? <ProgramError key={prog.program_name || i} prog={prog} />
+          : <ProgramBlock key={prog.program_name || i} prog={prog} />
+      ))}
 
-        {data.is_coop && data.coop && <CoopSection coop={data.coop} />}
-      </div>
-
-      <div className="grad-footer">
-        <Link to="/chat" state={{ initialMessage: 'Am I on track to graduate?' }} className="grad-cta">
-          Ask AI about graduation →
-        </Link>
-      </div>
+      {programs.some(p => !p.error) && (
+        <div className="grad-footer">
+          <Link to="/chat" state={{ initialMessage: 'Am I on track to graduate?' }} className="grad-cta">
+            Ask AI about graduation →
+          </Link>
+        </div>
+      )}
     </div>
   )
 }
-

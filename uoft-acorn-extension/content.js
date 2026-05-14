@@ -71,9 +71,6 @@
 
       const enrollmentPeriod = `${periodMatch[1].trim()}-${periodMatch[2].trim()}`;
       const institution = periodMatch[3].trim();
-      let enrollmentStatus = null;
-      let startSession = null;
-      let programName = null;
 
       for (let j = i + 1; j < infoSections.length; j++) {
         const nextText = (infoSections[j].textContent || "").replace(/\s+/g, " ").trim();
@@ -81,8 +78,10 @@
 
         const statusMatch = nextText.match(STATUS_LINE_RE);
         if (statusMatch) {
-          enrollmentStatus = statusMatch[1].replace(/\s+/g, " ").trim();
+          const enrollmentStatus = statusMatch[1].replace(/\s+/g, " ").trim();
           const rest = statusMatch[2].trim();
+          let startSession = null;
+          let programName = null;
           const sessionMatch = rest.match(SESSION_PREFIX_RE);
           if (sessionMatch) {
             startSession = sessionMatch[1].trim();
@@ -90,11 +89,9 @@
           } else {
             programName = rest;
           }
-          break;
+          programs.push({ enrollmentPeriod, institution, enrollmentStatus, startSession, programName });
         }
       }
-
-      programs.push({ enrollmentPeriod, institution, enrollmentStatus, startSession, programName });
     }
 
     return programs;
