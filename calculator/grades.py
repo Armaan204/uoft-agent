@@ -298,6 +298,8 @@ class GradeCalculator:
         if unmatched_weights:
             reliable = False
 
+        components = self._normalize_component_weights(components)
+
         return {
             "components": components,
             "total_weight": round(sum(c["weight"] for c in components), 2),
@@ -609,8 +611,32 @@ class GradeCalculator:
 
     @classmethod
     def _is_missing_future_component(cls, name: str) -> bool:
-        lower = name.lower()
-        return any(kw in lower for kw in ("final", "exam", "midterm", "mid-term", "test", "quiz"))
+        return True
+
+    @staticmethod
+    def _normalize_component_weights(components: list[dict]) -> list[dict]:
+        """Scale component weights so they sum to exactly 100.
+
+        Handles Claude rounding errors (e.g. three 33% items → 99) and
+        Canvas group weights that pass the ±1% tolerance but aren't exactly 100.
+        Weights are distributed proportionally; the largest component absorbs
+        any leftover from integer rounding.
+        """
+        if not components:
+            return components
+        total = sum(c["weight"] for c in components)
+        if total == 0 or abs(total - 100.0) < 0.01:
+            return components
+        adjusted = []
+        running = 0.0
+        for i, c in enumerate(components):
+            if i < len(components) - 1:
+                new_weight = round(c["weight"] * 100.0 / total, 2)
+                running += new_weight
+            else:
+                new_weight = round(100.0 - running, 2)
+            adjusted.append({**c, "weight": new_weight})
+        return adjusted
 
     @staticmethod
     def _build_group_weight_components(
