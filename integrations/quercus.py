@@ -329,15 +329,18 @@ class QuercusClient:
         so the caller can skip syllabus parsing entirely.
 
         Returns None when no groups have weights configured (all zeros),
-        indicating that syllabus parsing is required.
+        or when the configured weights do not sum to approximately 100%
+        (indicating an incomplete setup), so the caller falls back to
+        syllabus parsing.
         """
         groups = self.get_assignment_groups(course_id)
         weights = {
             g["name"]: float(g.get("group_weight") or 0)
             for g in groups
         }
-        if any(w > 0 for w in weights.values()):
-            return weights
+        nonzero = {name: w for name, w in weights.items() if w > 0}
+        if nonzero and abs(sum(nonzero.values()) - 100.0) <= 1.0:
+            return nonzero
         return None
 
     def get_grades(self, course_id: int | str) -> dict:

@@ -610,7 +610,7 @@ class GradeCalculator:
     @classmethod
     def _is_missing_future_component(cls, name: str) -> bool:
         lower = name.lower()
-        return "final" in lower or "exam" in lower
+        return any(kw in lower for kw in ("final", "exam", "midterm", "mid-term", "test", "quiz"))
 
     @staticmethod
     def _build_group_weight_components(

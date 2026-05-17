@@ -595,10 +595,11 @@ def parse_syllabus_weights(
     course_id: int | str,
     client,
     pdf_url: str = None,
+    syllabus_body_html: str = None,
 ) -> tuple[str, dict[str, float]]:
     """Cached wrapper around syllabus weight extraction."""
     cache_key = getattr(client, "_token_cache_key", "default")
-    return _parse_syllabus_weights_cached(course_id, cache_key, client, pdf_url)
+    return _parse_syllabus_weights_cached(course_id, cache_key, client, pdf_url, syllabus_body_html)
 
 
 def _parse_syllabus_weights_cached(
@@ -606,6 +607,7 @@ def _parse_syllabus_weights_cached(
     cache_key: str,
     _client,
     pdf_url: str = None,
+    syllabus_body_html: str = None,
 ) -> tuple[str, dict[str, float]]:
     """Extract grade weights from a course syllabus PDF.
 
@@ -650,6 +652,16 @@ def _parse_syllabus_weights_cached(
             weights = _ask_claude(text)
             _save_persisted_weights(course_id, source_ref, weights)
             return source_ref, weights
+
+    if not source_url and syllabus_body_html:
+        source_ref = f"syllabus-body:{course_id}"
+        cached = _load_persisted_weights(course_id, source_ref)
+        if cached:
+            return source_ref, cached
+        text = _extract_text_from_html(syllabus_body_html)
+        weights = _ask_claude(text)
+        _save_persisted_weights(course_id, source_ref, weights)
+        return source_ref, weights
 
     if not source_url:
         raise SyllabusError(

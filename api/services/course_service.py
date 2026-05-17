@@ -415,6 +415,7 @@ def _resolve_course_weights_uncached(course_id: int | str, client: UncachedQuerc
             course_id=course_id,
             client=client,
             pdf_url=syllabus["pdf_urls"][0] if syllabus["pdf_urls"] else None,
+            syllabus_body_html=syllabus.get("syllabus_body"),
         )
         if syllabus_weights:
             return syllabus_weights, source_ref
@@ -495,6 +496,7 @@ def parse_syllabus_weights_uncached(
     course_id: int | str,
     client: UncachedQuercusClient,
     pdf_url: str | None = None,
+    syllabus_body_html: str | None = None,
 ) -> tuple[str, dict[str, float]]:
     """Mirror integrations.syllabus.parse_syllabus_weights without st.cache_data."""
     source_url = pdf_url
@@ -517,6 +519,16 @@ def parse_syllabus_weights_uncached(
             weights = _ask_claude(text)
             _save_persisted_weights(course_id, source_ref, weights)
             return source_ref, weights
+
+    if not source_url and syllabus_body_html:
+        source_ref = f"syllabus-body:{course_id}"
+        cached = _load_persisted_weights(course_id, source_ref)
+        if cached:
+            return source_ref, cached
+        text = _extract_text_from_html(syllabus_body_html)
+        weights = _ask_claude(text)
+        _save_persisted_weights(course_id, source_ref, weights)
+        return source_ref, weights
 
     if not source_url:
         raise SyllabusError(
