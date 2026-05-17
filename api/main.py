@@ -17,6 +17,10 @@ from api.routers.graduation import router as graduation_router
 
 app = FastAPI(title="UofT Agent API", version="0.1.0")
 
+if os.getenv("ENVIRONMENT") != "production":
+    from api.routers.admin import router as admin_router
+    app.include_router(admin_router, prefix="/admin")
+
 
 def _allowed_origins() -> list[str]:
     origins = {
