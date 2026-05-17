@@ -238,7 +238,7 @@ export default function CourseDetail() {
 
       <div className="divider" />
 
-      <div className="section-label">Grade Breakdown</div>
+      <div className="section-label">Graded Components</div>
       <div className="grade-table-wrap rise">
         <table>
           <thead>

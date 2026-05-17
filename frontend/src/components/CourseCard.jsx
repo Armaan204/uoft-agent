@@ -28,6 +28,7 @@ export default function CourseCard({ course }) {
   const badge = badgeClass(course.risk_flag)
   const gradeValue = typeof course.display_grade === 'number' ? course.display_grade : course.current_grade
   const grade = typeof gradeValue === 'number' ? Math.round(gradeValue) : '--'
+  const noBreakdown = course.risk_flag === 'No breakdown'
 
   function prefetchCourseDetail() {
     queryClient.prefetchQuery({
@@ -56,18 +57,27 @@ export default function CourseCard({ course }) {
       <div className="progress-wrap">
         <div className={`progress-fill fill-${badge}`} style={{ width: `${Math.max(0, Math.min(100, grade || 0))}%` }} />
       </div>
-      <Link
-        className="btn-view"
-        to={`/courses/${course.id}`}
-        onMouseEnter={prefetchCourseDetail}
-        onFocus={prefetchCourseDetail}
-        onTouchStart={prefetchCourseDetail}
-      >
-        View breakdown
-        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M2 6h8M6 2l4 4-4 4" />
-        </svg>
-      </Link>
+      {noBreakdown ? (
+        <span className="btn-view btn-view-disabled" aria-disabled="true">
+          View breakdown
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 6h8M6 2l4 4-4 4" />
+          </svg>
+        </span>
+      ) : (
+        <Link
+          className="btn-view"
+          to={`/courses/${course.id}`}
+          onMouseEnter={prefetchCourseDetail}
+          onFocus={prefetchCourseDetail}
+          onTouchStart={prefetchCourseDetail}
+        >
+          View breakdown
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 6h8M6 2l4 4-4 4" />
+          </svg>
+        </Link>
+      )}
     </article>
   )
 }
