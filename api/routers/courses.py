@@ -63,6 +63,14 @@ class GradeOverridesBody(BaseModel):
     overrides: list[GradeOverrideItem]
 
 
+def _evict_user_cache(user_id: str) -> None:
+    """Drop all in-memory cached data for a user (called when their token changes)."""
+    _dashboard_cache.pop(user_id, None)
+    stale_keys = [k for k in _course_grades_cache if k.startswith(f"{user_id}:")]
+    for k in stale_keys:
+        del _course_grades_cache[k]
+
+
 def _token_debug_value(token: str | None) -> str:
     if not token:
         return "<missing>"
@@ -144,6 +152,7 @@ def write_quercus_token(
         save_quercus_token(current_user["user_id"], body.token)
     except UserStoreError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    _evict_user_cache(current_user["user_id"])
     return {"status": "saved"}
 
 
@@ -153,6 +162,7 @@ def remove_quercus_token(current_user: dict = Depends(get_current_user)):
         delete_quercus_token(current_user["user_id"])
     except UserStoreError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    _evict_user_cache(current_user["user_id"])
     return {"status": "deleted"}
 
 
@@ -184,9 +194,11 @@ async def _live_fetch_dashboard(token: str) -> tuple[list, list]:
 async def _background_refresh_dashboard(token: str, user_id: str) -> None:
     try:
         dashboard, announcements = await _live_fetch_dashboard(token)
+        term_name = next((c.get("term_name") for c in dashboard if c.get("term_name")), "")
         _dashboard_cache[user_id] = {
             "courses": dashboard,
             "announcements": announcements,
+            "term_name": term_name,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
         try:
@@ -235,9 +247,11 @@ async def dashboard_courses(
         )
         dashboard, announcements = await _live_fetch_dashboard(token)
         fetched_at = datetime.now(timezone.utc).isoformat()
+        term_name = next((c.get("term_name") for c in dashboard if c.get("term_name")), "")
         _dashboard_cache[user_id] = {
             "courses": dashboard,
             "announcements": announcements,
+            "term_name": term_name,
             "fetched_at": fetched_at,
         }
         try:

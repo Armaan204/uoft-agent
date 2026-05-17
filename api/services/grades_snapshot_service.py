@@ -121,7 +121,8 @@ def get_dashboard_snapshot(user_id: str | int, max_age_minutes: int = 15) -> dic
             announcements = row["announcements"]
             break
 
-    return {"courses": courses, "announcements": announcements, "fetched_at": newest.isoformat()}
+    term_name = next((c.get("term_name") for c in courses if c.get("term_name")), "")
+    return {"courses": courses, "announcements": announcements, "term_name": term_name, "fetched_at": newest.isoformat()}
 
 
 def save_course_detail_snapshot(user_id: str | int, course_id: int | str, data: dict[str, Any]) -> None:

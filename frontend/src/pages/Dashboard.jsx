@@ -7,6 +7,7 @@ import DeadlineList from '../components/DeadlineList'
 
 const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
 
+
 async function fetchDashboard(forceRefresh = false) {
   const url = forceRefresh ? '/api/courses/dashboard?force_refresh=true' : '/api/courses/dashboard'
   const response = await client.get(url)
@@ -51,13 +52,18 @@ export default function Dashboard() {
   })
 
   const fetchedAt = data?.fetched_at ?? null
+  const termName = useMemo(
+    () => (data?.courses ?? []).find((c) => c.term_name)?.term_name ?? '',
+    [data],
+  )
+
 
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return
     setIsRefreshing(true)
     try {
       const fresh = await fetchDashboard(true)
-      queryClient.setQueryData(['dashboard'], fresh)
+queryClient.setQueryData(['dashboard'], fresh)
     } finally {
       setIsRefreshing(false)
     }
@@ -100,7 +106,7 @@ export default function Dashboard() {
   return (
     <div className="page dashboard-page">
       <div className="semester-row rise">
-        <span className="semester-title">Winter 2026</span>
+        <span className="semester-title">{termName}</span>
         <span className="semester-tag">Active</span>
         <div className="dashboard-freshness">
           {fetchedAt ? (

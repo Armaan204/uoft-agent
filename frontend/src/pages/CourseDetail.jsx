@@ -9,6 +9,9 @@ const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
 const COURSE_DATA_STALE_TIME_MS = 5 * 60 * 1000
 const COURSE_DATA_GC_TIME_MS = 30 * 60 * 1000
 
+const EMPTY_COMPONENTS = []
+const EMPTY_ASSIGNMENTS_BY_COMPONENT = {}
+
 const thresholds = [
   ['A+', 90],
   ['A', 85],
@@ -79,13 +82,15 @@ export default function CourseDetail() {
     [id, queryClient],
   )
 
+  const termName = dashboardCourse?.term_name ?? queryClient.getQueryData(['dashboard'])?.term_name ?? ''
+
   const course = useMemo(
     () => (courseQuery.data ?? []).find((entry) => String(entry.id) === id) ?? dashboardCourse,
     [courseQuery.data, dashboardCourse, id],
   )
 
-  const components = gradesQuery.data?.component_model?.components ?? []
-  const assignmentsByComponent = gradesQuery.data?.component_model?.assignments_by_component ?? {}
+  const components = gradesQuery.data?.component_model?.components ?? EMPTY_COMPONENTS
+  const assignmentsByComponent = gradesQuery.data?.component_model?.assignments_by_component ?? EMPTY_ASSIGNMENTS_BY_COMPONENT
   const gradedComponents = useMemo(
     () =>
       components
@@ -217,7 +222,7 @@ export default function CourseDetail() {
         <div className="course-meta">
           <div className="course-code-tag">
             <span className="status-pip" />
-            {displayCourseCode(course?.course_code) + ' · Winter 2026'}
+            {displayCourseCode(course?.course_code) + (termName ? ` · ${termName}` : '')}
           </div>
           <div className="course-name-h">{displayCourseName(course?.name, course?.course_code) || `Course ${id}`}</div>
           <div className="course-sub">Weighted breakdown generated from your current Quercus data.</div>

@@ -66,6 +66,36 @@ def get_user_quercus_token(user_id: str | int) -> str:
     return token
 
 
+def _format_term_name(term: dict | None) -> str:
+    """Convert a Canvas term object to a UofT-style label like 'Winter 2026'."""
+    if not term:
+        return ""
+    name = (term.get("name") or "").strip()
+    # Canvas names are typically "2026 Winter" — reorder to "Winter 2026"
+    parts = name.split()
+    if len(parts) == 2 and parts[0].isdigit():
+        return f"{parts[1]} {parts[0]}"
+    if name:
+        return name
+    # Fallback: derive season from start_at month
+    start_at = term.get("start_at")
+    if start_at:
+        try:
+            dt = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
+            month = dt.month
+            year = dt.year
+            if 5 <= month <= 8:
+                season = "Summer"
+            elif 9 <= month <= 12:
+                season = "Fall"
+            else:
+                season = "Winter"
+            return f"{season} {year}"
+        except ValueError:
+            pass
+    return ""
+
+
 def list_current_term_courses(quercus_token: str) -> list[dict[str, Any]]:
     client = UncachedQuercusClient(token=quercus_token)
     courses = client.get_courses()
@@ -117,6 +147,7 @@ def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str
         "id": course_id,
         "course_code": course.get("course_code"),
         "name": course.get("name"),
+        "term_name": _format_term_name(course.get("term")),
         "current_grade": current_grade,
         "projected_grade": projected_grade,
         "display_grade": displayed_grade,

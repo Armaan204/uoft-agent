@@ -177,9 +177,12 @@ class QuercusClient:
         if not eligible:
             return []
 
-        current = [e["course"] for e in eligible if e["start_at"] <= now <= e["end_at"]]
-        if current:
-            return current
+        current_eligible = [e for e in eligible if e["start_at"] <= now <= e["end_at"]]
+        if current_eligible:
+            # When multiple terms overlap today (e.g. Winter end_at extends into May
+            # while Summer has already started), keep only the most recently started term.
+            latest_start = max(e["start_at"] for e in current_eligible)
+            return [e["course"] for e in current_eligible if e["start_at"] == latest_start]
 
         # Prefer the nearest upcoming term if the current term has not started yet.
         upcoming = [
