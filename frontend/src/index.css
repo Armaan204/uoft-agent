@@ -1029,6 +1029,8 @@ tfoot td:not(:first-child),
   padding: 5px 11px;
   border-radius: 999px;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge.safe,
@@ -1139,7 +1141,7 @@ tfoot td:not(:first-child),
 
 .btn-view {
   margin-top: auto;
-  align-self: flex-start;
+  align-self: flex-end;
   text-decoration: none;
   border-radius: 10px;
   padding: 10px 14px;
@@ -1195,6 +1197,7 @@ tfoot td:not(:first-child),
   grid-template-columns: 100px 1fr auto;
   gap: 18px;
   padding: 18px 24px;
+  align-items: center;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1384,7 +1387,7 @@ tfoot td:not(:first-child),
 
 .dl-code {
   color: var(--accent);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.4px;
 }
 
@@ -1394,7 +1397,7 @@ tfoot td:not(:first-child),
 
 .dl-due {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
