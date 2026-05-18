@@ -73,24 +73,32 @@
       const institution = periodMatch[3].trim();
 
       for (let j = i + 1; j < infoSections.length; j++) {
-        const nextText = (infoSections[j].textContent || "").replace(/\s+/g, " ").trim();
-        if (TERM_HEADING_RE.test(nextText) || ENROLLMENT_PERIOD_RE.test(nextText)) break;
+        const rawText = (infoSections[j].innerText || infoSections[j].textContent || "");
+        const lines = rawText.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
 
-        const statusMatch = nextText.match(STATUS_LINE_RE);
-        if (statusMatch) {
-          const enrollmentStatus = statusMatch[1].replace(/\s+/g, " ").trim();
-          const rest = statusMatch[2].trim();
-          let startSession = null;
-          let programName = null;
-          const sessionMatch = rest.match(SESSION_PREFIX_RE);
-          if (sessionMatch) {
-            startSession = sessionMatch[1].trim();
-            programName = sessionMatch[2].trim();
-          } else {
-            programName = rest;
+        let shouldBreak = false;
+        for (const nextText of lines) {
+          if (TERM_HEADING_RE.test(nextText) || ENROLLMENT_PERIOD_RE.test(nextText)) {
+            shouldBreak = true;
+            break;
           }
-          programs.push({ enrollmentPeriod, institution, enrollmentStatus, startSession, programName });
+          const statusMatch = nextText.match(STATUS_LINE_RE);
+          if (statusMatch) {
+            const enrollmentStatus = statusMatch[1].replace(/\s+/g, " ").trim();
+            const rest = statusMatch[2].trim();
+            let startSession = null;
+            let programName = null;
+            const sessionMatch = rest.match(SESSION_PREFIX_RE);
+            if (sessionMatch) {
+              startSession = sessionMatch[1].trim();
+              programName = sessionMatch[2].trim();
+            } else {
+              programName = rest;
+            }
+            programs.push({ enrollmentPeriod, institution, enrollmentStatus, startSession, programName });
+          }
         }
+        if (shouldBreak) break;
       }
     }
 
