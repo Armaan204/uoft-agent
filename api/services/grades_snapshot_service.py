@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from auth.user_store import UserStoreError, get_supabase_client
+
+logger = logging.getLogger(__name__)
 
 
 class GradesSnapshotServiceError(RuntimeError):
@@ -44,6 +47,18 @@ def save_snapshot(
 
     if not rows:
         return []
+
+    current_course_ids = [int(row["course_id"]) for row in rows]
+    id_list = ",".join(str(c) for c in current_course_ids)
+    try:
+        get_supabase_client() \
+            .table("grades_snapshot") \
+            .delete() \
+            .eq("user_id", user_id) \
+            .filter("course_id", "not.in", f"({id_list})") \
+            .execute()
+    except Exception as exc:
+        logger.warning("Failed to delete stale snapshot rows user_id=%s error=%s", user_id, exc)
 
     try:
         response = (

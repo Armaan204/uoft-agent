@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from api.dependencies import get_current_user
 from integrations.quercus import QuercusAuthError
+from api.services.grade_snapshot_cache import invalidate_grade_snapshot
 from api.services.course_service import (
     CourseServiceError,
     QuercusError,
@@ -71,6 +72,7 @@ def _evict_user_cache(user_id: str) -> None:
     stale_keys = [k for k in _course_grades_cache if k.startswith(f"{user_id}:")]
     for k in stale_keys:
         del _course_grades_cache[k]
+    invalidate_grade_snapshot(user_id)
 
 
 def _token_debug_value(token: str | None) -> str:
