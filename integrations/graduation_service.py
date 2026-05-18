@@ -432,6 +432,13 @@ def _discover_url_via_slug(program_name: str, base: str, is_coop: bool, keywords
             return page
     return None
 
+def _strip_coop_qualifier(name: str) -> str:
+    """Remove the co-op parenthetical from a program name so URL discovery lands on the base academic page."""
+    name = re.sub(r'\s*\(co-operative\)\s*', ' ', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s*\(co-op\)\s*', ' ', name, flags=re.IGNORECASE)
+    return re.sub(r'\s+', ' ', name).strip()
+
+
 def _discover_calendar_url(program_name: str, campus: str, is_coop: bool) -> dict | None:
     """
     Returns {"url","text","html"} for the best-matching program page, or None.
@@ -527,6 +534,7 @@ RULES:
 - group credits_required must equal sum of item credits values
 - omit "coop" key entirely for non-co-op programs
 - UTSC course format: [3-letter dept][level A/B/C/D][2 digits][H/Y]3
+- COP-prefix courses (COPB*, COPC*) are CR/NCR with no academic weight; always set credits: 0 for every item that lists only COP-prefix courses
 """
 
 def _extract_with_llm(page_text: str, calendar_url: str, coop_text: str | None = None) -> dict:
@@ -573,32 +581,21 @@ def get_program_requirements(acorn_name: str, force_refresh: bool = False) -> di
     campus = _detect_campus(acorn_name)
     is_coop = "co-operative" in acorn_name.lower() or "co-op" in acorn_name.lower()
 
-    # Discover URL; pass is_coop so co-op pages (which have no course codes) are accepted.
-    discovered = _discover_calendar_url(acorn_name, campus, is_coop)
+    # Co-op calendar pages only list first-year requirements and COP prep courses.
+    # They explicitly say "complete the requirements described in the Specialist Program".
+    # Strip the co-op qualifier so URL discovery lands on the base specialist page directly,
+    # which has the full academic requirements.
+    discovery_name = _strip_coop_qualifier(acorn_name) if is_coop else acorn_name
+
+    discovered = _discover_calendar_url(discovery_name, campus, is_coop=False)
     if not discovered:
         _save_failed(acorn_name, "Could not discover calendar URL with valid course requirements")
         return None
     url       = discovered["url"]
     page_text = discovered["text"]
-    raw_html  = discovered["html"]
-
-    # Co-op pages defer academic requirements to the base specialist page.
-    # UTSC co-op pages do not link back to their base program, so we derive
-    # the base URL by stripping "co-operative-" from the slug and probing.
-    coop_supplement: str | None = None
-    canonical_url = url
-    if is_coop:
-        base_domain = "/".join(url.rstrip("/").split("/")[:-1])
-        base_url = _find_base_specialist_url(url, base_domain)
-        if base_url:
-            base_page = _fetch_page(base_url)
-            if base_page and _has_course_requirements(base_page["text"]):
-                coop_supplement = page_text         # co-op page → supplement
-                page_text       = base_page["text"] # base specialist → primary
-                canonical_url   = base_url
 
     try:
-        requirements = _extract_with_llm(page_text, canonical_url, coop_supplement)
+        requirements = _extract_with_llm(page_text, url)
     except Exception as exc:
         _save_failed(acorn_name, f"LLM extraction failed: {exc}")
         return None
@@ -607,13 +604,13 @@ def get_program_requirements(acorn_name: str, force_refresh: bool = False) -> di
         requirements["is_coop"] = True
 
     _save_cache(
-        acorn_name=acorn_name,
-        canonical_name=requirements.get("program_name", acorn_name),
-        program_code=requirements.get("program_code"),
-        campus=campus,
-        calendar_url=url,
-        requirements=requirements,
-        academic_year=requirements.get("academic_year", _current_academic_year()),
+        acorn_name      = acorn_name,
+        canonical_name  = requirements.get("program_name", acorn_name),
+        program_code    = requirements.get("program_code"),
+        campus          = campus,
+        calendar_url    = url,
+        requirements    = requirements,
+        academic_year   = requirements.get("academic_year", _current_academic_year()),
     )
     return requirements
 
@@ -647,20 +644,17 @@ def _satisfies_via_exclusion(
     exclusions_map: dict[str, set[str]],
 ) -> bool:
     """
-    True if taken_code and required_code are cross-campus equivalents recognised
-    via the calendar Exclusion field.  Checks both directions:
+    True if taken_code and required_code are equivalents recognised via the
+    calendar Exclusion field.  Checks both directions:
       1. required_code appears in taken_code's exclusion list
       2. taken_code appears in required_code's exclusion list
 
-    Same-campus exclusions (both codes share the same campus digit) are intentionally
-    excluded — those are credit-conflict rules ("can't take both"), not equivalencies.
+    Same-campus pairs (e.g. MATA22H3/MATA23H3, MATA31H3/MATA36H3) are intentionally
+    included — UTSC lists many intra-campus course variants as mutual exclusions to
+    indicate equivalency, not just cross-campus credit conflicts.
     """
     if taken_code == required_code:
         return False
-    t_digit = _campus_digit(taken_code)
-    r_digit = _campus_digit(required_code)
-    if t_digit and r_digit and t_digit == r_digit:
-        return False  # same campus — not a cross-campus equivalency
     if required_code in exclusions_map.get(taken_code, set()):
         return True
     if taken_code in exclusions_map.get(required_code, set()):
@@ -871,6 +865,7 @@ def _match_required(
     # Direct in-progress match
     for code in courses:
         if code in in_progress and code not in used:
+            used.add(code)
             return {
                 "id": item["id"], "type": "required", "label": item.get("label"),
                 "credits_satisfied": 0.0, "credits_in_progress": credits,
@@ -882,6 +877,7 @@ def _match_required(
         for req_code in courses:
             for taken_code in in_progress:
                 if taken_code not in used and _satisfies_via_exclusion(taken_code, req_code, exclusions_map):
+                    used.add(taken_code)
                     return {
                         "id": item["id"], "type": "required", "label": item.get("label"),
                         "credits_satisfied": 0.0, "credits_in_progress": credits,
@@ -934,6 +930,7 @@ def _match_n_credits_list(
             break
         # Direct in-progress match
         if list_code in in_progress and list_code not in used:
+            used.add(list_code)
             ip += 0.5
             ip_by.append(list_code)
             continue
@@ -941,6 +938,7 @@ def _match_n_credits_list(
         if exclusions_map:
             for taken_code in in_progress:
                 if taken_code not in used and _satisfies_via_exclusion(taken_code, list_code, exclusions_map):
+                    used.add(taken_code)
                     ip += 0.5
                     ip_by.append(taken_code)
                     break
@@ -1007,6 +1005,7 @@ def _match_open_pool(item: dict, completed: dict, in_progress: set, used: set) -
             parsed = _parse_dept_level(code)
             if parsed and parsed[0] in sr_depts and parsed[1] in sr_levels:
                 eligible_ip.discard(code)
+                used.add(code)
                 pool_ip += 0.5; sr_ip += 0.5
                 pool_ip_by.append(code); sr_ip_by.append(code)
 
@@ -1035,6 +1034,7 @@ def _match_open_pool(item: dict, completed: dict, in_progress: set, used: set) -
     for code in sorted(eligible_ip):
         if pool_sat + pool_ip >= needed:
             break
+        used.add(code)
         pool_ip += 0.5
         pool_ip_by.append(code)
 

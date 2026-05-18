@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user
+from integrations.quercus import QuercusAuthError
 from api.services.course_service import (
     CourseServiceError,
     QuercusError,
@@ -206,6 +207,10 @@ async def _background_refresh_dashboard(token: str, user_id: str) -> None:
         except GradesSnapshotServiceError as exc:
             logger.warning("Background snapshot save failed user_id=%s error=%s", user_id, exc)
         logger.info("Background dashboard refresh completed user_id=%s", user_id)
+    except QuercusAuthError:
+        logger.warning("Background dashboard refresh: token invalid/expired user_id=%s", user_id)
+        if user_id in _dashboard_cache:
+            _dashboard_cache[user_id]["auth_error"] = "quercus_token_invalid"
     except Exception:
         logger.exception("Background dashboard refresh failed user_id=%s", user_id)
 
@@ -265,6 +270,9 @@ async def dashboard_courses(
             len(announcements),
         )
         return _dashboard_cache[user_id]
+    except QuercusAuthError as exc:
+        logger.warning("Dashboard load failed: token invalid/expired user_id=%s", user_id)
+        raise HTTPException(status_code=424, detail="quercus_token_invalid") from exc
     except (CourseServiceError, QuercusError) as exc:
         logger.exception(
             "Dashboard load failed user_id=%s token=%s error=%s",

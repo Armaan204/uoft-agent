@@ -798,6 +798,89 @@ h1 {
   font-size: 15px;
 }
 
+.token-expired-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 28px;
+  background: linear-gradient(135deg, oklch(16% 0.03 25 / 0.7), oklch(14% 0.022 260 / 0.9));
+  border: 1px solid oklch(45% 0.12 25 / 0.35);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+.token-expired-card > svg {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  color: oklch(70% 0.14 25);
+}
+.token-expired-body {
+  flex: 1;
+}
+.token-expired-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.token-expired-sub {
+  font-size: 13px;
+  color: var(--muted2);
+}
+.btn-reconnect {
+  flex-shrink: 0;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  background: oklch(55% 0.16 240);
+  color: #fff;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-reconnect:hover:not(:disabled) {
+  background: oklch(62% 0.16 240);
+}
+.btn-reconnect:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  margin-bottom: 16px;
+  background: oklch(16% 0.03 25 / 0.6);
+  border: 1px solid oklch(45% 0.12 25 / 0.3);
+  border-radius: 12px;
+  font-size: 13px;
+  color: oklch(78% 0.08 25);
+}
+.auth-error-banner > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.auth-error-reconnect {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: oklch(68% 0.16 240);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.auth-error-reconnect:hover:not(:disabled) {
+  color: oklch(75% 0.16 240);
+}
+
 .dashboard-refresh-indicator {
   display: inline-flex;
   align-items: center;

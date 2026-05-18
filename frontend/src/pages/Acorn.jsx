@@ -653,7 +653,7 @@ function AcornLanding({ data, onReimport }) {
                     <td className="acorn-course-code">{course.courseCode || '—'}</td>
                     <td>{course.title || 'Untitled course'}</td>
                     <td>{course.term || 'Transfer / Unassigned'}</td>
-                    <td>{course.credits || '—'}</td>
+                    <td>{isEarnedCourse(course) ? (course.credits || '—') : '0.00'}</td>
                     <td>{course.mark || '—'}</td>
                     <td>{course.grade || '—'}</td>
                     <td>{course.courseAverage || '—'}</td>

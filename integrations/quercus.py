@@ -22,6 +22,10 @@ class QuercusError(Exception):
     """Raised when a Quercus API request fails."""
 
 
+class QuercusAuthError(QuercusError):
+    """Raised when the Quercus API rejects the token with 401 Unauthorized."""
+
+
 def _cached_paginated_get(token: str, path: str, params: dict | list | None = None) -> list | dict:
     """Make an authenticated GET request with Canvas pagination handling."""
     headers = {"Authorization": f"Bearer {token}"}
@@ -30,6 +34,8 @@ def _cached_paginated_get(token: str, path: str, params: dict | list | None = No
 
     while url:
         response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 401:
+            raise QuercusAuthError(f"GET {url} returned 401: Quercus token is invalid or expired")
         if not response.ok:
             raise QuercusError(f"GET {url} returned {response.status_code}: {response.text}")
 
@@ -91,6 +97,8 @@ class QuercusClient:
 
         while url:
             response = requests.get(url, headers=self._headers, params=params)
+            if response.status_code == 401:
+                raise QuercusAuthError(f"GET {url} returned 401: Quercus token is invalid or expired")
             if not response.ok:
                 raise QuercusError(
                     f"GET {url} returned {response.status_code}: {response.text}"
