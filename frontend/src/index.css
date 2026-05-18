@@ -2572,7 +2572,7 @@ input[type='range']::-webkit-slider-thumb {
   right: 0;
   bottom: 0;
   z-index: 30;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(180deg, oklch(12.5% 0.018 260 / 0.92), oklch(10.5% 0.015 260 / 0.98));
@@ -3590,11 +3590,28 @@ input[type='range']::-webkit-slider-thumb {
   .semester-row {
     gap: 10px;
     margin-bottom: 22px;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .semester-title,
   .course-name-h {
     font-size: 27px;
+  }
+
+  .dashboard-freshness {
+    display: contents;
+  }
+
+  .dashboard-freshness .dashboard-refresh-btn {
+    margin-left: auto;
+  }
+
+  .dashboard-age {
+    flex-basis: 100%;
+    order: 1;
+    font-size: 11px;
+    margin-top: 2px;
   }
 
   .course-card {
