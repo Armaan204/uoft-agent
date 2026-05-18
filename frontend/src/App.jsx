@@ -93,6 +93,9 @@ export default function App() {
           setTimeout(() => {
             client.get(`/api/courses/${course.id}/grades`)
               .then(({ data: gradesData }) => {
+                // Skip the update if any mutation is in flight to avoid clobbering
+                // optimistic updates from grade-override mutations.
+                if (queryClient.isMutating() > 0) return
                 queryClient.setQueryData(['course-grades', String(course.id)], gradesData)
               })
               .catch(() => {})

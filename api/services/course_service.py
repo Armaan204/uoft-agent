@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from auth.user_store import UserStoreError, get_quercus_token
 from calculator.grades import GradeCalculator, UOFT_THRESHOLDS
 from integrations.grades_cache import (
+    delete_grade_override,
     detect_new_grades,
     get_grade_overrides,
     get_saved_grades,
@@ -284,24 +285,46 @@ def save_course_grade_overrides(
     user_id: str | int,
     course_id: int | str,
     overrides: list[dict[str, float | str]],
-) -> None:
-    client = UncachedQuercusClient(token=quercus_token)
-    groups = client.get_assignment_groups(course_id)
-    submissions = client.get_submissions(course_id)
-    weights, _source = _resolve_course_weights_uncached(course_id, client)
-    if not weights:
-        raise CourseServiceError("No Canvas weights or accessible syllabus weights found for this course")
+    cached_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate, persist overrides, and return updated grade data.
 
-    component_model = _calc.build_weighted_components(groups, submissions, weights)
-    if not component_model["reliable"]:
-        raise CourseServiceError("This course's weighted components could not be mapped reliably enough for overrides")
+    Uses the cached in-memory snapshot when available to avoid redundant Quercus
+    API calls (fast path). Falls back to a full live fetch only when no snapshot
+    is cached (e.g. first load after server restart).
+    """
+    live_components: list[dict[str, Any]] = (cached_snapshot or {}).get("live_components") or []
+    cached_model = (cached_snapshot or {}).get("component_model")
 
-    live_components = [_with_component_key(component) for component in component_model["components"]]
-    graded_lookup = {
-        component["component_key"]: component
-        for component in live_components
-        if component.get("status") == "graded"
-    }
+    if live_components and cached_model:
+        if not cached_model.get("reliable"):
+            raise CourseServiceError("This course's weighted components could not be mapped reliably enough for overrides")
+        weights = cached_snapshot.get("weights") or {}  # type: ignore[union-attr]
+        source = cached_snapshot.get("weights_source")  # type: ignore[union-attr]
+        enrollment = cached_snapshot.get("enrollment") or {}  # type: ignore[union-attr]
+    else:
+        quercus_client = UncachedQuercusClient(token=quercus_token)
+        groups = quercus_client.get_assignment_groups(course_id)
+        submissions = quercus_client.get_submissions(course_id)
+        weights, source = _resolve_course_weights_uncached(course_id, quercus_client)
+        if not weights:
+            raise CourseServiceError("No Canvas weights or accessible syllabus weights found for this course")
+
+        component_model = _calc.build_weighted_components(groups, submissions, weights)
+        if not component_model["reliable"]:
+            raise CourseServiceError("This course's weighted components could not be mapped reliably enough for overrides")
+
+        live_components = [_with_component_key(component) for component in component_model["components"]]
+        cached_model = component_model
+        enrollment_raw = quercus_client.get_grades(course_id)
+        enrollment = {
+            "current_score": enrollment_raw.get("current_score"),
+            "current_grade": enrollment_raw.get("current_grade"),
+            "final_score": enrollment_raw.get("final_score"),
+            "final_grade": enrollment_raw.get("final_grade"),
+        }
+
+    all_lookup = {component["component_key"]: component for component in live_components}
 
     for override in overrides:
         component_key = str(override.get("component_key") or "").strip()
@@ -312,15 +335,18 @@ def save_course_grade_overrides(
         if manual_possible <= 0:
             raise CourseServiceError("manual_possible must be greater than 0")
 
-        live_component = graded_lookup.get(component_key)
+        live_component = all_lookup.get(component_key)
         if live_component is None:
-            raise CourseServiceError("Could not find a graded component matching that override")
+            raise CourseServiceError("Could not find a component matching that override")
 
-        expected_possible = float(live_component.get("possible") or 0.0)
-        if expected_possible <= 0:
-            raise CourseServiceError("This component does not have a valid possible score")
-        if abs(expected_possible - manual_possible) > 0.01:
-            raise CourseServiceError("Component points possible do not match the latest course data")
+        # Only validate possible points for already-graded components; ungraded
+        # components (e.g. manual MarkUs/Gradescope entries) have no Quercus possible.
+        if live_component.get("status") == "graded":
+            expected_possible = float(live_component.get("possible") or 0.0)
+            if expected_possible <= 0:
+                raise CourseServiceError("This component does not have a valid possible score")
+            if abs(expected_possible - manual_possible) > 0.01:
+                raise CourseServiceError("Component points possible do not match the latest course data")
 
         save_grade_override(user_id, course_id, component_key, manual_score, manual_possible)
 
@@ -329,6 +355,59 @@ def save_course_grade_overrides(
         course_id,
         [component for component in live_components if component.get("status") == "graded"],
     )
+
+    all_overrides = get_grade_overrides(user_id, course_id)
+    saved_grades_data = get_saved_grades(user_id, course_id)
+    new_grade_keys = detect_new_grades(user_id, course_id, live_components)
+    applied_components = _apply_grade_overrides(live_components, all_overrides)
+    updated_model = {**cached_model, "components": applied_components}
+    grade = _grade_from_components(applied_components)
+
+    return {
+        "course_id": int(course_id),
+        "weights_source": source,
+        "weights": weights,
+        "grade": grade,
+        "components": applied_components,
+        "component_model": updated_model,
+        "saved_grades": saved_grades_data,
+        "overrides": all_overrides,
+        "new_grade_keys": new_grade_keys,
+        "live_components": live_components,
+        "enrollment": enrollment,
+    }
+
+
+def delete_course_grade_override(
+    quercus_token: str,
+    user_id: str | int,
+    course_id: int | str,
+    component_key: str,
+    cached_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Remove one manual override and return updated grade data.
+
+    If a cached snapshot is supplied (live_components present), the result is
+    computed purely in-memory with a single DB read — no Quercus call needed.
+    Falls back to a full Quercus fetch only when no snapshot is available.
+    """
+    delete_grade_override(user_id, course_id, component_key)
+
+    live_components = (cached_snapshot or {}).get("live_components") or []
+    if live_components and cached_snapshot.get("component_model"):
+        all_overrides = get_grade_overrides(user_id, course_id)
+        applied_components = _apply_grade_overrides(live_components, all_overrides)
+        updated_model = {**cached_snapshot["component_model"], "components": applied_components}
+        grade = _grade_from_components(applied_components)
+        return {
+            **cached_snapshot,
+            "grade": grade,
+            "components": applied_components,
+            "component_model": updated_model,
+            "overrides": all_overrides,
+        }
+
+    return get_course_grades(quercus_token, course_id, user_id)
 
 
 def get_course_scenarios(quercus_token: str, course_id: int | str) -> dict[str, Any]:

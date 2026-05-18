@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -53,6 +53,7 @@ export default function CourseDetail() {
   const [sliderValues, setSliderValues] = useState({})
   const [editingKey, setEditingKey] = useState(null)
   const [draftScores, setDraftScores] = useState({})
+
   const queryClient = useQueryClient()
 
   const courseQuery = useQuery({
@@ -91,6 +92,13 @@ export default function CourseDetail() {
 
   const components = gradesQuery.data?.component_model?.components ?? EMPTY_COMPONENTS
   const assignmentsByComponent = gradesQuery.data?.component_model?.assignments_by_component ?? EMPTY_ASSIGNMENTS_BY_COMPONENT
+  const liveComponents = gradesQuery.data?.live_components ?? []
+  const liveStatusByKey = useMemo(() => {
+    const map = {}
+    liveComponents.forEach((c) => { if (c.component_key) map[c.component_key] = c.status })
+    return map
+  }, [liveComponents])
+
   const gradedComponents = useMemo(
     () =>
       components
@@ -113,6 +121,35 @@ export default function CourseDetail() {
 
   const remainingComponents = components.filter((component) => component.status === 'ungraded')
 
+  const gradeRailRef = useRef(null)
+  const gradeTableRef = useRef(null)
+  const whatifRailRef = useRef(null)
+  const whatifCardRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const rail = gradeRailRef.current
+    const table = gradeTableRef.current
+    if (!rail || !table) return
+    const thead = table.querySelector('thead')
+    const headSlot = rail.querySelector('.grade-toggle-rail-head')
+    if (thead && headSlot) headSlot.style.height = `${thead.offsetHeight}px`
+    const rows = table.querySelectorAll('tbody tr')
+    const slots = rail.querySelectorAll('.grade-toggle-rail-row')
+    rows.forEach((row, i) => { if (slots[i]) slots[i].style.minHeight = `${row.offsetHeight}px` })
+  }, [gradedComponents])
+
+  useLayoutEffect(() => {
+    const rail = whatifRailRef.current
+    const card = whatifCardRef.current
+    if (!rail || !card) return
+    const header = card.querySelector('.whatif-header')
+    const headSlot = rail.querySelector('.whatif-toggle-rail-head')
+    if (header && headSlot) headSlot.style.height = `${header.offsetHeight}px`
+    const rows = card.querySelectorAll('.slider-row')
+    const slots = rail.querySelectorAll('.whatif-toggle-rail-row')
+    rows.forEach((row, i) => { if (slots[i]) slots[i].style.minHeight = `${row.offsetHeight}px` })
+  }, [remainingComponents])
+
   const saveOverrideMutation = useMutation({
     mutationFn: async (override) => {
       const response = await client.post(`/api/courses/${id}/grade-overrides`, {
@@ -125,6 +162,65 @@ export default function CourseDetail() {
       await queryClient.invalidateQueries({ queryKey: ['course-grades', id] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setEditingKey(null)
+    },
+  })
+
+  const markGradedMutation = useMutation({
+    mutationFn: async ({ componentKey, value }) => {
+      const response = await client.post(`/api/courses/${id}/grade-overrides`, {
+        overrides: [{ component_key: componentKey, manual_score: value, manual_possible: 100 }],
+      })
+      return response.data
+    },
+    onMutate: async ({ componentKey, value }) => {
+      await queryClient.cancelQueries({ queryKey: ['course-grades', id] })
+      const previousData = queryClient.getQueryData(['course-grades', id])
+      queryClient.setQueryData(['course-grades', id], (old) => {
+        if (!old) return old
+        const newComponents = old.component_model.components.map((c) =>
+          c.component_key !== componentKey ? c : {
+            ...c, status: 'graded', pct: value, earned: value, possible: 100,
+            is_manual: true, manual_score: value, manual_possible: 100,
+          }
+        )
+        return { ...old, component_model: { ...old.component_model, components: newComponents } }
+      })
+      return { previousData }
+    },
+    onError: (_err, _componentKey, context) => {
+      if (context?.previousData) queryClient.setQueryData(['course-grades', id], context.previousData)
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['course-grades', id], data)
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+
+  const deleteOverrideMutation = useMutation({
+    mutationFn: async (componentKey) => {
+      const response = await client.delete(`/api/courses/${id}/grade-overrides/${encodeURIComponent(componentKey)}`)
+      return response.data
+    },
+    onMutate: async (componentKey) => {
+      await queryClient.cancelQueries({ queryKey: ['course-grades', id] })
+      const previousData = queryClient.getQueryData(['course-grades', id])
+      queryClient.setQueryData(['course-grades', id], (old) => {
+        if (!old) return old
+        const liveComp = (old.live_components ?? []).find((c) => c.component_key === componentKey)
+        const newComponents = old.component_model.components.map((c) => {
+          if (c.component_key !== componentKey) return c
+          return liveComp ? { ...liveComp } : { ...c, status: 'ungraded', pct: null, earned: null, is_manual: false, manual_score: null, manual_possible: null }
+        })
+        return { ...old, component_model: { ...old.component_model, components: newComponents } }
+      })
+      return { previousData }
+    },
+    onError: (_err, _componentKey, context) => {
+      if (context?.previousData) queryClient.setQueryData(['course-grades', id], context.previousData)
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['course-grades', id], data)
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 
@@ -239,166 +335,240 @@ export default function CourseDetail() {
       <div className="divider" />
 
       <div className="section-label">Graded Components</div>
-      <div className="grade-table-wrap rise">
-        <table>
-          <thead>
-            <tr>
-              <th>Component</th>
-              <th>Weight</th>
-              <th>Score</th>
-              <th className="score-action-head" aria-label="Edit action" />
-            </tr>
-          </thead>
-          <tbody>
-            {gradedComponents.map((row) => {
-              const isEditing = editingKey === row.component_key
-              const isSaving = saveOverrideMutation.isPending && saveOverrideMutation.variables?.component_key === row.component_key
+      <div className="graded-with-rail">
+        {/* Toggle buttons live outside the table card in this left rail */}
+        <div className="grade-toggle-rail" ref={gradeRailRef}>
+          <div className="grade-toggle-rail-head" />
+          {gradedComponents.map((row) => {
+            const isEditing = editingKey === row.component_key
+            const isSaving = saveOverrideMutation.isPending && saveOverrideMutation.variables?.component_key === row.component_key
+            const isManualFromUngraded = row.is_manual && liveStatusByKey[row.component_key] === 'ungraded'
+            const isDeleting = deleteOverrideMutation.isPending && deleteOverrideMutation.variables === row.component_key
+            const isPendingBtnBusy = isDeleting || (markGradedMutation.isPending && markGradedMutation.variables?.componentKey === row.component_key)
+            return (
+              <div className="grade-toggle-rail-row" key={row.component_key}>
+                {isManualFromUngraded && !isEditing && (
+                  <button
+                    className={`grade-toggle-btn${isPendingBtnBusy ? ' visible' : ''}`}
+                    type="button"
+                    onClick={() => {
+                      setSliderValues((current) => ({ ...current, [row.component_key]: row.pct ?? 100 }))
+                      deleteOverrideMutation.mutate(row.component_key)
+                    }}
+                    disabled={isPendingBtnBusy || isSaving}
+                  >
+                    {isPendingBtnBusy ? (
+                      <><div className="grade-toggle-spinner" />{"Move to\npending"}</>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M6 2v8M2 6l4 4 4-4" />
+                        </svg>
+                        {"Move to\npending"}
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
 
-              return (
-                <tr className={isEditing ? 'grade-row-editing' : ''} key={row.component_key}>
-                  <td className="comp-name">
-                    <div className="comp-name-main">
-                      {row.name}
-                      <span className="comp-tag tag-done">Graded</span>
-                    </div>
-                    {row.assignmentRows.length > 1 ? (
-                      <div className="comp-subrows">
-                        {row.assignmentRows.map((assignment) => (
-                          <div className="comp-subrow" key={assignment.assignment_id}>
-                            {assignment.name || row.name} · {assignment.earned}/{assignment.possible} pts
-                            {typeof assignment.pct === 'number' ? ` (${assignment.pct}%)` : ''}
-                          </div>
-                        ))}
+        <div className="grade-table-wrap rise" ref={gradeTableRef}>
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Weight</th>
+                <th>Score</th>
+                <th className="score-action-head" aria-label="Edit action" />
+              </tr>
+            </thead>
+            <tbody>
+              {gradedComponents.map((row) => {
+                const isEditing = editingKey === row.component_key
+                const isSaving = saveOverrideMutation.isPending && saveOverrideMutation.variables?.component_key === row.component_key
+                const isManualFromUngraded = row.is_manual && liveStatusByKey[row.component_key] === 'ungraded'
+                return (
+                  <tr className={isEditing ? 'grade-row-editing' : ''} key={row.component_key}>
+                    <td className="comp-name">
+                      <div className="comp-name-main">
+                        {row.name}
+                        <span className="comp-tag tag-done">Graded</span>
+                        {isManualFromUngraded && <span className="comp-tag tag-manual">Manual</span>}
                       </div>
-                    ) : null}
-                  </td>
-                  <td>{row.weight.toFixed(2).replace(/\.00$/, '')}%</td>
-                  <td className="score-cell">
-                    <div className={`score-control ${isEditing ? 'editing' : ''}`}>
-                      <div className="score-field-shell">
+                      {row.assignmentRows.length > 1 ? (
+                        <div className="comp-subrows">
+                          {row.assignmentRows.map((assignment) => (
+                            <div className="comp-subrow" key={assignment.assignment_id}>
+                              {assignment.name || row.name} · {assignment.earned}/{assignment.possible} pts
+                              {typeof assignment.pct === 'number' ? ` (${assignment.pct}%)` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>{row.weight.toFixed(2).replace(/\.00$/, '')}%</td>
+                    <td className="score-cell">
+                      <div className={`score-control ${isEditing ? 'editing' : ''}`}>
+                        <div className="score-field-shell">
+                          {isEditing ? (
+                            <>
+                              <input
+                                className="score-inline-input"
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={draftScores[row.component_key] ?? ''}
+                                disabled={isSaving}
+                                onChange={(event) =>
+                                  setDraftScores((current) => ({
+                                    ...current,
+                                    [row.component_key]: event.target.value,
+                                  }))
+                                }
+                              />
+                              <span className="score-inline-suffix">%</span>
+                            </>
+                          ) : (
+                            <span className="score-chip">{row.pct}%</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="score-action-cell">
+                      <div className="score-actions">
                         {isEditing ? (
                           <>
-                            <input
-                              className="score-inline-input"
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                              value={draftScores[row.component_key] ?? ''}
+                            <button
+                              className="score-action-btn save"
+                              type="button"
+                              onClick={() => saveEditing(row)}
                               disabled={isSaving}
-                              onChange={(event) =>
-                                setDraftScores((current) => ({
-                                  ...current,
-                                  [row.component_key]: event.target.value,
-                                }))
-                              }
-                            />
-                            <span className="score-inline-suffix">%</span>
+                              aria-label={`Save adjusted score for ${row.name}`}
+                            >
+                              {isSaving ? '...' : '✓'}
+                            </button>
+                            <button
+                              className="score-action-btn cancel"
+                              type="button"
+                              onClick={() => cancelEditing(row)}
+                              disabled={isSaving}
+                              aria-label={`Cancel editing score for ${row.name}`}
+                            >
+                              ×
+                            </button>
                           </>
                         ) : (
-                          <span className="score-chip">{row.pct}%</span>
+                          <button
+                            className="score-action-btn edit"
+                            type="button"
+                            onClick={() => startEditing(row)}
+                            aria-label={`Edit score for ${row.name}`}
+                          >
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                              <path d="M11.8 2.2a1.55 1.55 0 0 1 2.2 2.2l-7.6 7.6-3.4.5.5-3.4 7.6-7.6Z" />
+                              <path d="m10.6 3.4 2 2" />
+                            </svg>
+                          </button>
                         )}
                       </div>
-
-                    </div>
-                  </td>
-                  <td className="score-action-cell">
-                    <div className="score-actions">
-                      {isEditing ? (
-                        <>
-                          <button
-                            className="score-action-btn save"
-                            type="button"
-                            onClick={() => saveEditing(row)}
-                            disabled={isSaving}
-                            aria-label={`Save adjusted score for ${row.name}`}
-                          >
-                            {isSaving ? '...' : '✓'}
-                          </button>
-                          <button
-                            className="score-action-btn cancel"
-                            type="button"
-                            onClick={() => cancelEditing(row)}
-                            disabled={isSaving}
-                            aria-label={`Cancel editing score for ${row.name}`}
-                          >
-                            ×
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          className="score-action-btn edit"
-                          type="button"
-                          onClick={() => startEditing(row)}
-                          aria-label={`Edit score for ${row.name}`}
-                        >
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                            <path d="M11.8 2.2a1.55 1.55 0 0 1 2.2 2.2l-7.6 7.6-3.4.5.5-3.4 7.6-7.6Z" />
-                            <path d="m10.6 3.4 2 2" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-      {saveOverrideMutation.error ? (
+      {saveOverrideMutation.error || markGradedMutation.error || deleteOverrideMutation.error ? (
         <div className="onboarding-error">
-          {saveOverrideMutation.error?.response?.data?.detail || 'Could not save adjusted grades.'}
+          {(saveOverrideMutation.error || markGradedMutation.error || deleteOverrideMutation.error)?.response?.data?.detail || 'Could not save grade change.'}
         </div>
       ) : null}
 
       <div className="section-label">What-if Calculator</div>
-      <div className="whatif-card rise">
-        <div className="whatif-header">
-          <div className="whatif-title">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M7 1v6l3 3M13 7A6 6 0 1 1 1 7a6 6 0 0 1 12 0z" />
-            </svg>
-            Projected Final Grade
-          </div>
-          <div className="projected-grade">
-            <span className="proj-label">If you score these marks:</span>
-            <span className="proj-val">{projectedDefault.toFixed(1)}%</span>
-            <span className="proj-letter A">{projectedLetter}</span>
-          </div>
-        </div>
-        <div className="whatif-body">
-          {remainingComponents.length ? (
-            remainingComponents.map((component) => {
-              const value = sliderValues[component.component_key] ?? 100
+      <div className="whatif-outer-wrap">
+        {/* Toggle buttons live outside the card in this left rail */}
+        {remainingComponents.length ? (
+          <div className="whatif-toggle-rail" ref={whatifRailRef}>
+            <div className="whatif-toggle-rail-head" />
+            {remainingComponents.map((component) => {
+              const isMarking = markGradedMutation.isPending && markGradedMutation.variables?.componentKey === component.component_key
+              const isGradedBtnBusy = isMarking || (deleteOverrideMutation.isPending && deleteOverrideMutation.variables === component.component_key)
               return (
-                <div className="slider-row" key={component.component_key}>
-                  <div>
-                    <div className="slider-name">{component.name}</div>
-                    <div className="slider-weight">Weight: {component.weight}%</div>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={value}
-                    onChange={(event) =>
-                      setSliderValues((current) => ({
-                        ...current,
-                        [component.component_key]: Number(event.target.value),
-                      }))
-                    }
-                    style={{
-                      background: `linear-gradient(to right, oklch(68% 0.16 240) ${value}%, oklch(19% 0.022 260) ${value}%)`,
-                    }}
-                  />
-                  <div className="slider-val">{value}%</div>
+                <div className="whatif-toggle-rail-row" key={component.component_key}>
+                  <button
+                    className={`grade-toggle-btn${isGradedBtnBusy ? ' visible' : ''}`}
+                    type="button"
+                    onClick={() => markGradedMutation.mutate({ componentKey: component.component_key, value: sliderValues[component.component_key] ?? 100 })}
+                    disabled={isGradedBtnBusy}
+                  >
+                    {isGradedBtnBusy ? (
+                      <><div className="grade-toggle-spinner" />{"Mark as\ngraded"}</>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M6 10V2M2 6l4-4 4 4" />
+                        </svg>
+                        {"Mark as\ngraded"}
+                      </>
+                    )}
+                  </button>
                 </div>
               )
-            })
-          ) : (
-            <div className="empty-inline">No remaining weighted components available for projection.</div>
-          )}
+            })}
+          </div>
+        ) : null}
+
+        <div className="whatif-card rise" ref={whatifCardRef}>
+          <div className="whatif-header">
+            <div className="whatif-title">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M7 1v6l3 3M13 7A6 6 0 1 1 1 7a6 6 0 0 1 12 0z" />
+              </svg>
+              Projected Final Grade
+            </div>
+            <div className="projected-grade">
+              <span className="proj-label">If you score these marks:</span>
+              <span className="proj-val">{projectedDefault.toFixed(1)}%</span>
+              <span className="proj-letter A">{projectedLetter}</span>
+            </div>
+          </div>
+          <div className="whatif-body">
+            {remainingComponents.length ? (
+              remainingComponents.map((component) => {
+                const value = sliderValues[component.component_key] ?? 100
+                return (
+                  <div className="slider-row" key={component.component_key}>
+                    <div>
+                      <div className="slider-name">{component.name}</div>
+                      <div className="slider-weight">Weight: {component.weight}%</div>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={value}
+                      onChange={(event) =>
+                        setSliderValues((current) => ({
+                          ...current,
+                          [component.component_key]: Number(event.target.value),
+                        }))
+                      }
+                      style={{
+                        background: `linear-gradient(to right, oklch(68% 0.16 240) ${value}%, oklch(19% 0.022 260) ${value}%)`,
+                      }}
+                    />
+                    <div className="slider-val">{value}%</div>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="empty-inline">No remaining weighted components available for projection.</div>
+            )}
+          </div>
         </div>
       </div>
 

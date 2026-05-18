@@ -24,6 +24,7 @@ from api.services.course_service import (
     get_course_weights,
     list_current_term_courses,
     save_course_grade_overrides,
+    delete_course_grade_override,
 )
 from integrations.grades_cache import GradesCacheError
 from api.services.grades_snapshot_service import (
@@ -354,18 +355,41 @@ def write_course_grade_overrides(
     user_id = current_user["user_id"]
     cache_key = f"{user_id}:{course_id}"
     try:
-        save_course_grade_overrides(
+        data = save_course_grade_overrides(
             token,
             user_id,
             course_id,
             [override.model_dump() for override in body.overrides],
+            cached_snapshot=_course_grades_cache.get(cache_key),
         )
-        data = get_course_grades(token, course_id, user_id)
         _course_grades_cache[cache_key] = data
         try:
             save_course_detail_snapshot(user_id, course_id, data)
         except GradesSnapshotServiceError as exc:
             logger.warning("Failed to persist grade override snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
+        return data
+    except (CourseServiceError, QuercusError, GradesCacheError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete("/{course_id}/grade-overrides/{component_key}")
+def remove_course_grade_override(
+    course_id: int,
+    component_key: str,
+    quercus_token: str | None = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+):
+    token = _resolve_token(quercus_token, current_user)
+    user_id = current_user["user_id"]
+    cache_key = f"{user_id}:{course_id}"
+    try:
+        cached = _course_grades_cache.get(cache_key)
+        data = delete_course_grade_override(token, user_id, course_id, component_key, cached)
+        _course_grades_cache[cache_key] = data
+        try:
+            save_course_detail_snapshot(user_id, course_id, data)
+        except GradesSnapshotServiceError as exc:
+            logger.warning("Failed to persist delete-override snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
         return data
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

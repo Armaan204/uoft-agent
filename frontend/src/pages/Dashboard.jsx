@@ -100,8 +100,9 @@ queryClient.setQueryData(['dashboard'], fresh)
     if (!courseGridRef.current || !deadlinesLabelRef.current) return undefined
 
     const updateDeadlinesHeight = () => {
-      const gridHeight = courseGridRef.current?.getBoundingClientRect().height ?? 0
-      const labelHeight = deadlinesLabelRef.current?.getBoundingClientRect().height ?? 0
+      if (!courseGridRef.current || !deadlinesLabelRef.current) return
+      const gridHeight = courseGridRef.current.getBoundingClientRect().height
+      const labelHeight = deadlinesLabelRef.current.getBoundingClientRect().height
       const labelMarginBottom = Number.parseFloat(window.getComputedStyle(deadlinesLabelRef.current).marginBottom) || 0
       const nextHeight = Math.max(160, Math.floor(gridHeight - labelHeight - labelMarginBottom))
       setDeadlinesMaxHeight(nextHeight)

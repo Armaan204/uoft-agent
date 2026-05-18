@@ -1123,6 +1123,113 @@ tfoot td:not(:first-child),
   border: 1px solid oklch(35% 0.08 150 / 0.5);
 }
 
+.tag-manual {
+  color: var(--yellow);
+  background: var(--yellow-bg);
+  border: 1px solid oklch(40% 0.08 85 / 0.5);
+}
+
+/* Graded table and What-if: rail is absolutely placed in the page left gutter */
+.graded-with-rail,
+.whatif-outer-wrap {
+  position: relative;
+  display: block;
+  margin-bottom: 32px;
+}
+
+.graded-with-rail .grade-table-wrap,
+.whatif-outer-wrap .whatif-card {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.grade-toggle-rail,
+.whatif-toggle-rail {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 0;
+  width: max-content;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* Spacers that match card header heights */
+.grade-toggle-rail-head {
+  height: 52px;
+}
+
+.whatif-toggle-rail-head {
+  height: 70px;
+}
+
+/* Slots sized to match each card row; button centred within */
+.grade-toggle-rail-row {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+}
+
+.whatif-toggle-rail-row {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+}
+
+.grade-toggle-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 5px;
+  width: 58px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  white-space: pre-line;
+  background: transparent;
+  border: 1.5px solid oklch(55% 0.015 260 / 0.28);
+  color: var(--muted);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.grade-toggle-btn:hover:not(:disabled),
+.grade-toggle-btn.visible {
+  background: oklch(55% 0.16 240);
+  border-color: transparent;
+  color: #fff;
+}
+
+.grade-toggle-btn:hover:not(:disabled) {
+  background: oklch(62% 0.16 240);
+}
+
+.grade-toggle-btn svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.grade-toggle-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.grade-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .badge.track {
   color: var(--yellow);
   background: var(--yellow-bg);
@@ -3442,6 +3549,29 @@ input[type='range']::-webkit-slider-thumb {
 
   .grade-table-wrap {
     border-radius: 16px;
+  }
+
+  /* On mobile, pull rails back into flow above the table/card */
+  .grade-toggle-rail,
+  .whatif-toggle-rail {
+    position: static;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+
+  .grade-toggle-rail-head,
+  .whatif-toggle-rail-head {
+    display: none;
+  }
+
+  .grade-toggle-rail-row,
+  .whatif-toggle-rail-row {
+    min-height: 0;
+    height: auto;
   }
 
   .slider-row {

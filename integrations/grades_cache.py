@@ -216,3 +216,28 @@ def save_grade_override(
         )
     except Exception as exc:
         raise GradesCacheError(f"Failed to save grade override: {exc}") from exc
+
+
+def delete_grade_override(
+    user_id: str | int,
+    course_id: int | str,
+    component_key: str,
+) -> None:
+    """Remove a manual grade override."""
+    if not user_id:
+        raise GradesCacheError("user_id must be provided")
+    if not component_key:
+        raise GradesCacheError("component_key must be provided")
+
+    try:
+        (
+            _get_supabase_client()
+            .table("grade_overrides")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("course_id", int(course_id))
+            .eq("component_key", str(component_key))
+            .execute()
+        )
+    except Exception as exc:
+        raise GradesCacheError(f"Failed to delete grade override: {exc}") from exc
