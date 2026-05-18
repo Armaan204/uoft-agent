@@ -37,6 +37,7 @@ export default function Chat() {
   const [isHydrated, setIsHydrated] = useState(false)
   const [isMobileComposer, setIsMobileComposer] = useState(() => window.innerWidth < 768)
   const scrollRef = useRef(null)
+  const loadedRouteIdRef = useRef(null)
   const queryClient = useQueryClient()
   const userInitials = getInitials(user?.name || user?.email)
   const storageKey = useMemo(() => getChatStorageKey(user), [user])
@@ -178,12 +179,17 @@ export default function Chat() {
   }, [conversationId, draft, isHydrated, messages, storageKey])
 
   useEffect(() => {
-    if (!isHydrated || !routeConversationId) return
-    if (routeConversationId === conversationId) return
+    if (!isHydrated || !routeConversationId) {
+      loadedRouteIdRef.current = null
+      return
+    }
+    if (routeConversationId === loadedRouteIdRef.current) return
     if (loadConversationMutation.isPending && loadConversationMutation.variables === routeConversationId) return
 
+    loadedRouteIdRef.current = routeConversationId
     loadConversationMutation.mutate(routeConversationId)
-  }, [conversationId, isHydrated, loadConversationMutation, routeConversationId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, loadConversationMutation, routeConversationId])
 
   function resetConversation() {
     if (mutation.isPending || loadConversationMutation.isPending) return
