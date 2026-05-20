@@ -128,7 +128,7 @@ def _extract_text(content: list) -> str:
 # CLI
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     print("UofT Academic Assistant  (type 'quit' to exit)\n")
     while True:
         try:

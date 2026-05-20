@@ -310,7 +310,12 @@ class QuercusClient:
         Each file dict includes display_name, filename, content-type, url
         (pre-signed download URL), and size.
         """
-        return self._get(f"/courses/{course_id}/files")
+        try:
+            return self._get(f"/courses/{course_id}/files")
+        except QuercusError as exc:
+            if " returned 403:" in str(exc):
+                return []
+            raise
 
     def get_assignment_groups(self, course_id: int | str) -> list:
         """Return assignment groups for a course, each with its percentage weight.

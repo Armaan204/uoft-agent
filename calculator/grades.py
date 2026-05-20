@@ -167,6 +167,26 @@ class GradeCalculator:
         # Grade already locked in from completed work
         locked = current_grade * non_final_weight
 
+        if final_weight <= 0:
+            if locked >= target_grade:
+                return {
+                    "needed":  None,
+                    "status":  "already_achieved",
+                    "message": (
+                        f"Already on track for {target_grade:.0f}% — "
+                        f"current completed work contributes {locked:.1f}% "
+                        f"toward the final grade."
+                    ),
+                }
+            return {
+                "needed":  None,
+                "status":  "impossible",
+                "message": (
+                    "There is no remaining weighted assessment, so the target "
+                    "grade cannot still be reached."
+                ),
+            }
+
         if locked >= target_grade:
             return {
                 "needed":  None,

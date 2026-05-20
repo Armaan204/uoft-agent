@@ -20,7 +20,15 @@
       "Bash(cp \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\acorn.png\" \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\assets\\\\acorn.png\")",
       "WebSearch",
       "WebFetch(domain:utsc.calendar.utoronto.ca)",
-      "PowerShell(Head *)"
+      "PowerShell(Head *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(grep -v \"^tests\\\\\\\\\")",
+      "Bash(Select-String -NotMatch \"^tests\")",
+      "Bash(Select-String -NotMatch \"^Name\")",
+      "Bash(findstr \"Miss\")",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }

@@ -216,6 +216,31 @@ Not implemented yet:
 - The React frontend currently stores the FastAPI JWT in localStorage; this is expedient for development but not the final hardened auth posture
 - Backend chat history requires the Supabase schema in `docs/chat_history_schema.sql` to be applied before list/detail/delete routes and persistence-backed history are available
 
+## Tests
+
+Run the test suite with coverage:
+
+```bash
+python -m coverage run -m pytest tests/ -q
+python -m coverage report
+```
+
+Coverage is at 100% overall (813 tests). Key test files:
+
+- `tests/test_agent.py` — `agent/agent.py` `run()` loop and `_extract_text()`
+- `tests/test_acorn_store.py` — `integrations/acorn_store.py` payload validation, file I/O
+- `tests/test_acorn_service.py` — `api/services/acorn_service.py` Supabase ACORN service
+- `tests/test_chat_router.py` — `api/routers/chat.py` all route handlers
+- `tests/test_encryption_and_syllabus_cache.py` — `integrations/encryption.py` and `integrations/syllabus_cache.py`
+- `tests/test_snapshot_and_history.py` — `api/services/grades_snapshot_service.py` and `api/services/chat_history_service.py`
+- `tests/test_grades_cache_and_auth.py` — `integrations/grades_cache.py`, `api/services/auth_service.py`, `api/dependencies.py`, `api/services/grade_snapshot_cache.py`
+
+Notes:
+- All external calls are mocked (no real Supabase, Anthropic, or HTTP)
+- `asyncio_mode = auto` in `pytest.ini` — async test methods need no decorator
+- Starlette 1.0 + FastAPI 0.103 TestClient is broken; route handlers are called directly as Python functions/coroutines
+- `# pragma: no cover` is used on compatibility shims in `conftest.py` and on post-`asyncio.get_event_loop().run_until_complete()` assertion lines where Python 3.11 + `asyncio.to_thread` disrupts coverage's settrace hook
+
 ## Local Usage
 
 Install dependencies:
