@@ -13,5 +13,6 @@ python-jose[cryptography]
 python-multipart
 
 # CI / test dependencies
+pytest-asyncio          # async test support (asyncio_mode = auto in pytest.ini)
 pytest-cov              # coverage plugin for pytest
 genbadge[coverage]      # coverage badge generator
