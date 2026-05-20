@@ -6,6 +6,8 @@ AI academic assistant for University of Toronto students.
 
 ![Demo](assets/demo.gif)
 
+![Coverage](docs/coverage.svg)
+
 </div>
 
 ## Live App

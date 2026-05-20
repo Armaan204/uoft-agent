@@ -11,3 +11,7 @@ fastapi
 uvicorn[standard]
 python-jose[cryptography]
 python-multipart
+
+# CI / test dependencies
+pytest-cov              # coverage plugin for pytest
+genbadge[coverage]      # coverage badge generator
