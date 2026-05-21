@@ -163,6 +163,9 @@ function parseBlocks(text) {
 
 export default function MarkdownMessage({ text }) {
   const blocks = parseBlocks(text)
+  // Tracks the running item count for the current ordered-list sequence so that
+  // ol blocks separated by explanatory paragraphs continue numbering correctly.
+  let olCounter = 0
 
   return (
     <div className="msg-markdown">
@@ -170,11 +173,13 @@ export default function MarkdownMessage({ text }) {
         const key = `block-${index}`
 
         if (block.type === 'heading') {
+          olCounter = 0
           if (block.level <= 2) return <h3 key={key}>{renderInline(block.content, `${key}-inline`)}</h3>
           return <h4 key={key}>{renderInline(block.content, `${key}-inline`)}</h4>
         }
 
         if (block.type === 'hr') {
+          olCounter = 0
           return <hr key={key} />
         }
 
@@ -183,8 +188,10 @@ export default function MarkdownMessage({ text }) {
         }
 
         if (block.type === 'ol') {
+          const start = olCounter + 1
+          olCounter += block.items.length
           return (
-            <ol key={key}>
+            <ol key={key} start={start}>
               {block.items.map((item, itemIndex) => (
                 <li key={`${key}-item-${itemIndex}`}>{renderInline(item, `${key}-item-inline-${itemIndex}`)}</li>
               ))}

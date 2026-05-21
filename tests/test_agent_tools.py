@@ -175,6 +175,103 @@ class TestGetAcademicHistory:
         assert len(result["terms"]) == 2
 
 
+class TestGetAllAnnouncements:
+    def test_returns_from_snapshot_when_available(self):
+        """Snapshot announcements are returned directly without any Quercus calls."""
+        from agent.tools import _get_all_announcements
+        mock_client = MagicMock()
+        snapshot_announcements = [
+            {"course_id": 1, "course_code": "CSC", "title": "Midterm update", "posted_at": "2026-05-01T10:00:00+00:00"},
+        ]
+        snapshot_rows = [{"course_id": 1, "announcements": snapshot_announcements}]
+
+        with patch("agent.tools.load_grades_snapshot", return_value=snapshot_rows):
+            result = _get_all_announcements({}, mock_client, user_id="user-1")
+
+        assert result["source"] == "snapshot"
+        assert len(result["announcements"]) == 1
+        assert result["announcements"][0]["title"] == "Midterm update"
+        mock_client.get_courses.assert_not_called()
+
+    def test_falls_back_to_live_when_no_snapshot_announcements(self):
+        """No announcements in snapshot → live Quercus fetch."""
+        from agent.tools import _get_all_announcements
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = [{"id": 10, "name": "Physics", "course_code": "PHY"}]
+        mock_client.get_latest_announcements.return_value = [
+            {
+                "context_code": "course_10",
+                "title": "Lab cancelled",
+                "posted_at": "2026-05-10T09:00:00Z",
+                "message": "<p>Lab is cancelled</p>",
+                "html_url": "https://q.utoronto.ca/ann/99",
+            }
+        ]
+        with patch("agent.tools.load_grades_snapshot", return_value=[{"course_id": 10}]):
+            result = _get_all_announcements({}, mock_client, user_id="user-1")
+
+        assert result["source"] == "live"
+        assert len(result["announcements"]) == 1
+        assert result["announcements"][0]["title"] == "Lab cancelled"
+        assert result["announcements"][0]["course_code"] == "PHY"
+        mock_client.get_latest_announcements.assert_called_once_with([10])
+
+    def test_live_fetch_used_when_no_user_id(self):
+        """Without user_id, skips snapshot and goes directly to live fetch."""
+        from agent.tools import _get_all_announcements
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = []
+        mock_client.get_latest_announcements.return_value = []
+
+        result = _get_all_announcements({}, mock_client, user_id=None)
+
+        assert result["source"] == "live"
+        mock_client.get_courses.assert_called_once()
+
+    def test_ignores_non_course_context_codes(self):
+        """Announcements with non-course context_codes are skipped."""
+        from agent.tools import _get_all_announcements
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = [{"id": 1, "name": "Env", "course_code": "ENV"}]
+        mock_client.get_latest_announcements.return_value = [
+            {"context_code": "group_42", "title": "Group post", "posted_at": None, "message": "", "html_url": None},
+            {"context_code": "course_1", "title": "Real post", "posted_at": "2026-05-01T00:00:00Z", "message": "", "html_url": None},
+        ]
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = _get_all_announcements({}, mock_client, user_id="u1")
+
+        assert len(result["announcements"]) == 1
+        assert result["announcements"][0]["title"] == "Real post"
+
+    def test_announcements_sorted_newest_first(self):
+        """Live fetch results are sorted newest posted_at first."""
+        from agent.tools import _get_all_announcements
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = [
+            {"id": 1, "name": "A", "course_code": "A"},
+            {"id": 2, "name": "B", "course_code": "B"},
+        ]
+        mock_client.get_latest_announcements.return_value = [
+            {"context_code": "course_1", "title": "Older", "posted_at": "2026-04-01T00:00:00Z", "message": "", "html_url": None},
+            {"context_code": "course_2", "title": "Newer", "posted_at": "2026-05-10T00:00:00Z", "message": "", "html_url": None},
+        ]
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = _get_all_announcements({}, mock_client, user_id="u1")
+
+        assert result["announcements"][0]["title"] == "Newer"
+        assert result["announcements"][1]["title"] == "Older"
+
+    def test_dispatched_via_execute_tool(self):
+        """get_all_announcements is registered and dispatchable via execute_tool."""
+        from agent.tools import execute_tool
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = []
+        mock_client.get_latest_announcements.return_value = []
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = execute_tool("get_all_announcements", {}, mock_client, "user-1")
+        assert "announcements" in result
+
+
 class TestAnnouncementsTools:
     def test_get_course_announcements_returns_empty_list(self):
         from agent.tools import _get_course_announcements
@@ -393,6 +490,146 @@ class TestExecuteToolDispatch:
         result = execute_tool("this_tool_does_not_exist", {}, mock_client, None)
         # Should return an error message, not raise
         assert "unknown" in str(result).lower() or isinstance(result, dict)
+
+
+class TestGetUpcomingDeadlines:
+    def test_returns_deadlines_from_snapshot(self):
+        """Snapshot rows with upcoming deadlines are returned sorted by due_at."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        from datetime import datetime, timedelta, timezone
+
+        future = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        snapshot_rows = [
+            {
+                "course_id": 1,
+                "course_code": "EESA11H3",
+                "course_name": "Environmental Science",
+                "dashboard_data": {
+                    "deadlines": [
+                        {"name": "Quiz 1", "due_at": future, "url": "https://q.utoronto.ca/1"},
+                    ]
+                },
+            }
+        ]
+        with patch("agent.tools.load_grades_snapshot", return_value=snapshot_rows):
+            result = _get_upcoming_deadlines_tool({}, MagicMock(), user_id="user-1")
+
+        assert result["source"] == "snapshot"
+        assert len(result["deadlines"]) == 1
+        assert result["deadlines"][0]["name"] == "Quiz 1"
+        assert result["deadlines"][0]["course_code"] == "EESA11H3"
+
+    def test_excludes_past_deadlines_from_snapshot(self):
+        """Deadlines already past (before now) are excluded even if in the snapshot."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        from datetime import datetime, timedelta, timezone
+
+        past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        snapshot_rows = [
+            {
+                "course_id": 1,
+                "course_code": "CSC",
+                "course_name": "CS",
+                "dashboard_data": {"deadlines": [{"name": "Old HW", "due_at": past, "url": None}]},
+            }
+        ]
+        with patch("agent.tools.load_grades_snapshot", return_value=snapshot_rows):
+            result = _get_upcoming_deadlines_tool({}, MagicMock(), user_id="user-1")
+
+        assert result["deadlines"] == []
+
+    def test_falls_back_to_live_fetch_when_no_snapshot(self):
+        """With no snapshot rows, queries Quercus directly."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        from datetime import datetime, timedelta, timezone
+
+        future = (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = [
+            {"id": 10, "name": "Physics", "course_code": "PHYA10H3"}
+        ]
+        mock_client.get_assignments.return_value = [
+            {"name": "Lab Report", "due_at": future, "html_url": "https://q.utoronto.ca/lab"}
+        ]
+
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = _get_upcoming_deadlines_tool({}, mock_client, user_id="user-1")
+
+        assert result["source"] == "live"
+        assert len(result["deadlines"]) == 1
+        assert result["deadlines"][0]["name"] == "Lab Report"
+
+    def test_live_fetch_used_when_no_user_id(self):
+        """Without user_id, always falls back to live Quercus fetch."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        from datetime import datetime, timedelta, timezone
+
+        future = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = [{"id": 5, "name": "Env", "course_code": "EESA11H3"}]
+        mock_client.get_assignments.return_value = [
+            {"name": "Quiz 1", "due_at": future, "html_url": "https://q.utoronto.ca/q1"}
+        ]
+
+        result = _get_upcoming_deadlines_tool({}, mock_client, user_id=None)
+
+        assert result["source"] == "live"
+        mock_client.get_courses.assert_called_once()
+
+    def test_days_parameter_capped_at_30(self):
+        """days parameter is capped at 30 regardless of input."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = []
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = _get_upcoming_deadlines_tool({"days": 999}, mock_client, user_id="u1")
+        assert result["days"] == 30
+
+    def test_defaults_to_14_days(self):
+        """Omitting days defaults to 14."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = []
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = _get_upcoming_deadlines_tool({}, mock_client, user_id="u1")
+        assert result["days"] == 14
+
+    def test_deadlines_sorted_by_due_at(self):
+        """Multiple deadlines are returned sorted earliest first."""
+        from agent.tools import _get_upcoming_deadlines_tool
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        d1 = (now + timedelta(days=7)).isoformat()
+        d2 = (now + timedelta(days=2)).isoformat()
+        snapshot_rows = [
+            {
+                "course_id": 1,
+                "course_code": "A",
+                "course_name": "Course A",
+                "dashboard_data": {"deadlines": [{"name": "Late", "due_at": d1, "url": None}]},
+            },
+            {
+                "course_id": 2,
+                "course_code": "B",
+                "course_name": "Course B",
+                "dashboard_data": {"deadlines": [{"name": "Soon", "due_at": d2, "url": None}]},
+            },
+        ]
+        with patch("agent.tools.load_grades_snapshot", return_value=snapshot_rows):
+            result = _get_upcoming_deadlines_tool({}, MagicMock(), user_id="u1")
+
+        assert result["deadlines"][0]["name"] == "Soon"
+        assert result["deadlines"][1]["name"] == "Late"
+
+    def test_dispatched_via_execute_tool(self):
+        """get_upcoming_deadlines is registered and dispatchable via execute_tool."""
+        from agent.tools import execute_tool
+        mock_client = MagicMock()
+        mock_client.get_courses.return_value = []
+        with patch("agent.tools.load_grades_snapshot", return_value=[]):
+            result = execute_tool("get_upcoming_deadlines", {}, mock_client, "user-1")
+        assert "deadlines" in result
 
 
 class TestAgentToolsAdditional:

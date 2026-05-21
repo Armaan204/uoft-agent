@@ -7,6 +7,7 @@ execute_tool  : called by the agent loop; accepts a QuercusClient so the
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 from html import unescape
 
 from api.services.acorn_service import get_academic_history as load_academic_history
@@ -95,10 +96,27 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "get_all_announcements",
+        "description": (
+            "Return the most recent announcement from every course in one call. "
+            "Use this when the user asks to summarize, list, or check announcements "
+            "across multiple courses or without specifying a course. "
+            "Reads from the cached snapshot when available (zero API calls); "
+            "falls back to a single Quercus request for all courses."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
         "name": "get_course_announcements",
         "description": (
-            "Return up to 10 recent announcements for one course as lightweight previews. "
-            "Prefer this when the user asks about course news or instructor updates."
+            "Return up to 10 recent announcements for one specific course as lightweight previews. "
+            "Only use this when the user asks about announcements for a particular course "
+            "and needs more than just the latest one. Prefer get_all_announcements for "
+            "general or multi-course announcement questions."
         ),
         "input_schema": {
             "type": "object",
@@ -170,6 +188,26 @@ TOOL_SCHEMAS = [
                 "course_name": {"type": "string",  "description": "Human-readable course name for context"},
             },
             "required": ["course_id", "course_name"],
+        },
+    },
+    {
+        "name": "get_upcoming_deadlines",
+        "description": (
+            "Return upcoming assignment due dates across all of the student's current courses. "
+            "Use this when the student asks what is due soon, what their next deadline is, "
+            "what assignments are coming up, or anything about upcoming due dates. "
+            "Returns deadlines sorted by due date. Reads from the cached dashboard snapshot "
+            "when available (fast); falls back to a live Quercus fetch otherwise."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "How many days ahead to look for deadlines (default 14, max 30).",
+                },
+            },
+            "required": [],
         },
     },
     {
@@ -319,6 +357,44 @@ def _refresh_grades(inp: dict, client: QuercusClient, user_id: str | int | None 
     return fresh
 
 
+def _get_all_announcements(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    # Fast path: read from dashboard snapshot (already aggregated, zero API calls)
+    if user_id is not None:
+        snapshot_rows = load_grades_snapshot(user_id)
+        for row in snapshot_rows:
+            if row.get("announcements") is not None:
+                return {"announcements": row["announcements"], "source": "snapshot"}
+
+    # Live path: one API call for all courses
+    courses = client.get_courses()
+    course_lookup = {c["id"]: c for c in courses}
+    raw = client.get_latest_announcements(list(course_lookup.keys()))
+
+    announcements = []
+    for ann in raw:
+        context_code = ann.get("context_code", "")
+        if not context_code.startswith("course_"):
+            continue
+        try:
+            course_id = int(context_code.split("_", 1)[1])
+        except ValueError:
+            continue
+        course = course_lookup.get(course_id)
+        posted_at = ann.get("posted_at")
+        announcements.append({
+            "course_id": course_id,
+            "course_code": course.get("course_code") if course else None,
+            "course_name": course.get("name") if course else None,
+            "title": ann.get("title") or "Untitled announcement",
+            "preview": _preview_text(ann.get("message"), limit=200),
+            "url": ann.get("html_url") or ann.get("url"),
+            "posted_at": posted_at,
+        })
+
+    announcements.sort(key=lambda a: a.get("posted_at") or "", reverse=True)
+    return {"announcements": announcements, "source": "live"}
+
+
 def _get_course_announcements(inp: dict, client: QuercusClient) -> dict:
     course_id = inp["course_id"]
     announcements = client.get_course_announcements(course_id, limit=10)
@@ -349,6 +425,68 @@ def _get_announcement_detail(inp: dict, client: QuercusClient) -> dict:
         "body": " ".join(unescape(re.sub(r"<[^>]+>", " ", announcement.get("message") or "")).split()),
         "url": announcement.get("html_url") or announcement.get("url"),
     }
+
+
+def _get_upcoming_deadlines_tool(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    days = min(int(inp.get("days") or 14), 30)
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=days)
+    deadlines: list[dict] = []
+
+    # Fast path: read from cached dashboard snapshot (avoids Quercus API calls)
+    if user_id is not None:
+        snapshot_rows = load_grades_snapshot(user_id)
+        if snapshot_rows:
+            for row in snapshot_rows:
+                dashboard_data = row.get("dashboard_data") or {}
+                course_code = row.get("course_code") or dashboard_data.get("course_code")
+                course_name = row.get("course_name") or dashboard_data.get("name")
+                for dl in dashboard_data.get("deadlines") or []:
+                    due_raw = dl.get("due_at")
+                    if not due_raw:
+                        continue
+                    try:
+                        due_dt = datetime.fromisoformat(due_raw.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    if now <= due_dt <= cutoff:
+                        deadlines.append({
+                            "name": dl.get("name"),
+                            "due_at": due_dt.isoformat(),
+                            "course_code": course_code,
+                            "course_name": course_name,
+                            "url": dl.get("url"),
+                        })
+            if deadlines or snapshot_rows:
+                deadlines.sort(key=lambda d: d["due_at"])
+                return {"deadlines": deadlines, "days": days, "source": "snapshot"}
+
+    # Live fetch fallback: query Quercus directly
+    courses = client.get_courses()
+    for course in courses:
+        course_id = course["id"]
+        try:
+            for assignment in client.get_assignments(course_id):
+                due_raw = assignment.get("due_at")
+                if not due_raw:
+                    continue
+                try:
+                    due_dt = datetime.fromisoformat(due_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if now <= due_dt <= cutoff:
+                    deadlines.append({
+                        "name": assignment.get("name"),
+                        "due_at": due_dt.isoformat(),
+                        "course_code": course.get("course_code"),
+                        "course_name": course.get("name"),
+                        "url": assignment.get("html_url"),
+                    })
+        except Exception:
+            pass
+
+    deadlines.sort(key=lambda d: d["due_at"])
+    return {"deadlines": deadlines, "days": days, "source": "live"}
 
 
 def _check_graduation_progress(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
@@ -450,17 +588,20 @@ _HANDLERS = {
     "get_cached_grades":        _get_cached_grades,
     "get_all_grades":           _get_all_grades,
     "refresh_grades":           _refresh_grades,
+    "get_all_announcements":     _get_all_announcements,
     "get_course_announcements": _get_course_announcements,
     "get_announcement_detail":  _get_announcement_detail,
     "get_course_weights":       _get_course_weights,
     "get_current_grade":        _get_current_grade,
     "get_grade_scenarios":      _get_grade_scenarios,
+    "get_upcoming_deadlines":   _get_upcoming_deadlines_tool,
     "check_graduation_progress": _check_graduation_progress,
 }
 
 _USER_ID_TOOLS = {
     "get_cached_grades", "get_all_grades", "refresh_grades",
     "get_academic_history", "check_graduation_progress",
+    "get_upcoming_deadlines", "get_all_announcements",
 }
 
 
