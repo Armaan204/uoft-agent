@@ -51,6 +51,11 @@ _dashboard_cache: dict[str, dict] = {}
 # Per-user per-course in-memory cache keyed by "{user_id}:{course_id}"
 _course_grades_cache: dict[str, dict] = {}
 
+# Per-user mapping from any canvas_id to all canvas_ids for the same UofT course.
+# Populated when the dashboard is fetched; used by the grades route to merge
+# data from sibling Canvas courses that share the same course code.
+_canvas_id_groups: dict[str, list[int]] = {}
+
 
 class QuercusTokenBody(BaseModel):
     token: str
@@ -72,7 +77,31 @@ def _evict_user_cache(user_id: str) -> None:
     stale_keys = [k for k in _course_grades_cache if k.startswith(f"{user_id}:")]
     for k in stale_keys:
         del _course_grades_cache[k]
+    stale_group_keys = [k for k in _canvas_id_groups if k.startswith(f"{user_id}:")]
+    for k in stale_group_keys:
+        del _canvas_id_groups[k]
     invalidate_grade_snapshot(user_id)
+
+
+def _update_canvas_id_groups(user_id: str, courses: list[dict]) -> None:
+    """Populate the canvas_id → sibling canvas_ids mapping from a dashboard course list.
+
+    Also evicts in-memory course-grade cache entries for multi-ID courses so
+    that a stale single-ID snapshot is not served before the merge runs.
+    """
+    for course in courses:
+        canvas_ids = course.get("canvas_ids")
+        if not canvas_ids or len(canvas_ids) <= 1:
+            continue
+        for cid in canvas_ids:
+            key = f"{user_id}:{cid}"
+            prev = _canvas_id_groups.get(key)
+            _canvas_id_groups[key] = canvas_ids
+            # If the known sibling set has grown, the cached grade data may
+            # have been computed with fewer IDs — evict so the next request
+            # does a live merged fetch instead of serving the stale snapshot.
+            if set(prev or []) != set(canvas_ids):
+                _course_grades_cache.pop(key, None)
 
 
 def _token_debug_value(token: str | None) -> str:
@@ -205,6 +234,7 @@ async def _background_refresh_dashboard(token: str, user_id: str) -> None:
             "term_name": term_name,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
+        _update_canvas_id_groups(user_id, dashboard)
         try:
             await asyncio.to_thread(save_snapshot, user_id, dashboard, announcements)
         except GradesSnapshotServiceError as exc:
@@ -242,6 +272,7 @@ async def dashboard_courses(
             snapshot = None
         if snapshot is not None:
             _dashboard_cache[user_id] = snapshot
+            _update_canvas_id_groups(user_id, snapshot.get("courses") or [])
             logger.info("Serving Supabase snapshot user_id=%s fetched_at=%s", user_id, snapshot["fetched_at"])
             asyncio.create_task(_background_refresh_dashboard(token, user_id))
             return snapshot
@@ -262,6 +293,7 @@ async def dashboard_courses(
             "term_name": term_name,
             "fetched_at": fetched_at,
         }
+        _update_canvas_id_groups(user_id, dashboard)
         try:
             await asyncio.to_thread(save_snapshot, user_id, dashboard, announcements)
         except GradesSnapshotServiceError as exc:
@@ -296,7 +328,9 @@ async def dashboard_courses(
 
 async def _background_refresh_course_grades(token: str, user_id: str, course_id: int) -> None:
     try:
-        data = await asyncio.to_thread(get_course_grades, token, course_id, user_id)
+        _siblings = _canvas_id_groups.get(f"{user_id}:{course_id}")
+        _additional = [cid for cid in _siblings if cid != course_id] if _siblings else None
+        data = await asyncio.to_thread(get_course_grades, token, course_id, user_id, _additional)
         _course_grades_cache[f"{user_id}:{course_id}"] = data
         await asyncio.to_thread(save_course_detail_snapshot, user_id, course_id, data)
         logger.info("Background course grades refresh completed user_id=%s course_id=%s", user_id, course_id)
@@ -314,6 +348,8 @@ async def course_grades(
     token = _resolve_token(quercus_token, current_user)
     user_id = current_user["user_id"]
     cache_key = f"{user_id}:{course_id}"
+    _siblings = _canvas_id_groups.get(cache_key)
+    _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
 
     # Layer 1: in-memory
     if not force_refresh and cache_key in _course_grades_cache:
@@ -328,14 +364,25 @@ async def course_grades(
             logger.exception("Course detail snapshot read failed user_id=%s course_id=%s", user_id, course_id)
             snapshot = None
         if snapshot is not None:
-            _course_grades_cache[cache_key] = snapshot
-            logger.info("Serving Supabase course detail user_id=%s course_id=%s", user_id, course_id)
-            asyncio.create_task(_background_refresh_course_grades(token, user_id, course_id))
-            return snapshot
+            # Validate that the snapshot was computed with the same set of canvas_ids
+            # we now know about. A snapshot saved before the merge fix (or before the
+            # dashboard revealed a sibling ID) would show no grades — skip it and
+            # fall through to a live merged fetch.
+            expected_ids = set([course_id] + (_additional_ids or []))
+            snapshot_ids = set(snapshot.get("canvas_ids") or [course_id])
+            if snapshot_ids == expected_ids:
+                _course_grades_cache[cache_key] = snapshot
+                logger.info("Serving Supabase course detail user_id=%s course_id=%s", user_id, course_id)
+                asyncio.create_task(_background_refresh_course_grades(token, user_id, course_id))
+                return snapshot
+            logger.info(
+                "Discarding stale course detail snapshot (ids %s != expected %s) user_id=%s course_id=%s",
+                snapshot_ids, expected_ids, user_id, course_id,
+            )
 
     # Layer 3: live fetch
     try:
-        data = await asyncio.to_thread(get_course_grades, token, course_id, user_id)
+        data = await asyncio.to_thread(get_course_grades, token, course_id, user_id, _additional_ids)
         _course_grades_cache[cache_key] = data
         try:
             await asyncio.to_thread(save_course_detail_snapshot, user_id, course_id, data)
@@ -356,6 +403,8 @@ def write_course_grade_overrides(
     token = _resolve_token(quercus_token, current_user)
     user_id = current_user["user_id"]
     cache_key = f"{user_id}:{course_id}"
+    _siblings = _canvas_id_groups.get(cache_key)
+    _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
     try:
         data = save_course_grade_overrides(
             token,
@@ -363,6 +412,7 @@ def write_course_grade_overrides(
             course_id,
             [override.model_dump() for override in body.overrides],
             cached_snapshot=_course_grades_cache.get(cache_key),
+            additional_canvas_ids=_additional_ids,
         )
         _course_grades_cache[cache_key] = data
         try:
@@ -384,9 +434,11 @@ def remove_course_grade_override(
     token = _resolve_token(quercus_token, current_user)
     user_id = current_user["user_id"]
     cache_key = f"{user_id}:{course_id}"
+    _siblings = _canvas_id_groups.get(cache_key)
+    _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
     try:
         cached = _course_grades_cache.get(cache_key)
-        data = delete_course_grade_override(token, user_id, course_id, component_key, cached)
+        data = delete_course_grade_override(token, user_id, course_id, component_key, cached, _additional_ids)
         _course_grades_cache[cache_key] = data
         try:
             save_course_detail_snapshot(user_id, course_id, data)

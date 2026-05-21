@@ -618,6 +618,29 @@ class TestCourseGradesAdditional:
         result = asyncio.get_event_loop().run_until_complete(run())
         assert result["course_id"] == 4001
 
+    def test_stale_snapshot_canvas_ids_mismatch_falls_through_to_live_fetch(self):
+        """If snapshot was saved with fewer canvas_ids than we now expect, skip it."""
+        import api.routers.courses as mod
+        # Snapshot stored only 1 canvas_id (saved before the merge fix)
+        stale_snapshot = {"course_id": 4002, "canvas_ids": [4002], "grade": {}, "components": []}
+        fresh_data = {"course_id": 4002, "canvas_ids": [4002, 9999], "grade": {"weighted_grade": 91.0}, "components": []}
+
+        async def run():
+            # Simulate dashboard having populated the sibling map
+            mod._canvas_id_groups["u-snap2:4002"] = [4002, 9999]
+            mod._canvas_id_groups["u-snap2:9999"] = [4002, 9999]
+            with patch("api.routers.courses._resolve_token", return_value="tok"), \
+                 patch("api.routers.courses.get_course_detail_snapshot", return_value=stale_snapshot), \
+                 patch("api.routers.courses.get_course_grades", return_value=fresh_data), \
+                 patch("api.routers.courses.save_course_detail_snapshot"):
+                result = await mod.course_grades(4002, False, "tok", {"user_id": "u-snap2"})
+            mod._canvas_id_groups.pop("u-snap2:4002", None)
+            mod._canvas_id_groups.pop("u-snap2:9999", None)
+            return result
+
+        result = asyncio.get_event_loop().run_until_complete(run())
+        assert result["grade"]["weighted_grade"] == 91.0
+
     def test_snapshot_read_failure_falls_back_to_live_fetch(self):
         import api.routers.courses as mod
         fake_data = {"course_id": 5001, "grade": {"weighted_grade": 70.0}, "components": []}

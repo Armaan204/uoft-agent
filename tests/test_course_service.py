@@ -92,6 +92,34 @@ class TestGradeFromPoints:
         assert result["group_breakdown"]["Assignments"]["earned"] == 90.0
 
 
+# ── _extract_uoft_code ───────────────────────────────────────────────────────
+
+class TestExtractUoftCode:
+    def test_plain_code_returned_unchanged(self):
+        from api.services.course_service import _extract_uoft_code
+        assert _extract_uoft_code("ARC181H1") == "ARC181H1"
+
+    def test_strips_trailing_section_label(self):
+        from api.services.course_service import _extract_uoft_code
+        assert _extract_uoft_code("ARC181H1 Studio") == "ARC181H1"
+
+    def test_strips_lecture_suffix(self):
+        from api.services.course_service import _extract_uoft_code
+        assert _extract_uoft_code("JAV101H1 Lecture") == "JAV101H1"
+
+    def test_utsc_format(self):
+        from api.services.course_service import _extract_uoft_code
+        assert _extract_uoft_code("CSCA08H3") == "CSCA08H3"
+
+    def test_st_george_format(self):
+        from api.services.course_service import _extract_uoft_code
+        assert _extract_uoft_code("CSC490H1") == "CSC490H1"
+
+    def test_fallback_for_non_matching_code(self):
+        from api.services.course_service import _extract_uoft_code
+        assert _extract_uoft_code("SomeOtherCode") == "SomeOtherCode"
+
+
 # ── list_current_term_courses ─────────────────────────────────────────────────
 
 class TestListCurrentTermCourses:
@@ -108,6 +136,7 @@ class TestListCurrentTermCourses:
         assert len(result) == 2
         assert result[0]["id"] == 1
         assert result[0]["course_code"] == "CSCA08H3"
+        assert result[0]["canvas_ids"] == [1]
         assert "term" in result[0]
 
     def test_returns_empty_list_when_no_courses(self):
@@ -116,6 +145,177 @@ class TestListCurrentTermCourses:
             MockClient.return_value.get_courses.return_value = []
             result = list_current_term_courses("fake-token")
         assert result == []
+
+    def test_groups_duplicate_codes_and_keeps_lowest_id(self):
+        """Duplicate course codes collect all canvas_ids; lowest id is canonical."""
+        from api.services.course_service import list_current_term_courses
+        fake_courses = [
+            {"id": 200, "name": "ARC181H1 Lecture", "course_code": "ARC181H1", "term": {"name": "2026 Winter"}},
+            {"id": 100, "name": "ARC181H1 Studio", "course_code": "ARC181H1", "term": {"name": "2026 Winter"}},
+            {"id": 50, "name": "JAV101H1", "course_code": "JAV101H1", "term": {"name": "2026 Winter"}},
+        ]
+        with patch("api.services.course_service.UncachedQuercusClient") as MockClient:
+            MockClient.return_value.get_courses.return_value = fake_courses
+            result = list_current_term_courses("fake-token")
+
+        assert len(result) == 2
+        codes = [r["course_code"] for r in result]
+        assert "ARC181H1" in codes
+        assert "JAV101H1" in codes
+        arc_entry = next(r for r in result if r["course_code"] == "ARC181H1")
+        assert arc_entry["id"] == 100           # lowest canvas_id is canonical
+        assert set(arc_entry["canvas_ids"]) == {100, 200}   # both IDs collected
+        jav_entry = next(r for r in result if r["course_code"] == "JAV101H1")
+        assert jav_entry["canvas_ids"] == [50]
+
+    def test_groups_differing_raw_codes_that_share_uoft_code(self):
+        """Canvas returns 'ARC181H1' and 'ARC181H1 Studio' — both normalize to ARC181H1."""
+        from api.services.course_service import list_current_term_courses
+        fake_courses = [
+            {"id": 200, "name": "ARC181H1 Lecture", "course_code": "ARC181H1", "term": {"name": "2026 Winter"}},
+            {"id": 100, "name": "ARC181H1 Studio", "course_code": "ARC181H1 Studio", "term": {"name": "2026 Winter"}},
+        ]
+        with patch("api.services.course_service.UncachedQuercusClient") as MockClient:
+            MockClient.return_value.get_courses.return_value = fake_courses
+            result = list_current_term_courses("fake-token")
+
+        assert len(result) == 1
+        assert result[0]["course_code"] == "ARC181H1"
+        assert result[0]["id"] == 100           # lowest canvas_id is canonical
+        assert set(result[0]["canvas_ids"]) == {100, 200}
+
+    def test_courses_without_code_are_kept_as_is(self):
+        """Courses with no course_code bypass deduplication and get a canvas_ids list."""
+        from api.services.course_service import list_current_term_courses
+        fake_courses = [
+            {"id": 1, "name": "Course A", "course_code": None, "term": {}},
+            {"id": 2, "name": "Course B", "course_code": None, "term": {}},
+        ]
+        with patch("api.services.course_service.UncachedQuercusClient") as MockClient:
+            MockClient.return_value.get_courses.return_value = fake_courses
+            result = list_current_term_courses("fake-token")
+        assert len(result) == 2
+        assert result[0]["canvas_ids"] == [1]
+        assert result[1]["canvas_ids"] == [2]
+
+
+# ── _merge_groups_and_submissions ────────────────────────────────────────────
+
+class TestMergeGroupsAndSubmissions:
+    def _make_group(self, group_id, name, assignments):
+        return {"id": group_id, "name": name, "group_weight": 0.0, "rules": {}, "assignments": assignments}
+
+    def _make_assignment(self, assignment_id, name, points=100):
+        return {"id": assignment_id, "name": name, "points_possible": points}
+
+    def _make_sub(self, assignment_id, score):
+        return {"assignment_id": assignment_id, "score": score}
+
+    def test_single_course_passthrough(self):
+        from api.services.course_service import _merge_groups_and_submissions
+        groups = [self._make_group(1, "Assignments", [self._make_assignment(10, "A1")])]
+        subs = [self._make_sub(10, 80.0)]
+        merged_groups, merged_subs = _merge_groups_and_submissions([groups], [subs])
+        assert len(merged_groups) == 1
+        assert len(merged_subs) == 1
+        assert merged_subs[0]["score"] == 80.0
+
+    def test_graded_beats_ungraded_for_same_assignment(self):
+        from api.services.course_service import _merge_groups_and_submissions
+        # Course 1: A1 ungraded; Course 2: A1 graded at 82
+        g1 = [self._make_group(1, "G1", [self._make_assignment(10, "A1")])]
+        s1 = []
+        g2 = [self._make_group(2, "G2", [self._make_assignment(20, "A1")])]
+        s2 = [self._make_sub(20, 82.0)]
+        merged_groups, merged_subs = _merge_groups_and_submissions([g1, s1, g2, s2][::2], [g1, s1, g2, s2][1::2])
+        assert len(merged_subs) == 1
+        assert merged_subs[0]["score"] == 82.0
+
+    def test_lower_score_wins_when_both_graded(self):
+        from api.services.course_service import _merge_groups_and_submissions
+        g1 = [self._make_group(1, "G1", [self._make_assignment(10, "A1")])]
+        s1 = [self._make_sub(10, 95.0)]
+        g2 = [self._make_group(2, "G2", [self._make_assignment(20, "A1")])]
+        s2 = [self._make_sub(20, 82.0)]
+        merged_groups, merged_subs = _merge_groups_and_submissions([g1, g2], [s1, s2])
+        assert len(merged_subs) == 1
+        assert merged_subs[0]["score"] == 82.0
+
+    def test_unique_assignments_from_secondary_go_to_supplemental_group(self):
+        from api.services.course_service import _merge_groups_and_submissions
+        # Course 1 (primary, 2 graded): A1 at 90, A2 at 80
+        # Course 2 (secondary, 2 graded, tie→idx 0 wins): A1 at 85 (lower wins), A3 at 70 (unique→supplemental)
+        g1 = [self._make_group(1, "G1", [
+            self._make_assignment(10, "A1"),
+            self._make_assignment(11, "A2"),
+        ])]
+        s1 = [self._make_sub(10, 90.0), self._make_sub(11, 80.0)]
+        g2 = [self._make_group(2, "G2", [
+            self._make_assignment(20, "A1"),
+            self._make_assignment(21, "A3"),
+        ])]
+        s2 = [self._make_sub(20, 85.0), self._make_sub(21, 70.0)]
+        merged_groups, merged_subs = _merge_groups_and_submissions([g1, g2], [s1, s2])
+        group_names = [g["name"] for g in merged_groups]
+        # A3 only exists in secondary (Course 2) → lands in the supplemental group
+        assert "Additional Assessments" in group_names
+        supplemental = next(g for g in merged_groups if g["name"] == "Additional Assessments")
+        assert any(a["name"] == "A3" for a in supplemental["assignments"])
+        # Lower score wins for A1 (85 beats 90)
+        assert any(s["score"] == 85.0 for s in merged_subs)
+
+    def test_primary_is_course_with_most_grades(self):
+        from api.services.course_service import _merge_groups_and_submissions
+        # Course 0: no grades; Course 1: 2 graded → should be primary (its group structure used)
+        g0 = [self._make_group(99, "PrimaryLecture", [self._make_assignment(1, "Q1")])]
+        s0 = []
+        g1 = [
+            self._make_group(11, "Studio", [self._make_assignment(10, "A1")]),
+            self._make_group(12, "Studio2", [self._make_assignment(11, "A2")]),
+        ]
+        s1 = [self._make_sub(10, 80.0), self._make_sub(11, 75.0)]
+        merged_groups, merged_subs = _merge_groups_and_submissions([g0, g1], [s0, s1])
+        # Primary is g1 (2 graded); g0's unique assignment Q1 goes to supplemental
+        primary_group_names = [g["name"] for g in merged_groups if g["name"] != "Additional Assessments"]
+        assert "Studio" in primary_group_names
+        supplemental = next((g for g in merged_groups if g["name"] == "Additional Assessments"), None)
+        assert supplemental is not None
+        assert any(a["name"] == "Q1" for a in supplemental["assignments"])
+
+    def test_case_and_whitespace_insensitive_dedup(self):
+        from api.services.course_service import _merge_groups_and_submissions
+        g1 = [self._make_group(1, "G1", [self._make_assignment(10, "  Assignment 1 ")])]
+        s1 = [self._make_sub(10, 88.0)]
+        g2 = [self._make_group(2, "G2", [self._make_assignment(20, "assignment 1")])]
+        s2 = [self._make_sub(20, 72.0)]
+        _, merged_subs = _merge_groups_and_submissions([g1, g2], [s1, s2])
+        # Only one submission, lower score wins
+        assert len(merged_subs) == 1
+        assert merged_subs[0]["score"] == 72.0
+
+
+# ── _resolve_weights_for_canvas_ids ──────────────────────────────────────────
+
+class TestResolveWeightsForCanvasIds:
+    def test_returns_first_valid_weights(self):
+        from api.services.course_service import _resolve_weights_for_canvas_ids
+        mock_client = MagicMock()
+        with patch("api.services.course_service._resolve_course_weights_uncached") as mock_resolve:
+            mock_resolve.side_effect = [
+                (None, None),                          # first id: no weights
+                ({"Assignments": 100.0}, "canvas"),    # second id: weights found
+            ]
+            weights, source = _resolve_weights_for_canvas_ids([1, 2], mock_client)
+        assert weights == {"Assignments": 100.0}
+        assert source == "canvas"
+
+    def test_returns_none_when_all_ids_have_no_weights(self):
+        from api.services.course_service import _resolve_weights_for_canvas_ids
+        mock_client = MagicMock()
+        with patch("api.services.course_service._resolve_course_weights_uncached", return_value=(None, None)):
+            weights, source = _resolve_weights_for_canvas_ids([1, 2, 3], mock_client)
+        assert weights is None
+        assert source is None
 
 
 # ── get_dashboard_course ──────────────────────────────────────────────────────
@@ -184,6 +384,45 @@ class TestGetDashboardCourse:
             mock_c.get_assignments.return_value = []
             result = get_dashboard_course("tok", self._course())
         assert result["display_grade"] == result["current_grade"]
+
+    def test_merged_path_used_when_multiple_canvas_ids(self):
+        """When a course has multiple canvas_ids, merged groups/submissions are used."""
+        from api.services.course_service import get_dashboard_course
+        course = {
+            "id": 1001,
+            "name": "Design Studio",
+            "course_code": "JAV101H1",
+            "term": {"name": "2026 Winter"},
+            "canvas_ids": [1001, 2002],
+        }
+        with patch("api.services.course_service.UncachedQuercusClient") as MockClient, \
+             patch("api.services.course_service._merge_groups_and_submissions",
+                   return_value=(self._groups(), self._submissions())) as mock_merge, \
+             patch("api.services.course_service._resolve_weights_for_canvas_ids",
+                   return_value=({"Assignments": 100.0}, "canvas")):
+            mock_c = MockClient.return_value
+            mock_c.get_assignment_groups.return_value = self._groups()
+            mock_c.get_submissions.return_value = self._submissions()
+            mock_c.get_assignments.return_value = []
+            result = get_dashboard_course("tok", course)
+
+        mock_merge.assert_called_once()
+        assert result["canvas_ids"] == [1001, 2002]
+        assert result["id"] == 1001
+
+    def test_canvas_ids_in_response_for_single_course(self):
+        """canvas_ids is always present in the dashboard response."""
+        from api.services.course_service import get_dashboard_course
+        with patch("api.services.course_service.UncachedQuercusClient") as MockClient, \
+             patch("api.services.course_service._resolve_course_weights_uncached",
+                   return_value=(None, None)):
+            mock_c = MockClient.return_value
+            mock_c.get_assignment_groups.return_value = self._groups()
+            mock_c.get_submissions.return_value = self._submissions()
+            mock_c.get_assignments.return_value = []
+            result = get_dashboard_course("tok", self._course())
+
+        assert result["canvas_ids"] == [1001]
 
 
 # ── get_course_weights ────────────────────────────────────────────────────────

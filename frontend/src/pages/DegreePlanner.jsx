@@ -226,11 +226,11 @@ function GradLoading() {
   )
 }
 
-function GradEmpty({ title, note, action }) {
+function GradEmpty({ title, note, action, warning }) {
   return (
     <div className="grad-page">
       <div className="grad-empty rise">
-        <div className="icon-wrap" style={{ marginBottom: 20 }}>
+        <div className="grad-empty-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
@@ -239,9 +239,8 @@ function GradEmpty({ title, note, action }) {
         </div>
         <p className="grad-empty-title">{title}</p>
         {note && <p className="grad-empty-note">{note}</p>}
-        <div style={{ marginTop: 12 }}>
-          {action}
-        </div>
+        {action && <div className="grad-empty-action">{action}</div>}
+        {warning && <p className="grad-empty-warning">{warning}</p>}
       </div>
     </div>
   )
@@ -359,6 +358,7 @@ export default function DegreePlanner() {
           title="Import your ACORN data first"
           note="Degree Planner needs your academic history to check graduation progress."
           action={<Link to="/acorn" className="btn-view grad-cta">Go to ACORN →</Link>}
+          warning="You must be enrolled in a program to use this feature."
         />
       )
     }

@@ -4,6 +4,7 @@ api/services/course_service.py - Uncached Quercus and grading service wrappers.
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from html import unescape
@@ -97,26 +98,83 @@ def _format_term_name(term: dict | None) -> str:
     return ""
 
 
+# Matches UofT course codes: 3-4 uppercase letters + 2-3 digits + H/Y + digit
+# e.g. ARC181H1, CSCA08H3, CSC490H1 — strips trailing section labels like "Studio"
+_UOFT_CODE_RE = re.compile(r"[A-Z]{3,4}\d{2,3}[HY]\d")
+
+
+def _extract_uoft_code(course_code: str) -> str:
+    """Return the canonical UofT course code extracted from a Canvas course_code string.
+
+    Canvas may append section labels (e.g. 'ARC181H1 Studio', 'JAV101H1 Lecture').
+    This strips them so lecture + studio sections group under one code.
+    Falls back to the original string if no UofT pattern is found.
+    """
+    m = _UOFT_CODE_RE.search(course_code.upper())
+    return m.group(0) if m else course_code
+
+
+_logger = logging.getLogger(__name__)
+
+
 def list_current_term_courses(quercus_token: str) -> list[dict[str, Any]]:
     client = UncachedQuercusClient(token=quercus_token)
     courses = client.get_courses()
-    return [
-        {
-            "id": course["id"],
-            "name": course["name"],
-            "course_code": course.get("course_code"),
-            "term": course.get("term"),
-        }
-        for course in courses
-    ]
+
+    # Canvas can surface the same UofT course under multiple IDs (e.g. separate
+    # lecture and studio sites). Group by canonical UofT code so grade data can
+    # be merged downstream. The lowest canvas_id becomes the canonical `id`.
+    seen_codes: dict[str, int] = {}  # normalized_code -> index in result
+    result: list[dict[str, Any]] = []
+    for course in courses:
+        raw_code = course.get("course_code") or ""
+        norm_code = _extract_uoft_code(raw_code) if raw_code else ""
+        _logger.debug(
+            "Canvas course id=%s raw_code=%r norm_code=%r name=%r",
+            course.get("id"), raw_code, norm_code, course.get("name"),
+        )
+        if not norm_code:
+            result.append({
+                "id": course["id"],
+                "name": course["name"],
+                "course_code": raw_code or None,
+                "term": course.get("term"),
+                "canvas_ids": [course["id"]],
+            })
+            continue
+        if norm_code in seen_codes:
+            existing = result[seen_codes[norm_code]]
+            existing["canvas_ids"].append(course["id"])
+            if course["id"] < existing["id"]:
+                existing["id"] = course["id"]
+                existing["name"] = course["name"]
+        else:
+            seen_codes[norm_code] = len(result)
+            result.append({
+                "id": course["id"],
+                "name": course["name"],
+                "course_code": norm_code,
+                "term": course.get("term"),
+                "canvas_ids": [course["id"]],
+            })
+    return result
 
 
 def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str, Any]:
     client = UncachedQuercusClient(token=quercus_token)
     course_id = course["id"]
-    groups = client.get_assignment_groups(course_id)
-    submissions = client.get_submissions(course_id)
-    weights, _source = _resolve_course_weights_uncached(course_id, client)
+    canvas_ids: list[int] = course.get("canvas_ids") or [course_id]
+
+    if len(canvas_ids) > 1:
+        all_groups = [client.get_assignment_groups(cid) for cid in canvas_ids]
+        all_subs = [client.get_submissions(cid) for cid in canvas_ids]
+        groups, submissions = _merge_groups_and_submissions(all_groups, all_subs)
+        weights, _source = _resolve_weights_for_canvas_ids(canvas_ids, client)
+    else:
+        groups = client.get_assignment_groups(course_id)
+        submissions = client.get_submissions(course_id)
+        weights, _source = _resolve_course_weights_uncached(course_id, client)
+
     current_grade = 0.0
     projected_grade = 0.0
     displayed_grade = 0.0
@@ -143,9 +201,20 @@ def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str
         displayed_grade = current_grade
         displayed_letter = grade["letter"]
 
-    upcoming_deadlines = _get_upcoming_deadlines(client, course_id, course.get("course_code"))
+    # Collect deadlines from all canvas sites; deduplicate by (name, due_at).
+    seen_deadlines: set[tuple[str, str]] = set()
+    upcoming_deadlines: list[dict[str, Any]] = []
+    for cid in canvas_ids:
+        for dl in _get_upcoming_deadlines(client, cid, course.get("course_code")):
+            key = (dl.get("name", ""), dl.get("due_at", ""))
+            if key not in seen_deadlines:
+                seen_deadlines.add(key)
+                upcoming_deadlines.append(dl)
+    upcoming_deadlines.sort(key=lambda d: d["due_at"])
+
     return {
         "id": course_id,
+        "canvas_ids": canvas_ids,
         "course_code": course.get("course_code"),
         "name": course.get("name"),
         "term_name": _format_term_name(course.get("term")),
@@ -235,11 +304,23 @@ def get_course_weights(quercus_token: str, course_id: int | str) -> dict[str, An
     }
 
 
-def get_course_grades(quercus_token: str, course_id: int | str, user_id: str | int | None = None) -> dict[str, Any]:
+def get_course_grades(
+    quercus_token: str,
+    course_id: int | str,
+    user_id: str | int | None = None,
+    additional_canvas_ids: list[int] | None = None,
+) -> dict[str, Any]:
     client = UncachedQuercusClient(token=quercus_token)
-    groups = client.get_assignment_groups(course_id)
-    submissions = client.get_submissions(course_id)
-    weights, source = _resolve_course_weights_uncached(course_id, client)
+    all_canvas_ids = [int(course_id)] + (additional_canvas_ids or [])
+    if len(all_canvas_ids) > 1:
+        all_groups = [client.get_assignment_groups(cid) for cid in all_canvas_ids]
+        all_subs = [client.get_submissions(cid) for cid in all_canvas_ids]
+        groups, submissions = _merge_groups_and_submissions(all_groups, all_subs)
+        weights, source = _resolve_weights_for_canvas_ids(all_canvas_ids, client)
+    else:
+        groups = client.get_assignment_groups(course_id)
+        submissions = client.get_submissions(course_id)
+        weights, source = _resolve_course_weights_uncached(course_id, client)
     enrollment = client.get_grades(course_id)
     saved_grades: dict[str, dict[str, Any]] = {}
     overrides: dict[str, dict[str, Any]] = {}
@@ -262,6 +343,7 @@ def get_course_grades(quercus_token: str, course_id: int | str, user_id: str | i
 
     return {
         "course_id": int(course_id),
+        "canvas_ids": all_canvas_ids,
         "weights_source": source,
         "weights": weights or {},
         "grade": grade,
@@ -286,6 +368,7 @@ def save_course_grade_overrides(
     course_id: int | str,
     overrides: list[dict[str, float | str]],
     cached_snapshot: dict[str, Any] | None = None,
+    additional_canvas_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     """Validate, persist overrides, and return updated grade data.
 
@@ -304,9 +387,16 @@ def save_course_grade_overrides(
         enrollment = cached_snapshot.get("enrollment") or {}  # type: ignore[union-attr]
     else:
         quercus_client = UncachedQuercusClient(token=quercus_token)
-        groups = quercus_client.get_assignment_groups(course_id)
-        submissions = quercus_client.get_submissions(course_id)
-        weights, source = _resolve_course_weights_uncached(course_id, quercus_client)
+        all_canvas_ids = [int(course_id)] + (additional_canvas_ids or [])
+        if len(all_canvas_ids) > 1:
+            all_grps = [quercus_client.get_assignment_groups(cid) for cid in all_canvas_ids]
+            all_sbs = [quercus_client.get_submissions(cid) for cid in all_canvas_ids]
+            groups, submissions = _merge_groups_and_submissions(all_grps, all_sbs)
+            weights, source = _resolve_weights_for_canvas_ids(all_canvas_ids, quercus_client)
+        else:
+            groups = quercus_client.get_assignment_groups(course_id)
+            submissions = quercus_client.get_submissions(course_id)
+            weights, source = _resolve_course_weights_uncached(course_id, quercus_client)
         if not weights:
             raise CourseServiceError("No Canvas weights or accessible syllabus weights found for this course")
 
@@ -384,6 +474,7 @@ def delete_course_grade_override(
     course_id: int | str,
     component_key: str,
     cached_snapshot: dict[str, Any] | None = None,
+    additional_canvas_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     """Remove one manual override and return updated grade data.
 
@@ -407,7 +498,7 @@ def delete_course_grade_override(
             "overrides": all_overrides,
         }
 
-    return get_course_grades(quercus_token, course_id, user_id)
+    return get_course_grades(quercus_token, course_id, user_id, additional_canvas_ids)
 
 
 def get_course_scenarios(quercus_token: str, course_id: int | str) -> dict[str, Any]:
@@ -481,6 +572,107 @@ def get_course_scenarios(quercus_token: str, course_id: int | str) -> dict[str, 
         },
         "targets": [{"letter": letter, "threshold": threshold} for letter, threshold in UOFT_THRESHOLDS],
     }
+
+
+def _normalize_assignment_name(name: str) -> str:
+    """Normalise an assignment name for cross-course deduplication."""
+    return re.sub(r"\s+", " ", (name or "").strip().lower())
+
+
+def _merge_groups_and_submissions(
+    all_groups: list[list[dict]],
+    all_submissions: list[list[dict]],
+) -> tuple[list[dict], list[dict]]:
+    """Merge assignment groups and submissions from multiple Canvas courses.
+
+    Selects the course with the most graded submissions as primary (preserving
+    its group/weight structure), then adds unique assignments from secondary
+    courses in a supplemental group.  For same-named assignments a graded
+    submission always beats an ungraded one; when both are graded the lower
+    score wins.
+    """
+    # Rank courses by graded submission count; tie-break by original index.
+    graded_counts = []
+    for groups, submissions in zip(all_groups, all_submissions):
+        sub_by_id = {s["assignment_id"]: s for s in submissions}
+        all_ids = {a["id"] for g in groups for a in g.get("assignments", [])}
+        graded_counts.append(
+            sum(1 for aid in all_ids if sub_by_id.get(aid, {}).get("score") is not None)
+        )
+    order = sorted(range(len(all_groups)), key=lambda i: (-graded_counts[i], i))
+    primary_idx = order[0]
+
+    # Build a canonical (assignment, submission) for each normalised name.
+    # Primary course is processed first so its assignment IDs take priority.
+    best_by_name: dict[str, tuple[dict, dict | None]] = {}
+    for idx in order:
+        sub_by_id = {s["assignment_id"]: s for s in all_submissions[idx]}
+        for group in all_groups[idx]:
+            for assignment in group.get("assignments", []):
+                norm = _normalize_assignment_name(assignment.get("name", ""))
+                sub = sub_by_id.get(assignment["id"])
+                if norm not in best_by_name:
+                    best_by_name[norm] = (assignment, sub)
+                else:
+                    _, existing_s = best_by_name[norm]
+                    existing_graded = existing_s is not None and existing_s.get("score") is not None
+                    new_graded = sub is not None and sub.get("score") is not None
+                    if not existing_graded and new_graded:
+                        best_by_name[norm] = (assignment, sub)
+                    elif existing_graded and new_graded and sub["score"] < existing_s["score"]:
+                        best_by_name[norm] = (assignment, sub)
+
+    # Rebuild merged groups: primary course structure first, then a supplemental
+    # group for assignments that exist only in secondary courses.
+    seen_norms: set[str] = set()
+    merged_groups: list[dict] = []
+    for group in all_groups[primary_idx]:
+        merged_assignments = []
+        for assignment in group.get("assignments", []):
+            norm = _normalize_assignment_name(assignment.get("name", ""))
+            seen_norms.add(norm)
+            canonical_a, _ = best_by_name.get(norm, (assignment, None))
+            merged_assignments.append(canonical_a)
+        merged_groups.append({**group, "assignments": merged_assignments})
+
+    supplemental: list[dict] = []
+    for idx in order[1:]:
+        for group in all_groups[idx]:
+            for assignment in group.get("assignments", []):
+                norm = _normalize_assignment_name(assignment.get("name", ""))
+                if norm in seen_norms:
+                    continue
+                seen_norms.add(norm)
+                canonical_a, _ = best_by_name.get(norm, (assignment, None))
+                supplemental.append(canonical_a)
+    if supplemental:
+        merged_groups.append({
+            "id": "supplemental",
+            "name": "Additional Assessments",
+            "group_weight": 0.0,
+            "rules": {},
+            "assignments": supplemental,
+        })
+
+    # Emit one submission per unique assignment using the canonical assignment_id.
+    merged_submissions = [
+        {**sub, "assignment_id": canonical_a["id"]}
+        for _norm, (canonical_a, sub) in best_by_name.items()
+        if sub is not None and sub.get("score") is not None
+    ]
+    return merged_groups, merged_submissions
+
+
+def _resolve_weights_for_canvas_ids(
+    canvas_ids: list[int],
+    client: UncachedQuercusClient,
+) -> tuple[dict[str, float] | None, str | None]:
+    """Try each canvas_id in order, returning the first successful weight resolution."""
+    for canvas_id in canvas_ids:
+        weights, source = _resolve_course_weights_uncached(canvas_id, client)
+        if weights:
+            return weights, source
+    return None, None
 
 
 def _resolve_course_weights_uncached(course_id: int | str, client: UncachedQuercusClient) -> tuple[dict[str, float] | None, str | None]:
