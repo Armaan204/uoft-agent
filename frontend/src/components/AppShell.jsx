@@ -13,10 +13,10 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <header className="mobile-topbar">
+        <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} />
         <div className="mobile-topbar-brand">
           <Logo />
         </div>
-        <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} />
       </header>
 
       <aside className="sidebar app-sidebar">
