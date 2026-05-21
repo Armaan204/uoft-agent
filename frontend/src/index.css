@@ -339,12 +339,18 @@ h1 {
     top: 64px;
   }
 
-  .btn-github-label {
+  .btn-github-label,
+  .btn-google-label {
     display: none;
   }
 
-  .btn-github {
-    padding: 8px 10px;
+  .btn-github,
+  .btn-google--nav {
+    padding: 0;
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+    gap: 0;
   }
 }
 
