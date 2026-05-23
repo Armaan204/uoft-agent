@@ -12,8 +12,11 @@ import ChatHistory from './pages/ChatHistory'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
 import DegreePlanner from './pages/DegreePlanner'
+import Disclaimers from './pages/Disclaimers'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfUse from './pages/TermsOfUse'
 
 function AuthCallbackPage() {
   const navigate = useNavigate()
@@ -109,6 +112,9 @@ export default function App() {
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsOfUse />} />
+      <Route path="/disclaimers" element={<Disclaimers />} />
       <Route
         path="/onboarding"
         element={

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import dashboardImg from '../assets/dashboard.png'
 import chatImg from '../assets/chat.png'
 import gradeImg from '../assets/gradebreakdown.png'
@@ -108,6 +109,23 @@ export default function Login() {
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
+
+      <footer style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        display: 'flex',
+        justifyContent: 'center',
+        gap: 18,
+        padding: '10px 24px',
+        fontSize: 11,
+        zIndex: 10,
+      }}>
+        <Link to="/privacy" className="site-footer-link">Privacy Policy</Link>
+        <Link to="/terms" className="site-footer-link">Terms of Use</Link>
+        <Link to="/disclaimers" className="site-footer-link">Disclaimers</Link>
+      </footer>
 
       <div className="login-slide-footer">
         <div className="login-caption-stack">

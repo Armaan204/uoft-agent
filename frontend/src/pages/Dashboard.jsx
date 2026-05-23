@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import AnnouncementList from '../components/AnnouncementList'
@@ -204,6 +204,21 @@ queryClient.setQueryData(['dashboard'], fresh)
         </div>
         </>
       )}
+
+      <footer style={{
+        marginTop: 48,
+        paddingTop: 16,
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        gap: 16,
+        justifyContent: 'center',
+        flexWrap: 'wrap',
+        fontSize: 12,
+      }}>
+        <Link to="/privacy" className="site-footer-link">Privacy Policy</Link>
+        <Link to="/terms" className="site-footer-link">Terms of Use</Link>
+        <Link to="/disclaimers" className="site-footer-link">Disclaimers</Link>
+      </footer>
     </div>
   )
 }
