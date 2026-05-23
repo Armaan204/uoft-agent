@@ -413,6 +413,36 @@ export default function DegreePlanner() {
         </button>
       </div>
 
+      {programs.some(p => !p.error) && (
+        <div style={{
+          background: 'var(--yellow-bg)',
+          borderLeft: '3px solid var(--yellow)',
+          borderRadius: 8,
+          padding: '10px 14px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 10,
+          fontSize: 13,
+          lineHeight: 1.5,
+        }}>
+          <span style={{ flexShrink: 0, marginTop: 1 }}>⚠️</span>
+          <span style={{ color: 'var(--text)' }}>
+            Degree requirements shown here may not be fully accurate. Always confirm your
+            progress with the official{' '}
+            <a
+              href="https://acorn.utoronto.ca/sws/#/progress/undergraduate/auditDegree"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--yellow)', textDecoration: 'underline' }}
+            >
+              Degree Explorer on ACORN
+            </a>{' '}
+            before making enrollment decisions.
+          </span>
+        </div>
+      )}
+
       {programs.map((prog, i) => (
         prog.error
           ? <ProgramError key={prog.program_name || i} prog={prog} />
