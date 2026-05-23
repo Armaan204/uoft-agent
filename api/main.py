@@ -8,7 +8,10 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from api.limiter import limiter
 from api.routers.acorn import router as acorn_router
 from api.routers.auth import router as auth_router
 from api.routers.chat import router as chat_router
@@ -16,6 +19,8 @@ from api.routers.courses import router as courses_router
 from api.routers.graduation import router as graduation_router
 
 app = FastAPI(title="UofT Agent API", version="0.1.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 if os.getenv("ENVIRONMENT") != "production":
     from api.routers.admin import router as admin_router

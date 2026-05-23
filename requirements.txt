@@ -11,6 +11,7 @@ fastapi
 uvicorn[standard]
 python-jose[cryptography]
 python-multipart
+slowapi==0.1.9
 
 # CI / test dependencies
 pytest-asyncio          # async test support (asyncio_mode = auto in pytest.ini)

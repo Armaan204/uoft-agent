@@ -8,9 +8,11 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
+from starlette.requests import Request
 
 from agent.agent import run as run_agent
+from api.limiter import limit
 from api.dependencies import get_current_user
 from api.services.chat_history_service import (
     ChatHistoryServiceError,
@@ -31,6 +33,13 @@ class ChatRequest(BaseModel):
     quercus_token: str | None = None
     conversation_id: str | None = None
 
+    @validator("message")
+    @classmethod
+    def message_max_length(cls, v: str) -> str:
+        if len(v) > 2000:
+            raise ValueError("Message exceeds the 2000-character limit")
+        return v
+
 
 def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
     if quercus_token:
@@ -48,7 +57,8 @@ def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
 
 
 @router.post("")
-async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
+@limit("10/minute")
+async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user), request: Request = None):
     quercus_token = _resolve_token(payload.quercus_token, current_user)
     conversation_id = str(payload.conversation_id or "").strip() or None
 

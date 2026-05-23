@@ -34,6 +34,7 @@ def run(
     verbose: bool = True,
     return_tool_calls: bool = False,
     history: list[dict] | None = None,
+    max_iterations: int = 8,
 ) -> "str | tuple[str, list[dict]]":
     """Send a user message through the agent loop and return the final answer.
 
@@ -63,6 +64,7 @@ def run(
     ]
     messages: list[dict] = [*prior, {"role": "user", "content": user_message}]
     all_tool_calls: list[dict] = []
+    iteration = 0
 
     while True:
         response = client.messages.create(
@@ -84,6 +86,11 @@ def run(
         # Otherwise handle tool_use blocks
         if response.stop_reason != "tool_use":
             answer = _extract_text(response.content)
+            return (answer, all_tool_calls) if return_tool_calls else answer
+
+        iteration += 1
+        if iteration >= max_iterations:
+            answer = "I've reached my tool-use limit for this request, please try a more specific question."
             return (answer, all_tool_calls) if return_tool_calls else answer
 
         tool_results = []
