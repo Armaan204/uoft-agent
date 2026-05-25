@@ -110,18 +110,7 @@ export default function Login() {
         </svg>
       </button>
 
-      <footer style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        display: 'flex',
-        justifyContent: 'center',
-        gap: 18,
-        padding: '10px 24px',
-        fontSize: 11,
-        zIndex: 10,
-      }}>
+      <footer className="login-footer">
         <Link to="/privacy" className="site-footer-link">Privacy Policy</Link>
         <Link to="/terms" className="site-footer-link">Terms of Use</Link>
         <Link to="/disclaimers" className="site-footer-link">Disclaimers</Link>

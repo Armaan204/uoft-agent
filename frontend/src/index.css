@@ -221,7 +221,7 @@ h1 {
   top: 80px;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 40px;
   z-index: 0;
 }
 
@@ -252,7 +252,7 @@ h1 {
   top: 80px;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 40px;
   z-index: 1;
   background:
     linear-gradient(
@@ -391,7 +391,7 @@ h1 {
 
 .login-slide-footer {
   position: absolute;
-  bottom: 32px;
+  bottom: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -473,6 +473,24 @@ h1 {
     -webkit-backdrop-filter: none;
     background: var(--surface);
   }
+}
+
+.login-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  height: 40px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: oklch(8% 0.015 260 / 0.72);
+  border-top: 1px solid oklch(100% 0 0 / 0.12);
+  font-size: 11px;
 }
 
 /* ── End full-screen slider login ───────────────────────── */
