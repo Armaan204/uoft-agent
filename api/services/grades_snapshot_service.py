@@ -156,6 +156,7 @@ def save_course_detail_snapshot(user_id: str | int, course_id: int | str, data: 
                 {
                     "user_id": user_id,
                     "course_id": int(course_id),
+                    "course_code": data.get("course_code") or data.get("courseCode") or "",
                     "course_detail_data": payload,
                 },
                 on_conflict="user_id,course_id",

@@ -30,7 +30,8 @@
       "Bash(findstr \"Miss\")",
       "Bash(grep -v \"^$\")",
       "Bash(awk '{print $1}')",
-      "Bash(xargs -I{} git show {}:frontend/src/index.css)"
+      "Bash(xargs -I{} git show {}:frontend/src/index.css)",
+      "Bash(Remove-Item *)"
     ]
   }
 }
