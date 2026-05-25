@@ -1,5 +1,16 @@
+import * as Sentry from '@sentry/react'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+
+const _sentryDsn = import.meta.env.VITE_SENTRY_DSN
+if (_sentryDsn) {
+  Sentry.init({
+    dsn: _sentryDsn,
+    integrations: [Sentry.browserTracingIntegration()],
+    tracesSampleRate: 0.2,
+    environment: import.meta.env.MODE,
+  })
+}
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'

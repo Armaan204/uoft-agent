@@ -6,7 +6,16 @@ from __future__ import annotations
 
 import os
 
+import sentry_sdk
 from fastapi import FastAPI
+
+_sentry_dsn = os.getenv("SENTRY_DSN")
+if os.getenv("ENVIRONMENT") == "production" and _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        traces_sample_rate=0.2,
+        environment="production",
+    )
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded

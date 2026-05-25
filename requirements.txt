@@ -9,6 +9,7 @@ supabase==2.15.3        # Supabase Postgres client
 cryptography==45.0.4    # Fernet token encryption
 fastapi
 uvicorn[standard]
+sentry-sdk[fastapi]
 python-jose[cryptography]
 python-multipart
 slowapi==0.1.9
