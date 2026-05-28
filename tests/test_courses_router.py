@@ -127,7 +127,7 @@ class TestDashboardCourses:
                     current_user={"user_id": user_id, **{k: v for k, v in _user().items() if k != "user_id"}},
                 )
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["courses"] == [{"id": 1}]
         del mod._dashboard_cache[user_id]
 
@@ -148,7 +148,7 @@ class TestDashboardCourses:
                     current_user=_user(),
                 )
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["courses"] == fake_dashboard
 
     def test_raises_424_on_quercus_auth_error(self):
@@ -168,7 +168,7 @@ class TestDashboardCourses:
                 )
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.get_event_loop().run_until_complete(run())
+            asyncio.run(run())
         assert exc.value.status_code == 424
 
     def test_supabase_snapshot_returned_when_no_mem_cache(self):
@@ -191,7 +191,7 @@ class TestDashboardCourses:
                     current_user={"user_id": "u-fresh", **{k: v for k, v in _user().items() if k != "user_id"}},
                 )
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["courses"] == [{"id": 99}]
 
     def test_cached_dashboard_kicks_off_background_refresh(self):
@@ -211,7 +211,7 @@ class TestDashboardCourses:
             assert mock_task.called
             return result
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["courses"] == [{"id": 1}]
         del mod._dashboard_cache[user_id]
 
@@ -225,7 +225,7 @@ class TestBackgroundRefreshDashboard:
                  patch("api.routers.courses.save_snapshot"):
                 await mod._background_refresh_dashboard("tok", "u1")
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         assert mod._dashboard_cache["u1"]["courses"] == [{"id": 1, "term_name": "Fall 2024"}]
         del mod._dashboard_cache["u1"]
 
@@ -236,7 +236,7 @@ class TestBackgroundRefreshDashboard:
             with patch("api.routers.courses._live_fetch_dashboard", side_effect=RuntimeError("boom")):
                 await mod._background_refresh_dashboard("tok", "u-fail")
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
 
 # ── course_grades ─────────────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ class TestCourseGrades:
                     current_user={"user_id": user_id, **{k: v for k, v in _user().items() if k != "user_id"}},
                 )
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["course_id"] == course_id
         del mod._course_grades_cache[f"{user_id}:{course_id}"]
 
@@ -279,7 +279,7 @@ class TestCourseGrades:
                     current_user=_user(),
                 )
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["course_id"] == 3001
 
 
@@ -511,7 +511,7 @@ class TestLiveFetchDashboardAdditional:
                  patch("api.routers.courses.get_dashboard_announcements", return_value=[{"id": 10}]):
                 return await mod._live_fetch_dashboard("tok")
 
-        dashboard, announcements = asyncio.get_event_loop().run_until_complete(run())
+        dashboard, announcements = asyncio.run(run())
         assert [row["id"] for row in dashboard] == [1, 2]
         assert announcements == [{"id": 10}]
 
@@ -528,7 +528,7 @@ class TestDashboardCoursesAdditional:
                  patch("api.routers.courses.save_snapshot"):
                 return await mod.dashboard_courses(False, "tok", {"user_id": "u-fallback"})
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["term_name"] == "Winter 2025"
         del mod._dashboard_cache["u-fallback"]
 
@@ -542,7 +542,7 @@ class TestDashboardCoursesAdditional:
                 return await mod.dashboard_courses(True, "tok", _user())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.get_event_loop().run_until_complete(run())
+            asyncio.run(run())
         assert exc.value.status_code == 400
 
     def test_raises_500_on_unexpected_failure(self):
@@ -554,7 +554,7 @@ class TestDashboardCoursesAdditional:
                 return await mod.dashboard_courses(True, "tok", _user())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.get_event_loop().run_until_complete(run())
+            asyncio.run(run())
         assert exc.value.status_code == 500
 
     def test_live_fetch_snapshot_persist_failure_is_swallowed(self):
@@ -568,7 +568,7 @@ class TestDashboardCoursesAdditional:
                  patch("api.routers.courses.save_snapshot", side_effect=GradesSnapshotServiceError("write fail")):
                 return await mod.dashboard_courses(True, "tok", {"user_id": "u-persist"})
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["courses"] == fake_dashboard  # pragma: no cover
         del mod._dashboard_cache["u-persist"]  # pragma: no cover
 
@@ -584,7 +584,7 @@ class TestBackgroundRefreshDashboardAdditional:
             with patch("api.routers.courses._live_fetch_dashboard", side_effect=QuercusAuthError("expired")):
                 await mod._background_refresh_dashboard("tok", "u-auth")
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         assert mod._dashboard_cache["u-auth"]["auth_error"] == "quercus_token_invalid"
         del mod._dashboard_cache["u-auth"]
 
@@ -597,7 +597,7 @@ class TestBackgroundRefreshDashboardAdditional:
                  patch("api.routers.courses.save_snapshot", side_effect=GradesSnapshotServiceError("save fail")):
                 await mod._background_refresh_dashboard("tok", "u-snapshot")
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         assert mod._dashboard_cache["u-snapshot"]["courses"] == [{"id": 1}]  # pragma: no cover
         del mod._dashboard_cache["u-snapshot"]  # pragma: no cover
 
@@ -615,7 +615,7 @@ class TestCourseGradesAdditional:
             assert mock_task.called
             return result
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["course_id"] == 4001
 
     def test_stale_snapshot_canvas_ids_mismatch_falls_through_to_live_fetch(self):
@@ -638,7 +638,7 @@ class TestCourseGradesAdditional:
             mod._canvas_id_groups.pop("u-snap2:9999", None)
             return result
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["grade"]["weighted_grade"] == 91.0
 
     def test_snapshot_read_failure_falls_back_to_live_fetch(self):
@@ -652,7 +652,7 @@ class TestCourseGradesAdditional:
                  patch("api.routers.courses.save_course_detail_snapshot"):
                 return await mod.course_grades(5001, False, "tok", _user())
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["grade"]["weighted_grade"] == 70.0
 
     def test_snapshot_save_failure_after_live_fetch_is_swallowed(self):
@@ -667,7 +667,7 @@ class TestCourseGradesAdditional:
                  patch("api.routers.courses.save_course_detail_snapshot", side_effect=GradesSnapshotServiceError("write fail")):
                 return await mod.course_grades(6001, False, "tok", _user())
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert result["course_id"] == 6001  # pragma: no cover
 
     def test_raises_400_on_course_grades_error(self):
@@ -681,7 +681,7 @@ class TestCourseGradesAdditional:
                 return await mod.course_grades(7001, False, "tok", _user())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.get_event_loop().run_until_complete(run())
+            asyncio.run(run())
         assert exc.value.status_code == 400
 
 
@@ -694,7 +694,7 @@ class TestBackgroundRefreshCourseGrades:
                  patch("api.routers.courses.save_course_detail_snapshot"):
                 await mod._background_refresh_course_grades("tok", "u-course", 12)
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         assert mod._course_grades_cache["u-course:12"]["course_id"] == 12
         del mod._course_grades_cache["u-course:12"]
 
@@ -705,7 +705,7 @@ class TestBackgroundRefreshCourseGrades:
             with patch("api.routers.courses.get_course_grades", side_effect=RuntimeError("boom")):
                 await mod._background_refresh_course_grades("tok", "u-course", 13)
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
 
 class TestWriteCourseGradeOverridesAdditional:
