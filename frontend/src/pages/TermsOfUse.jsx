@@ -177,8 +177,8 @@ export default function TermsOfUse() {
         </p>
         <p className="legal-p">
           Questions?{' '}
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-a">
-            armaanrehmanshah1@gmail.com
+          <a href="mailto:uoftagent@gmail.com" className="legal-a">
+            uoftagent@gmail.com
           </a>
         </p>
       </section>
@@ -188,7 +188,7 @@ export default function TermsOfUse() {
         <div className="legal-footer-links">
           <Link to="/privacy" className="legal-footer-link">Privacy Policy</Link>
           <Link to="/disclaimers" className="legal-footer-link">Disclaimers</Link>
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-footer-link">Contact</a>
+          <a href="mailto:uoftagent@gmail.com" className="legal-footer-link">Contact</a>
         </div>
       </footer>
     </div>

@@ -222,7 +222,7 @@ python -m coverage run -m pytest tests/ -q
 python -m coverage report
 ```
 
-Coverage is at 100% overall (813 tests). Key test files:
+Coverage is at near 100% overall. Key test files:
 
 - `tests/test_agent.py` — `agent/agent.py` `run()` loop and `_extract_text()`
 - `tests/test_acorn_store.py` — `integrations/acorn_store.py` payload validation, file I/O

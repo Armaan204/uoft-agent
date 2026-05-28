@@ -132,7 +132,7 @@ export default function Disclaimers() {
         <div className="legal-footer-links">
           <Link to="/privacy" className="legal-footer-link">Privacy Policy</Link>
           <Link to="/terms" className="legal-footer-link">Terms of Use</Link>
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-footer-link">Contact</a>
+          <a href="mailto:uoftagent@gmail.com" className="legal-footer-link">Contact</a>
         </div>
       </footer>
     </div>

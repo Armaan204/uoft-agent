@@ -154,8 +154,8 @@ export default function PrivacyPolicy() {
         <h2 className="legal-h2">7. Data Deletion</h2>
         <p className="legal-p">
           To request deletion of your account and all associated data, email{' '}
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-a">
-            armaanrehmanshah1@gmail.com
+          <a href="mailto:uoftagent@gmail.com" className="legal-a">
+            uoftagent@gmail.com
           </a>{' '}
           with the subject line <strong>"Data Deletion Request"</strong>. Requests will be
           processed within 30 days.
@@ -189,8 +189,8 @@ export default function PrivacyPolicy() {
         </ul>
         <p className="legal-p">
           To exercise these rights, contact{' '}
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-a">
-            armaanrehmanshah1@gmail.com
+          <a href="mailto:uoftagent@gmail.com" className="legal-a">
+            uoftagent@gmail.com
           </a>.
         </p>
       </section>
@@ -213,8 +213,8 @@ export default function PrivacyPolicy() {
         </p>
         <p className="legal-p">
           Questions about this policy?{' '}
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-a">
-            armaanrehmanshah1@gmail.com
+          <a href="mailto:uoftagent@gmail.com" className="legal-a">
+            uoftagent@gmail.com
           </a>
         </p>
       </section>
@@ -224,7 +224,7 @@ export default function PrivacyPolicy() {
         <div className="legal-footer-links">
           <Link to="/terms" className="legal-footer-link">Terms of Use</Link>
           <Link to="/disclaimers" className="legal-footer-link">Disclaimers</Link>
-          <a href="mailto:armaanrehmanshah1@gmail.com" className="legal-footer-link">Contact</a>
+          <a href="mailto:uoftagent@gmail.com" className="legal-footer-link">Contact</a>
         </div>
       </footer>
     </div>

@@ -144,7 +144,7 @@ python -m coverage report
 
 ## 💬 Support
 
-Found a bug or have a feature request? [Open an issue](https://github.com/armaan204/uoft-agent/issues) or email armaanrehmanshah1@gmail.com.
+Found a bug or have a feature request? [Open an issue](https://github.com/armaan204/uoft-agent/issues) or email uoftagent@gmail.com.
 
 ## 📄 License
 
