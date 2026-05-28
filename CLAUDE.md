@@ -276,3 +276,21 @@ npm run dev
 ```
 
 Vite frontend available at `http://localhost:5173`.
+
+## Post-deploy Checklist
+
+### Add Vite polyfill hash to `script-src`
+
+Vite injects a small inline `<script>` polyfill for `<link rel="modulepreload">` into the built `index.html`. The current `script-src 'self'` in `frontend/nginx.conf` will block it. After the first production build:
+
+1. Inspect `frontend/dist/index.html` for any `<script>` blocks that have no `src` attribute (inline scripts).
+2. For each one, compute its SHA-256 hash:
+   ```bash
+   # Copy the exact text content between <script> and </script> (no tags, no newline at end)
+   printf '%s' 'INLINE_SCRIPT_CONTENT_HERE' | openssl dgst -sha256 -binary | openssl enc -base64
+   ```
+3. Add the resulting hash to `script-src` in `frontend/nginx.conf`:
+   ```nginx
+   script-src 'self' 'sha256-HASH_HERE';
+   ```
+4. If there is no inline script in `dist/index.html`, no change is needed — `script-src 'self'` is already correct.
