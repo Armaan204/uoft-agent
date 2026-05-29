@@ -31,7 +31,15 @@
       "Bash(grep -v \"^$\")",
       "Bash(awk '{print $1}')",
       "Bash(xargs -I{} git show {}:frontend/src/index.css)",
-      "Bash(Remove-Item *)"
+      "Bash(Remove-Item *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\" -Force)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(grep -E \"\\\\.py$|app\\\\.|api\")",
+      "Bash(cat)",
+      "Bash(bash /tmp/extract_imports.sh)",
+      "Bash(git rm *)",
+      "Bash(git mv *)",
+      "Bash(Test-Path *)"
     ]
   }
 }

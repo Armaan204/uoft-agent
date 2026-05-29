@@ -42,7 +42,7 @@ class TestResolveToken:
 
     def test_raises_400_on_user_store_error(self):
         from api.routers.chat import _resolve_token
-        from auth.user_store import UserStoreError
+        from api.auth.user_store import UserStoreError
         with patch("api.routers.chat.get_quercus_token", side_effect=UserStoreError("db error")):
             with pytest.raises(HTTPException) as exc:
                 _resolve_token(None, _user())

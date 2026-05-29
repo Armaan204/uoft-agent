@@ -815,7 +815,7 @@ class TestResolveCourseWeightsUncached:
 
     def test_returns_none_on_syllabus_error(self):
         from api.services.course_service import _resolve_course_weights_uncached
-        from integrations.syllabus import SyllabusError
+        from api.integrations.syllabus import SyllabusError
         mock_client = MagicMock()
         mock_client.get_canvas_weights.return_value = None
         mock_client.get_syllabus.side_effect = SyllabusError("not found")
@@ -914,7 +914,7 @@ class TestCourseServiceAdditional:
 
     def test_get_user_quercus_token_wraps_user_store_error(self):
         from api.services.course_service import get_user_quercus_token, CourseServiceError
-        from auth.user_store import UserStoreError
+        from api.auth.user_store import UserStoreError
         with patch("api.services.course_service.get_quercus_token", side_effect=UserStoreError("db down")):
             with pytest.raises(CourseServiceError, match="db down"):
                 get_user_quercus_token("u1")

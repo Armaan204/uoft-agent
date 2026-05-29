@@ -10,8 +10,8 @@ from typing import Any
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from auth.user_store import get_supabase_client
-from integrations.acorn_store import AcornStoreError, validate_payload
+from api.auth.user_store import get_supabase_client
+from api.integrations.acorn_store import AcornStoreError, validate_payload
 
 load_dotenv()
 

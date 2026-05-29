@@ -11,8 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_current_user
 from api.services.acorn_service import AcornServiceError, get_academic_history
-from integrations.course_exclusions import fetch_exclusions_batch
-from integrations.graduation_service import (
+from api.integrations.course_exclusions import fetch_exclusions_batch
+from api.integrations.graduation_service import (
     check_graduation_progress,
     clear_cache,
     collect_required_courses,

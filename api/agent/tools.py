@@ -13,11 +13,11 @@ from html import unescape
 from api.services.acorn_service import get_academic_history as load_academic_history
 from api.services.grade_snapshot_cache import get_grade_snapshot, invalidate_grade_snapshot
 from api.services.grades_snapshot_service import get_snapshot as load_grades_snapshot, save_snapshot
-from integrations.graduation_service import check_graduation_progress as _check_grad_progress
-from integrations.graduation_service import get_program_requirements as _get_prog_reqs
-from integrations.quercus import QuercusClient
-from integrations.syllabus import parse_syllabus_weights
-from calculator.grades import GradeCalculator
+from api.integrations.graduation_service import check_graduation_progress as _check_grad_progress
+from api.integrations.graduation_service import get_program_requirements as _get_prog_reqs
+from api.integrations.quercus import QuercusClient
+from api.integrations.syllabus import parse_syllabus_weights
+from api.calculator.grades import GradeCalculator
 
 _calc = GradeCalculator()
 

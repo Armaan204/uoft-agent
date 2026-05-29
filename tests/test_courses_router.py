@@ -39,7 +39,7 @@ class TestReadQuercusToken:
 
     def test_raises_400_on_user_store_error(self):
         from api.routers.courses import read_quercus_token
-        from auth.user_store import UserStoreError
+        from api.auth.user_store import UserStoreError
         with patch("api.routers.courses.get_quercus_token", side_effect=UserStoreError("db fail")):
             with pytest.raises(HTTPException) as exc:
                 read_quercus_token(current_user=_user())
@@ -57,7 +57,7 @@ class TestWriteQuercusToken:
 
     def test_raises_400_on_save_error(self):
         from api.routers.courses import write_quercus_token, QuercusTokenBody
-        from auth.user_store import UserStoreError
+        from api.auth.user_store import UserStoreError
         body = QuercusTokenBody(token="tok")
         with patch("api.routers.courses.save_quercus_token", side_effect=UserStoreError("fail")):
             with pytest.raises(HTTPException) as exc:
@@ -75,7 +75,7 @@ class TestRemoveQuercusToken:
 
     def test_raises_400_on_delete_error(self):
         from api.routers.courses import remove_quercus_token
-        from auth.user_store import UserStoreError
+        from api.auth.user_store import UserStoreError
         with patch("api.routers.courses.delete_quercus_token", side_effect=UserStoreError("fail")):
             with pytest.raises(HTTPException) as exc:
                 remove_quercus_token(current_user=_user())
@@ -154,7 +154,7 @@ class TestDashboardCourses:
     def test_raises_424_on_quercus_auth_error(self):
         """QuercusAuthError during live fetch → HTTP 424."""
         import api.routers.courses as mod
-        from integrations.quercus import QuercusAuthError
+        from api.integrations.quercus import QuercusAuthError
 
         async def run():
             with patch("api.routers.courses._resolve_token", return_value="tok"), \
@@ -486,7 +486,7 @@ class TestEvictUserCache:
 class TestResolveTokenAdditional:
     def test_raises_400_when_user_store_lookup_fails(self):
         from api.routers.courses import _resolve_token
-        from auth.user_store import UserStoreError
+        from api.auth.user_store import UserStoreError
         with patch("api.routers.courses.get_quercus_token", side_effect=UserStoreError("db down")):
             with pytest.raises(HTTPException) as exc:
                 _resolve_token(None, {"user_id": "u1"})
@@ -576,7 +576,7 @@ class TestDashboardCoursesAdditional:
 class TestBackgroundRefreshDashboardAdditional:
     def test_marks_auth_error_on_cached_entry(self):
         import api.routers.courses as mod
-        from integrations.quercus import QuercusAuthError
+        from api.integrations.quercus import QuercusAuthError
 
         mod._dashboard_cache["u-auth"] = {"courses": []}
 

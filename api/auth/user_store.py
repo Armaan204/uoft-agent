@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from integrations.encryption import decrypt_token, encrypt_token
+from api.integrations.encryption import decrypt_token, encrypt_token
 
 load_dotenv()
 

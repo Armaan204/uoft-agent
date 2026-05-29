@@ -19,7 +19,7 @@ from api.services.acorn_service import (
     get_latest_import_for_user,
     import_acorn_data,
 )
-from integrations.acorn_store import AcornStoreError
+from api.integrations.acorn_store import AcornStoreError
 
 router = APIRouter(tags=["acorn"])
 logger = logging.getLogger(__name__)

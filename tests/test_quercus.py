@@ -8,7 +8,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch, call
 
-from integrations.quercus import QuercusClient, QuercusAuthError, QuercusError
+from api.integrations.quercus import QuercusClient, QuercusAuthError, QuercusError
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ class TestGetCourses:
             },
         ]
 
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
             client = QuercusClient(token="fake-token")
             courses = client.get_courses()
 
@@ -99,7 +99,7 @@ class TestGetCourses:
             },
         ]
 
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
             client = QuercusClient(token="fake-token")
             courses = client.get_courses()
 
@@ -129,7 +129,7 @@ class TestGetCourses:
             },
         ]
 
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
             client = QuercusClient(token="fake-token")
             courses = client.get_courses()
 
@@ -157,20 +157,20 @@ class TestGetCourses:
             },
         ]
 
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
             client = QuercusClient(token="fake-token")
             courses = client.get_courses()
 
         assert all(c["id"] != 8888 for c in courses)
 
     def test_raises_auth_error_on_401(self):
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({}, 401)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({}, 401)):
             client = QuercusClient(token="bad-token")
             with pytest.raises(QuercusAuthError):
                 client.get_courses()
 
     def test_raises_quercus_error_on_5xx(self):
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({}, 500)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({}, 500)):
             client = QuercusClient(token="tok")
             with pytest.raises(QuercusError):
                 client.get_courses()
@@ -184,7 +184,7 @@ class TestGetCourses:
         resp2 = _mock_response(
             [{"id": 2, "name": "Course 2", "course_code": "MATA30H3", "term": {"start_at": cur_start, "end_at": cur_end}}]
         )
-        with patch("integrations.quercus.requests.get", side_effect=[resp1, resp2]):
+        with patch("api.integrations.quercus.requests.get", side_effect=[resp1, resp2]):
             client = QuercusClient(token="tok")
             courses = client.get_courses()
         assert {course["id"] for course in courses} == {1, 2}
@@ -194,7 +194,7 @@ class TestGetCourses:
             {"id": 1, "name": "Sandbox", "course_code": "TEST", "term": {"start_at": None, "end_at": None}},
             {"id": 2, "name": "CS Undergrads Community", "course_code": "COMM", "term": {"start_at": None, "end_at": None}},
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
             client = QuercusClient(token="tok")
             assert client.get_courses() == []
 
@@ -212,7 +212,7 @@ class TestGetAssignmentGroups:
                 ],
             },
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
             client = QuercusClient(token="tok")
             groups = client.get_assignment_groups(9001)
 
@@ -228,7 +228,7 @@ class TestGetAssignmentGroups:
         resp1 = _mock_response(page1, link_header='<https://q.utoronto.ca/api/v1/page2>; rel="next"')
         resp2 = _mock_response(page2)
 
-        with patch("integrations.quercus.requests.get", side_effect=[resp1, resp2]):
+        with patch("api.integrations.quercus.requests.get", side_effect=[resp1, resp2]):
             client = QuercusClient(token="tok")
             groups = client.get_assignment_groups(9001)
 
@@ -247,7 +247,7 @@ class TestGetAssignmentGroups:
                 "assignments": [],
             }
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
             client = QuercusClient(token="tok")
             groups = client.get_assignment_groups(9001)
         assert groups[0]["rules"]["never_drop"] == [123]
@@ -263,7 +263,7 @@ class TestGetCanvasWeights:
             {"id": 2, "name": "Final",       "group_weight": 40.0, "rules": {}, "assignments": []},
             {"id": 3, "name": "Assignments", "group_weight": 20.0, "rules": {}, "assignments": []},
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
             client = QuercusClient(token="tok")
             weights = client.get_canvas_weights(9001)
 
@@ -276,7 +276,7 @@ class TestGetCanvasWeights:
         groups_data = [
             {"id": 1, "name": "Assignments", "group_weight": 0.0, "rules": {}, "assignments": []},
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
             client = QuercusClient(token="tok")
             assert client.get_canvas_weights(9001) is None
 
@@ -286,7 +286,7 @@ class TestGetCanvasWeights:
             {"id": 1, "name": "Midterm", "group_weight": 30.0, "rules": {}, "assignments": []},
             {"id": 2, "name": "Final",   "group_weight": 30.0, "rules": {}, "assignments": []},
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
             client = QuercusClient(token="tok")
             assert client.get_canvas_weights(9001) is None
 
@@ -299,7 +299,7 @@ class TestGetSubmissions:
             {"assignment_id": 101, "score": 78.0, "grade": "C+"},
             {"assignment_id": 201, "score": None, "grade": None},
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(subs_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(subs_data)):
             client = QuercusClient(token="tok")
             subs = client.get_submissions(9001)
 
@@ -309,7 +309,7 @@ class TestGetSubmissions:
 
     def test_late_submissions_are_returned_unchanged(self):
         subs_data = [{"assignment_id": 101, "score": 78.0, "late": True}]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(subs_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(subs_data)):
             client = QuercusClient(token="tok")
             subs = client.get_submissions(9001)
         assert subs[0]["late"] is True
@@ -317,13 +317,13 @@ class TestGetSubmissions:
 
 class TestLowLevelClientHelpers:
     def test_private_get_returns_dict_object_directly(self):
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({"id": 1, "url": "x"})):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({"id": 1, "url": "x"})):
             client = QuercusClient(token="tok")
             assert client._get("/files/1") == {"id": 1, "url": "x"}
 
     def test_cached_paginated_get_returns_single_object(self):
-        from integrations.quercus import _cached_paginated_get
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({"id": 1})):
+        from api.integrations.quercus import _cached_paginated_get
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({"id": 1})):
             result = _cached_paginated_get("tok", "/files/1")
         assert result == {"id": 1}
 
@@ -391,18 +391,18 @@ class TestGetSyllabus:
 
 class TestLowLevelErrors:
     def test_rate_limit_429_raises_quercus_error(self):
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({}, 429)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({}, 429)):
             client = QuercusClient(token="tok")
             with pytest.raises(QuercusError):
                 client.get_assignments(1)
 
     def test_get_course_files_returns_empty_list_on_403(self):
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({}, 403)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({}, 403)):
             client = QuercusClient(token="tok")
             assert client.get_course_files(1) == []
 
     def test_get_course_files_reraises_non_403_error(self):
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({}, 500)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({}, 500)):
             client = QuercusClient(token="tok")
             with pytest.raises(QuercusError):
                 client.get_course_files(1)
@@ -420,7 +420,7 @@ class TestLowLevelErrors:
             {"id": 1, "name": "Older", "course_code": "A", "term": {"start_at": start1, "end_at": end1}},
             {"id": 2, "name": "Latest", "course_code": "B", "term": {"start_at": start2, "end_at": end2}},
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(courses_data)):
             client = QuercusClient(token="tok")
             result = client.get_courses()
         assert [course["id"] for course in result] == [2]
@@ -433,7 +433,7 @@ class TestDropRuleIntegration:
 
     def test_drop_lowest_applied_to_grade(self):
         """Canvas groups with drop_lowest=1 → lower quiz dropped from grade calc."""
-        from calculator.grades import GradeCalculator
+        from api.calculator.grades import GradeCalculator
 
         groups = [
             {
@@ -469,7 +469,7 @@ class TestDropRuleIntegration:
         groups_data = [
             {"id": 1, "name": "Total", "group_weight": 0.0, "rules": {}, "assignments": []}
         ]
-        with patch("integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response(groups_data)):
             client = QuercusClient(token="tok")
             weights = client.get_canvas_weights(9001)
 
@@ -483,21 +483,21 @@ class TestQuercusAdditional:
             QuercusClient(token=None)
 
     def test_cached_paginated_get_raises_auth_and_http_errors(self):
-        from integrations.quercus import _cached_paginated_get
-        with patch("integrations.quercus.requests.get", return_value=_mock_response({}, 401)):
+        from api.integrations.quercus import _cached_paginated_get
+        with patch("api.integrations.quercus.requests.get", return_value=_mock_response({}, 401)):
             with pytest.raises(QuercusAuthError):
                 _cached_paginated_get("tok", "/courses")
         bad = _mock_response({}, 500)
         bad.text = "server exploded"
-        with patch("integrations.quercus.requests.get", return_value=bad):
+        with patch("api.integrations.quercus.requests.get", return_value=bad):
             with pytest.raises(QuercusError):
                 _cached_paginated_get("tok", "/courses")
 
     def test_cached_paginated_get_accumulates_pages(self):
-        from integrations.quercus import _cached_paginated_get
+        from api.integrations.quercus import _cached_paginated_get
         resp1 = _mock_response([{"id": 1}], link_header='<https://q.utoronto.ca/api/v1/courses?page=2>; rel="next"')
         resp2 = _mock_response([{"id": 2}])
-        with patch("integrations.quercus.requests.get", side_effect=[resp1, resp2]):
+        with patch("api.integrations.quercus.requests.get", side_effect=[resp1, resp2]):
             result = _cached_paginated_get("tok", "/courses")
         assert result == [{"id": 1}, {"id": 2}]
 

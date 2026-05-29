@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, validator
 from starlette.requests import Request
 
-from agent.agent import run as run_agent
+from api.agent.agent import run as run_agent
 from api.limiter import limit
 from api.dependencies import get_current_user
 from api.services.chat_history_service import (
@@ -22,7 +22,7 @@ from api.services.chat_history_service import (
     list_conversations,
     save_exchange,
 )
-from auth.user_store import UserStoreError, get_quercus_token
+from api.auth.user_store import UserStoreError, get_quercus_token
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)

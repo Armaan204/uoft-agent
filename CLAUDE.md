@@ -21,28 +21,29 @@ An AI academic assistant for University of Toronto students.
 
 ## Architecture
 
-- `app.py` — main Streamlit app and dashboard
-- `auth/user_store.py` — Supabase-backed user lookup and encrypted Quercus token persistence
-- `agent/` — Anthropic tool-calling loop, tool schemas, prompt
-- `calculator/` — deterministic grade calculations and weighted-component modeling
-- `integrations/quercus.py` — Canvas / Quercus API client
-- `integrations/syllabus.py` — syllabus discovery, PDF parsing, and weight extraction
-- `integrations/syllabus_cache.py` — persistent Supabase cache for parsed syllabus weights
-- `integrations/acorn.py` — Streamlit-side ACORN backend client
-- `api_server.py` — minimal ACORN import API backed by Supabase Postgres
 - `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import, published on the Chrome Web Store
-- `api/` — FastAPI backend powering the deployed app at `https://uoft-agent.com`
+- `api/` — entire Python backend powering the deployed app at `https://uoft-agent.com`
   - `api/main.py` — FastAPI app with CORS, mounts all routers, health check at `GET /`
   - `api/dependencies.py` — JWT-based `get_current_user` dependency
   - `api/routers/auth.py` — Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
   - `api/routers/courses.py` — course, grade, scenario, weight routes + Quercus token CRUD
   - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`, persists exchanges by `conversation_id`, and exposes chat-history list/detail/delete routes
-  - `api/routers/acorn.py` — public ACORN routes matching `api_server.py` exactly
-  - `api/services/course_service.py` — uncached Quercus + calculator wrappers (bypasses `st.cache_data`)
+  - `api/routers/acorn.py` — public ACORN routes
+  - `api/routers/graduation.py` — `GET /api/graduation/progress` and `DELETE /api/graduation/cache`
+  - `api/services/course_service.py` — uncached Quercus + calculator wrappers
   - `api/services/grade_snapshot_cache.py` — 5-minute in-memory per-user cache for aggregate semester grade snapshots used by chat tools
   - `api/services/grades_snapshot_service.py` — Supabase-backed persistence layer for dashboard and course detail snapshots; `grades_snapshot` table stores `dashboard_data`, `announcements`, and `course_detail_data` JSONB columns per `(user_id, course_id)` row
   - `api/services/acorn_service.py` — ACORN business logic for the FastAPI router
   - `api/services/auth_service.py` — user lookup/creation and JWT signing helpers
+  - `api/agent/` — Anthropic tool-calling loop, tool schemas, prompt
+  - `api/auth/user_store.py` — Supabase-backed user lookup and encrypted Quercus token persistence
+  - `api/calculator/` — deterministic grade calculations and weighted-component modeling
+  - `api/integrations/quercus.py` — Canvas / Quercus API client
+  - `api/integrations/syllabus.py` — syllabus discovery, PDF parsing, and weight extraction
+  - `api/integrations/syllabus_cache.py` — persistent Supabase cache for parsed syllabus weights
+  - `api/integrations/acorn_store.py` — ACORN import payload validation and file storage
+  - `api/integrations/grades_cache.py` — Supabase-backed grade override and saved-grade persistence
+  - `api/integrations/graduation_service.py` — graduation planning service: URL discovery, LLM-based requirements extraction, and course matching
 - `frontend/` — Vite + React frontend deployed at `https://uoft-agent.com`
   - `frontend/src/App.jsx` — app routes, protected shell, frontend auth callback handling
   - `frontend/src/api/client.js` — Axios client with JWT injection and 401 handling
@@ -51,8 +52,6 @@ An AI academic assistant for University of Toronto students.
 - `frontend/src/components/` — reusable UI pieces including sidebar shell, profile menu, cards, lists, and tool-call rendering
 - `frontend/src/pages/` — Login, Quercus onboarding, Dashboard, Course Detail, Chat, ACORN, and Degree Planner pages
 - `frontend/src/index.css` — shared design system, typography, layout, and animation styles, including the sticky chat composer and inline course-grade editing states
-- `integrations/graduation_service.py` — graduation planning service: URL discovery, LLM-based requirements extraction, and course matching
-- `api/routers/graduation.py` — `GET /api/graduation/progress` and `DELETE /api/graduation/cache`
 
 ## Key Decisions
 
@@ -71,7 +70,7 @@ An AI academic assistant for University of Toronto students.
 - The frontend uses `PersistQueryClientProvider` with a localStorage persister (24h `gcTime` and `maxAge`) so TanStack Query cache survives tab refreshes and browser restarts
 - Manual dashboard refresh fetches directly and calls `setQueryData` on completion so existing data (including announcements) stays visible the entire time the refresh is in flight
 - Grade overrides immediately update both the in-memory cache and Supabase snapshot so overridden grades are reflected on all subsequent cache hits
-- `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass `st.cache_data` decorators without touching the original integration files
+- `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass any caching decorators on the base client methods
 - JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
 - FastAPI Google OAuth now redirects back to the React frontend using `FRONTEND_URL`, and the frontend stores the returned JWT in localStorage
 - The React chat page now keeps the active in-progress conversation and unsent draft in browser `sessionStorage`, keyed per logged-in user and conversation ID, so refreshes within the tab keep the live thread without persisting it across browser restarts

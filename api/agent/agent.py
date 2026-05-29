@@ -15,9 +15,9 @@ import sys
 import anthropic
 from dotenv import load_dotenv
 
-from agent.prompts import SYSTEM_PROMPT
-from agent.tools import TOOL_SCHEMAS, execute_tool
-from integrations.quercus import QuercusClient
+from api.agent.prompts import SYSTEM_PROMPT
+from api.agent.tools import TOOL_SCHEMAS, execute_tool
+from api.integrations.quercus import QuercusClient
 
 load_dotenv()
 

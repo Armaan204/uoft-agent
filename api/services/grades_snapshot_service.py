@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from auth.user_store import UserStoreError, get_supabase_client
+from api.auth.user_store import UserStoreError, get_supabase_client
 
 logger = logging.getLogger(__name__)
 

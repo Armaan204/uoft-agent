@@ -57,7 +57,7 @@ class TestImportAcornData:
 
     def test_raises_on_missing_import_code(self):
         from api.services.acorn_service import import_acorn_data
-        from integrations.acorn_store import AcornStoreError
+        from api.integrations.acorn_store import AcornStoreError
         with pytest.raises(AcornStoreError):
             import_acorn_data("", {"courses": []})
 
@@ -394,13 +394,13 @@ class TestGetAcademicHistory:
 class TestClaimLatestImportForUser:
     def test_raises_for_blank_import_code(self):
         from api.services.acorn_service import claim_latest_import_for_user
-        from integrations.acorn_store import AcornStoreError
+        from api.integrations.acorn_store import AcornStoreError
         with pytest.raises(AcornStoreError):
             claim_latest_import_for_user("", "u1")
 
     def test_raises_for_blank_user_id(self):
         from api.services.acorn_service import claim_latest_import_for_user
-        from integrations.acorn_store import AcornStoreError
+        from api.integrations.acorn_store import AcornStoreError
         with pytest.raises(AcornStoreError):
             claim_latest_import_for_user("ABC123", "")
 

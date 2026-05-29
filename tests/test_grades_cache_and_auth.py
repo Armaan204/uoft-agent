@@ -24,22 +24,22 @@ def _mock_sb():
 
 class TestToFloat:
     def test_none_returns_none(self):
-        from integrations.grades_cache import _to_float
+        from api.integrations.grades_cache import _to_float
         assert _to_float(None) is None
 
     def test_decimal_converts(self):
-        from integrations.grades_cache import _to_float
+        from api.integrations.grades_cache import _to_float
         from decimal import Decimal
         assert _to_float(Decimal("3.14")) == pytest.approx(3.14)
 
     def test_int_converts(self):
-        from integrations.grades_cache import _to_float
+        from api.integrations.grades_cache import _to_float
         assert _to_float(80) == 80.0
 
 
 class TestFallbackComponentKey:
     def test_builds_key_from_fields(self):
-        from integrations.grades_cache import _fallback_component_key
+        from api.integrations.grades_cache import _fallback_component_key
         comp = {"source": "canvas", "group_name": "Midterm", "name": "MT1",
                 "status": "graded", "possible": 100}
         key = _fallback_component_key(comp)
@@ -47,19 +47,19 @@ class TestFallbackComponentKey:
         assert "midterm" in key
 
     def test_missing_fields_use_defaults(self):
-        from integrations.grades_cache import _fallback_component_key
+        from api.integrations.grades_cache import _fallback_component_key
         key = _fallback_component_key({})
         assert key  # should not be empty
 
 
 class TestNormaliseComponent:
     def test_raises_on_empty_name(self):
-        from integrations.grades_cache import _normalise_component, GradesCacheError
+        from api.integrations.grades_cache import _normalise_component, GradesCacheError
         with pytest.raises(GradesCacheError, match="name"):
             _normalise_component({"name": "", "component_key": "k1"})
 
     def test_returns_normalised_dict(self):
-        from integrations.grades_cache import _normalise_component
+        from api.integrations.grades_cache import _normalise_component
         result = _normalise_component({
             "component_key": "midterm",
             "name": "Midterm",
@@ -70,7 +70,7 @@ class TestNormaliseComponent:
         assert result["score"] == 80.0
 
     def test_falls_back_to_computed_key_when_missing(self):
-        from integrations.grades_cache import _normalise_component
+        from api.integrations.grades_cache import _normalise_component
         result = _normalise_component({"name": "Quiz", "source": "canvas",
                                        "group_name": "Quizzes", "status": "graded"})
         assert result["component_key"]  # computed, non-empty
@@ -80,12 +80,12 @@ class TestNormaliseComponent:
 
 class TestGetSavedGrades:
     def test_returns_empty_for_blank_user(self):
-        from integrations.grades_cache import get_saved_grades
+        from api.integrations.grades_cache import get_saved_grades
         assert get_saved_grades("", 1001) == {}
         assert get_saved_grades(None, 1001) == {}
 
     def test_returns_rows_keyed_by_component_key(self):
-        from integrations.grades_cache import get_saved_grades
+        from api.integrations.grades_cache import get_saved_grades
         mock_sb = _mock_sb()
         mock_sb.table.return_value.execute.return_value = MagicMock(data=[{
             "component_key": "midterm",
@@ -95,16 +95,16 @@ class TestGetSavedGrades:
             "acknowledged_at": None,
             "saved_at": None,
         }])
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             result = get_saved_grades("u1", 1001)
         assert "midterm" in result
         assert result["midterm"]["score"] == 80.0
 
     def test_raises_on_db_error(self):
-        from integrations.grades_cache import get_saved_grades, GradesCacheError
+        from api.integrations.grades_cache import get_saved_grades, GradesCacheError
         mock_sb = MagicMock()
         mock_sb.table.side_effect = Exception("DB down")
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             with pytest.raises(GradesCacheError):
                 get_saved_grades("u1", 1001)
 
@@ -113,11 +113,11 @@ class TestGetSavedGrades:
 
 class TestGetGradeOverrides:
     def test_returns_empty_for_blank_user(self):
-        from integrations.grades_cache import get_grade_overrides
+        from api.integrations.grades_cache import get_grade_overrides
         assert get_grade_overrides("", 1001) == {}
 
     def test_returns_override_keyed_by_component_key(self):
-        from integrations.grades_cache import get_grade_overrides
+        from api.integrations.grades_cache import get_grade_overrides
         mock_sb = _mock_sb()
         mock_sb.table.return_value.execute.return_value = MagicMock(data=[{
             "component_key": "final",
@@ -125,16 +125,16 @@ class TestGetGradeOverrides:
             "manual_possible": 100.0,
             "created_at": None,
         }])
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             result = get_grade_overrides("u1", 1001)
         assert "final" in result
         assert result["final"]["manual_score"] == 90.0
 
     def test_raises_on_db_error(self):
-        from integrations.grades_cache import get_grade_overrides, GradesCacheError
+        from api.integrations.grades_cache import get_grade_overrides, GradesCacheError
         mock_sb = MagicMock()
         mock_sb.table.side_effect = Exception("DB down")
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             with pytest.raises(GradesCacheError):
                 get_grade_overrides("u1", 1001)
 
@@ -143,35 +143,35 @@ class TestGetGradeOverrides:
 
 class TestDetectNewGrades:
     def test_detects_new_component(self):
-        from integrations.grades_cache import detect_new_grades
+        from api.integrations.grades_cache import detect_new_grades
         live = [{"component_key": "midterm", "name": "Midterm",
                  "status": "graded", "earned": 80.0, "possible": 100.0}]
-        with patch("integrations.grades_cache.get_saved_grades", return_value={}):
+        with patch("api.integrations.grades_cache.get_saved_grades", return_value={}):
             result = detect_new_grades("u1", 1001, live)
         assert "midterm" in result
 
     def test_detects_changed_score(self):
-        from integrations.grades_cache import detect_new_grades
+        from api.integrations.grades_cache import detect_new_grades
         live = [{"component_key": "midterm", "name": "Midterm",
                  "status": "graded", "earned": 85.0, "possible": 100.0}]
         saved = {"midterm": {"score": 75.0, "possible": 100.0, "component_name": "Midterm"}}
-        with patch("integrations.grades_cache.get_saved_grades", return_value=saved):
+        with patch("api.integrations.grades_cache.get_saved_grades", return_value=saved):
             result = detect_new_grades("u1", 1001, live)
         assert "midterm" in result
 
     def test_skips_ungraded_components(self):
-        from integrations.grades_cache import detect_new_grades
+        from api.integrations.grades_cache import detect_new_grades
         live = [{"component_key": "final", "name": "Final", "status": "ungraded"}]
-        with patch("integrations.grades_cache.get_saved_grades", return_value={}):
+        with patch("api.integrations.grades_cache.get_saved_grades", return_value={}):
             result = detect_new_grades("u1", 1001, live)
         assert result == []
 
     def test_no_change_returns_empty(self):
-        from integrations.grades_cache import detect_new_grades
+        from api.integrations.grades_cache import detect_new_grades
         live = [{"component_key": "midterm", "name": "Midterm",
                  "status": "graded", "earned": 80.0, "possible": 100.0}]
         saved = {"midterm": {"score": 80.0, "possible": 100.0, "component_name": "Midterm"}}
-        with patch("integrations.grades_cache.get_saved_grades", return_value=saved):
+        with patch("api.integrations.grades_cache.get_saved_grades", return_value=saved):
             result = detect_new_grades("u1", 1001, live)
         assert result == []
 
@@ -180,32 +180,32 @@ class TestDetectNewGrades:
 
 class TestSaveGrades:
     def test_skips_when_no_graded_components(self):
-        from integrations.grades_cache import save_grades
-        with patch("integrations.grades_cache._get_supabase_client") as mock_fn:
+        from api.integrations.grades_cache import save_grades
+        with patch("api.integrations.grades_cache._get_supabase_client") as mock_fn:
             save_grades("u1", 1001, [{"status": "ungraded", "name": "Quiz"}])
             mock_fn.assert_not_called()
 
     def test_raises_for_blank_user_id(self):
-        from integrations.grades_cache import save_grades, GradesCacheError
+        from api.integrations.grades_cache import save_grades, GradesCacheError
         with pytest.raises(GradesCacheError):
             save_grades("", 1001, [])
 
     def test_upserts_graded_rows(self):
-        from integrations.grades_cache import save_grades
+        from api.integrations.grades_cache import save_grades
         mock_sb = _mock_sb()
         components = [{"component_key": "mid", "name": "Midterm",
                        "status": "graded", "earned": 80.0, "possible": 100.0}]
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             save_grades("u1", 1001, components)
         mock_sb.table.return_value.upsert.assert_called_once()
 
     def test_raises_on_db_error(self):
-        from integrations.grades_cache import save_grades, GradesCacheError
+        from api.integrations.grades_cache import save_grades, GradesCacheError
         mock_sb = MagicMock()
         mock_sb.table.side_effect = Exception("DB down")
         components = [{"component_key": "mid", "name": "Midterm",
                        "status": "graded", "earned": 80.0, "possible": 100.0}]
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             with pytest.raises(GradesCacheError):
                 save_grades("u1", 1001, components)
 
@@ -214,19 +214,19 @@ class TestSaveGrades:
 
 class TestSaveGradeOverride:
     def test_raises_for_blank_user_id(self):
-        from integrations.grades_cache import save_grade_override, GradesCacheError
+        from api.integrations.grades_cache import save_grade_override, GradesCacheError
         with pytest.raises(GradesCacheError):
             save_grade_override("", 1001, "midterm", 80.0, 100.0)
 
     def test_raises_for_blank_component_key(self):
-        from integrations.grades_cache import save_grade_override, GradesCacheError
+        from api.integrations.grades_cache import save_grade_override, GradesCacheError
         with pytest.raises(GradesCacheError):
             save_grade_override("u1", 1001, "", 80.0, 100.0)
 
     def test_upserts_override(self):
-        from integrations.grades_cache import save_grade_override
+        from api.integrations.grades_cache import save_grade_override
         mock_sb = _mock_sb()
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             save_grade_override("u1", 1001, "midterm", 80.0, 100.0)
         mock_sb.table.return_value.upsert.assert_called_once()
 
@@ -235,27 +235,27 @@ class TestSaveGradeOverride:
 
 class TestDeleteGradeOverride:
     def test_raises_for_blank_user_id(self):
-        from integrations.grades_cache import delete_grade_override, GradesCacheError
+        from api.integrations.grades_cache import delete_grade_override, GradesCacheError
         with pytest.raises(GradesCacheError):
             delete_grade_override("", 1001, "midterm")
 
     def test_raises_for_blank_component_key(self):
-        from integrations.grades_cache import delete_grade_override, GradesCacheError
+        from api.integrations.grades_cache import delete_grade_override, GradesCacheError
         with pytest.raises(GradesCacheError):
             delete_grade_override("u1", 1001, "")
 
     def test_calls_delete(self):
-        from integrations.grades_cache import delete_grade_override
+        from api.integrations.grades_cache import delete_grade_override
         mock_sb = _mock_sb()
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             delete_grade_override("u1", 1001, "midterm")
         mock_sb.table.return_value.delete.assert_called()
 
     def test_raises_on_db_error(self):
-        from integrations.grades_cache import delete_grade_override, GradesCacheError
+        from api.integrations.grades_cache import delete_grade_override, GradesCacheError
         mock_sb = MagicMock()
         mock_sb.table.side_effect = Exception("DB down")
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             with pytest.raises(GradesCacheError):
                 delete_grade_override("u1", 1001, "midterm")
 
@@ -377,30 +377,30 @@ class TestExchangeGoogleCodeNoSub:
 
 class TestGradesCacheSupabaseClient:
     def test_secret_or_env_returns_none_for_missing_var(self):
-        from integrations.grades_cache import _secret_or_env
-        with patch("integrations.grades_cache.os.getenv", return_value=None):
+        from api.integrations.grades_cache import _secret_or_env
+        with patch("api.integrations.grades_cache.os.getenv", return_value=None):
             assert _secret_or_env("MISSING_VAR") is None
 
     def test_secret_or_env_returns_value_for_present_var(self):
-        from integrations.grades_cache import _secret_or_env
-        with patch("integrations.grades_cache.os.getenv", return_value="my-url"):
+        from api.integrations.grades_cache import _secret_or_env
+        with patch("api.integrations.grades_cache.os.getenv", return_value="my-url"):
             assert _secret_or_env("SUPABASE_URL") == "my-url"
 
     def test_get_supabase_client_raises_when_url_missing(self):
-        from integrations.grades_cache import _get_supabase_client, GradesCacheError
-        with patch("integrations.grades_cache._secret_or_env", return_value=None):
+        from api.integrations.grades_cache import _get_supabase_client, GradesCacheError
+        with patch("api.integrations.grades_cache._secret_or_env", return_value=None):
             with pytest.raises(GradesCacheError, match="SUPABASE_URL"):
                 _get_supabase_client()
 
     def test_get_supabase_client_returns_client_when_configured(self):
-        from integrations.grades_cache import _get_supabase_client
+        from api.integrations.grades_cache import _get_supabase_client
         mock_client = MagicMock()
 
         def fake_env(name):
             return {"SUPABASE_URL": "https://fake.supabase.co", "SUPABASE_KEY": "key"}[name]
 
-        with patch("integrations.grades_cache._secret_or_env", side_effect=fake_env), \
-             patch("integrations.grades_cache.create_client", return_value=mock_client):
+        with patch("api.integrations.grades_cache._secret_or_env", side_effect=fake_env), \
+             patch("api.integrations.grades_cache.create_client", return_value=mock_client):
             result = _get_supabase_client()
         assert result is mock_client
 
@@ -409,10 +409,10 @@ class TestGradesCacheSupabaseClient:
 
 class TestSaveGradeOverrideDbError:
     def test_raises_on_db_error(self):
-        from integrations.grades_cache import save_grade_override, GradesCacheError
+        from api.integrations.grades_cache import save_grade_override, GradesCacheError
         mock_sb = MagicMock()
         mock_sb.table.side_effect = Exception("DB down")
-        with patch("integrations.grades_cache._get_supabase_client", return_value=mock_sb):
+        with patch("api.integrations.grades_cache._get_supabase_client", return_value=mock_sb):
             with pytest.raises(GradesCacheError, match="Failed to save grade override"):
                 save_grade_override("u1", 1001, "midterm", 80.0, 100.0)
 

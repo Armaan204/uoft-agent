@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import requests
 from jose import JWTError, jwt
 
-from auth.user_store import get_or_create_user
+from api.auth.user_store import get_or_create_user
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"

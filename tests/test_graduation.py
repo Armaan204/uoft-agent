@@ -9,7 +9,7 @@ needed for get_program_requirements(), which hits both.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from integrations.graduation_service import (
+from api.integrations.graduation_service import (
     check_graduation_progress,
     _parse_dept_level,
     _matches_filter,
