@@ -332,8 +332,6 @@ export default function CourseDetail() {
         </div>
       </div>
 
-      <div className="divider" />
-
       <div className="section-label">Graded Components</div>
       <div className="graded-with-rail">
         {/* Toggle buttons live outside the table card in this left rail */}

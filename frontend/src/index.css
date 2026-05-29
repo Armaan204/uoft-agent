@@ -53,18 +53,6 @@ body {
   overflow-x: hidden;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(oklch(100% 0 0 / 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(100% 0 0 / 0.018) 1px, transparent 1px);
-  background-size: 48px 48px;
-  pointer-events: none;
-  z-index: 0;
-}
-
 a,
 button {
   color: inherit;
@@ -1652,7 +1640,7 @@ tfoot td:not(:first-child),
 .course-header {
   justify-content: space-between;
   gap: 28px;
-  margin-bottom: 42px;
+  margin-bottom: 24px;
   align-items: flex-start;
 }
 
@@ -2667,6 +2655,11 @@ input[type='range']::-webkit-slider-thumb {
   padding: 0 10px;
   position: relative;
   z-index: 1;
+  background-image:
+    linear-gradient(oklch(100% 0 0 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(100% 0 0 / 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-attachment: fixed;
 }
 
 .mobile-topbar {
