@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user
-from integrations.quercus import QuercusAuthError
+from api.integrations.quercus import QuercusAuthError
 from api.services.grade_snapshot_cache import invalidate_grade_snapshot
 from api.services.course_service import (
     CourseServiceError,
@@ -27,7 +27,7 @@ from api.services.course_service import (
     save_course_grade_overrides,
     delete_course_grade_override,
 )
-from integrations.grades_cache import GradesCacheError
+from api.integrations.grades_cache import GradesCacheError
 from api.services.grades_snapshot_service import (
     GradesSnapshotServiceError,
     get_course_detail_snapshot,
@@ -35,7 +35,7 @@ from api.services.grades_snapshot_service import (
     save_course_detail_snapshot,
     save_snapshot,
 )
-from auth.user_store import (
+from api.auth.user_store import (
     UserStoreError,
     delete_quercus_token,
     get_quercus_token,

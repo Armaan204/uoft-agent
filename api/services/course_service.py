@@ -11,9 +11,9 @@ from html import unescape
 from typing import Any
 
 from bs4 import BeautifulSoup
-from auth.user_store import UserStoreError, get_quercus_token
-from calculator.grades import GradeCalculator, UOFT_THRESHOLDS
-from integrations.grades_cache import (
+from api.auth.user_store import UserStoreError, get_quercus_token
+from api.calculator.grades import GradeCalculator, UOFT_THRESHOLDS
+from api.integrations.grades_cache import (
     delete_grade_override,
     detect_new_grades,
     get_grade_overrides,
@@ -21,8 +21,8 @@ from integrations.grades_cache import (
     save_grade_override,
     save_grades,
 )
-from integrations.quercus import QuercusClient, QuercusError
-from integrations.syllabus import (
+from api.integrations.quercus import QuercusClient, QuercusError
+from api.integrations.syllabus import (
     SyllabusError,
     _ask_claude,
     _download_pdf,

@@ -22,7 +22,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from api.services.auth_service import create_access_token
-from auth.user_store import UserStoreError, get_supabase_client
+from api.auth.user_store import UserStoreError, get_supabase_client
 
 logger = logging.getLogger(__name__)
 

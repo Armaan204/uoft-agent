@@ -295,7 +295,7 @@ def test_client():  # pragma: no cover
     mock_sb = MagicMock()
     mock_sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
 
-    with patch("auth.user_store.get_supabase_client", return_value=mock_sb), \
+    with patch("api.auth.user_store.get_supabase_client", return_value=mock_sb), \
          patch("api.services.acorn_service._get_supabase", return_value=mock_sb), \
          patch("api.services.grades_snapshot_service._get_supabase", return_value=mock_sb):
         from fastapi.testclient import TestClient

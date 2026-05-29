@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pypdf import PdfReader
 
-from integrations.syllabus_cache import (
+from api.integrations.syllabus_cache import (
     SyllabusCacheError,
     get_cached_syllabus_weights,
     save_cached_syllabus_weights,

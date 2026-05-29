@@ -171,7 +171,7 @@ class TestDashboardLogic:
     def test_live_fetch_calls_list_current_term_courses(self):
         """When both caches miss, list_current_term_courses is called."""
         from api.services.course_service import list_current_term_courses
-        with patch("integrations.quercus.requests.get") as mock_get:
+        with patch("api.integrations.quercus.requests.get") as mock_get:
             mock_get.return_value = MagicMock(
                 status_code=200, ok=True,
                 headers={"Link": ""},
@@ -213,7 +213,7 @@ class TestAcornServiceContract:
 
     def test_validate_payload_accepts_valid_import(self):
         """validate_payload returns a normalised dict for a correct extension payload."""
-        from integrations.acorn_store import validate_payload
+        from api.integrations.acorn_store import validate_payload
         result = validate_payload(self._valid_payload())
         assert result["importCode"] == "ABC123"
         assert len(result["courses"]) == 1
@@ -221,13 +221,13 @@ class TestAcornServiceContract:
 
     def test_validate_payload_requires_import_code(self):
         """Missing importCode raises AcornStoreError."""
-        from integrations.acorn_store import validate_payload, AcornStoreError
+        from api.integrations.acorn_store import validate_payload, AcornStoreError
         with pytest.raises(AcornStoreError):
             validate_payload({"courses": []})
 
     def test_validate_payload_requires_courses_or_terms(self):
         """Payload with neither courses nor terms raises AcornStoreError."""
-        from integrations.acorn_store import validate_payload, AcornStoreError
+        from api.integrations.acorn_store import validate_payload, AcornStoreError
         with pytest.raises(AcornStoreError):
             validate_payload({"importCode": "X"})
 
@@ -340,7 +340,7 @@ class TestChatService:
 
     def test_run_agent_signature_accepts_history(self):
         """run_agent accepts a history parameter for threaded conversations."""
-        from agent.agent import run as run_agent
+        from api.agent.agent import run as run_agent
         import inspect
         sig = inspect.signature(run_agent)
         assert "history" in sig.parameters

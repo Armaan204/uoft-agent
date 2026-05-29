@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from auth.user_store import UserStoreError, get_supabase_client
+from api.auth.user_store import UserStoreError, get_supabase_client
 
 
 class ChatHistoryServiceError(RuntimeError):

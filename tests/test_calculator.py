@@ -6,7 +6,7 @@ All tests are pure Python: no mocking, no I/O.
 
 import pytest
 from unittest.mock import patch
-from calculator.grades import GradeCalculator, UOFT_THRESHOLDS, UOFT_GPA_POINTS
+from api.calculator.grades import GradeCalculator, UOFT_THRESHOLDS, UOFT_GPA_POINTS
 
 calc = GradeCalculator()
 

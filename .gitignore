@@ -33,3 +33,7 @@ Thumbs.db
 # Logs
 *.log
 temp.py
+
+# Coverage artifacts
+.coverage
+coverage.xml
