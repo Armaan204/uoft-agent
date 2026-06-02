@@ -370,7 +370,12 @@ class QuercusClient:
         """
         enrollments = self._get(
             f"/courses/{course_id}/enrollments",
-            params={"type[]": "StudentEnrollment", "user_id": "self"},
+            params=[
+                ("type[]", "StudentEnrollment"),
+                ("user_id", "self"),
+                ("state[]", "active"),
+                ("state[]", "completed"),
+            ],
         )
         if not enrollments:
             raise QuercusError(f"No student enrollment found for course {course_id}")
