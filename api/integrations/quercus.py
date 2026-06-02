@@ -134,10 +134,13 @@ class QuercusClient:
     ]
 
     def get_courses(self) -> list:
-        """Return the student's active academic course enrolments.
+        """Return the student's academic course enrolments (active and concluded).
 
-        Fetches /courses with enrollment_state=active and include[]=term so
-        the enrollment term metadata is available for filtering.
+        Fetches /courses with both enrollment_state[]=active and
+        enrollment_state[]=completed so that courses from a just-finished term
+        (e.g. Winter that ended in April) are visible even after Canvas marks
+        the enrollment as concluded.  include[]=term provides the term metadata
+        needed for the filtering step below.
 
         Filtering strategy
         ------------------
@@ -151,11 +154,14 @@ class QuercusClient:
         This keeps the selection dynamic across years and semesters instead of
         hardcoding a specific term name like "2026 Winter".
         """
-        # Pass include[] twice — requests accepts a list of tuples for this
+        # Pass include[] twice — requests accepts a list of tuples for this.
+        # enrollment_state[]=completed captures concluded courses so that the
+        # most-recent-term fallback (step 5) works after a semester ends.
         courses = self._get(
             "/courses",
             params=[
-                ("enrollment_state", "active"),
+                ("enrollment_state[]", "active"),
+                ("enrollment_state[]", "completed"),
                 ("include[]", "syllabus_body"),
                 ("include[]", "term"),
             ],

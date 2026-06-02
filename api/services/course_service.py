@@ -133,6 +133,11 @@ def list_current_term_courses(quercus_token: str) -> list[dict[str, Any]]:
             "Canvas course id=%s raw_code=%r norm_code=%r name=%r",
             course.get("id"), raw_code, norm_code, course.get("name"),
         )
+        # Co-op work-term courses (COPA/COPB/COPC…) are administrative
+        # records, not academic courses — exclude them from the dashboard.
+        if norm_code.startswith("COP"):
+            _logger.debug("Skipping co-op course id=%s norm_code=%r", course.get("id"), norm_code)
+            continue
         if not norm_code:
             result.append({
                 "id": course["id"],

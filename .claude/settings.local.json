@@ -39,7 +39,9 @@
       "Bash(bash /tmp/extract_imports.sh)",
       "Bash(git rm *)",
       "Bash(git mv *)",
-      "Bash(Test-Path *)"
+      "Bash(Test-Path *)",
+      "Bash(grep -E \"^[^/]+$\")",
+      "Bash(git ls-tree *)"
     ]
   }
 }

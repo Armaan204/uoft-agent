@@ -198,6 +198,24 @@ class TestListCurrentTermCourses:
         assert result[0]["canvas_ids"] == [1]
         assert result[1]["canvas_ids"] == [2]
 
+    def test_filters_cop_prefix_courses(self):
+        """Co-op work-term courses (COPA/COPB/COPC…) are excluded from the dashboard."""
+        from api.services.course_service import list_current_term_courses
+        fake_courses = [
+            {"id": 1, "name": "Intro CS", "course_code": "CSCA08H3", "term": {"name": "2026 Winter"}},
+            {"id": 2, "name": "Integrating Work Term I", "course_code": "COPC98H3", "term": {"name": "2026 Winter"}},
+            {"id": 3, "name": "Work Term II", "course_code": "COPA99H3", "term": {"name": "2026 Winter"}},
+        ]
+        with patch("api.services.course_service.UncachedQuercusClient") as MockClient:
+            MockClient.return_value.get_courses.return_value = fake_courses
+            result = list_current_term_courses("fake-token")
+
+        codes = [r["course_code"] for r in result]
+        assert "CSCA08H3" in codes
+        assert "COPC98H3" not in codes
+        assert "COPA99H3" not in codes
+        assert len(result) == 1
+
 
 # ── _merge_groups_and_submissions ────────────────────────────────────────────
 
