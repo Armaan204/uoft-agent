@@ -568,7 +568,7 @@ h1 {
 .detail-page {
   width: 100%;
   margin: 0 auto;
-  padding: 34px 40px 96px;
+  padding: 34px 40px 32px;
 }
 
 .dashboard-page {
@@ -3530,7 +3530,7 @@ input[type='range']::-webkit-slider-thumb {
 
   .dashboard-page,
   .detail-page {
-    padding: 22px 18px calc(96px + env(safe-area-inset-bottom, 0px));
+    padding: 22px 18px calc(32px + env(safe-area-inset-bottom, 0px));
   }
 
   .dashboard-main {
@@ -3768,7 +3768,7 @@ input[type='range']::-webkit-slider-thumb {
 
   .dashboard-page,
   .detail-page {
-    padding: 18px 12px calc(92px + env(safe-area-inset-bottom, 0px));
+    padding: 18px 12px calc(32px + env(safe-area-inset-bottom, 0px));
   }
 
   .semester-row {
