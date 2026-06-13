@@ -148,9 +148,9 @@ h1 {
 
 .tagline {
   margin: 0 0 44px;
-  font-size: 16px;
-  font-weight: 300;
-  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted2);
 }
 
 .divider {
@@ -484,16 +484,20 @@ h1 {
 /* ── End full-screen slider login ───────────────────────── */
 
 .onboarding-copy {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .onboarding-help {
-  margin: 0 0 34px;
-  max-width: 32ch;
+  margin: 0 0 28px;
   color: var(--muted2);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.7;
   text-align: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: oklch(22% 0.03 240 / 0.6);
+  border: 1px solid oklch(40% 0.06 240 / 0.5);
+  width: 100%;
 }
 
 .onboarding-form {
@@ -528,6 +532,20 @@ h1 {
 
 .onboarding-input::placeholder {
   color: var(--muted);
+}
+
+.onboarding-readonly-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted2);
+  line-height: 1.4;
+}
+
+.onboarding-readonly-note svg {
+  flex-shrink: 0;
 }
 
 .onboarding-error {

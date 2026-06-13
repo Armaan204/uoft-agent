@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 import client from '../api/client'
 
@@ -63,8 +63,6 @@ export default function Onboarding() {
           Generate one at <strong>q.utoronto.ca</strong> → <strong>Account</strong> → <strong>Settings</strong> →{' '}
           <strong>New Access Token</strong>
         </p>
-        <div className="divider" />
-
         <form className="onboarding-form" onSubmit={handleSubmit}>
           <label className="onboarding-label" htmlFor="quercus-token">
             Quercus access token
@@ -78,12 +76,25 @@ export default function Onboarding() {
             placeholder="Paste your personal access token"
             autoComplete="off"
           />
+          <p className="onboarding-readonly-note">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+              <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            Your token is only used for read-only access. We never modify your Quercus data.
+          </p>
           {errorMessage ? <div className="onboarding-error">{errorMessage}</div> : null}
           <button className="btn-google onboarding-submit" type="submit" disabled={connectMutation.isPending}>
             {connectMutation.isPending ? 'Connecting…' : 'Connect'}
           </button>
         </form>
       </div>
+
+      <footer className="login-footer">
+        <Link to="/privacy" className="site-footer-link">Privacy Policy</Link>
+        <Link to="/terms" className="site-footer-link">Terms of Use</Link>
+        <Link to="/disclaimers" className="site-footer-link">Disclaimers</Link>
+      </footer>
     </main>
   )
 }
