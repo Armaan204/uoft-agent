@@ -647,6 +647,12 @@ class GradeCalculator:
         "Quiz 1" always finds its weight key even when the group name
         fuzzy-matched to that same key.  Only falls back to fuzzy keyword
         matching (with group_key excluded) when no direct match exists.
+
+        When the fuzzy match has equal or weaker keyword overlap compared to
+        the assignment's own group_key, returns None so the caller falls back
+        to the group-level weight instead of cross-matching to an unrelated
+        component (e.g. "Reflective Paper" in the Pre-Departure Paper group
+        should not fuzzy-match to the Reflective Journal weight).
         """
         available = {
             key: value
@@ -662,7 +668,18 @@ class GradeCalculator:
             for key, value in available.items()
             if key != group_key
         }
-        return cls._match_weight_key(assignment_name, preferred)
+        fuzzy = cls._match_weight_key(assignment_name, preferred)
+        if fuzzy is None:
+            return None
+
+        if group_key is not None and group_key in available:
+            name_kw = cls._keywords(assignment_name)
+            fuzzy_overlap = len(name_kw & cls._keywords(fuzzy))
+            group_overlap = len(name_kw & cls._keywords(group_key))
+            if group_overlap >= fuzzy_overlap:
+                return None
+
+        return fuzzy
 
     @classmethod
     def _is_missing_future_component(cls, name: str) -> bool:

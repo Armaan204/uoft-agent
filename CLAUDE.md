@@ -278,6 +278,19 @@ Vite frontend available at `http://localhost:5173`.
 
 ## Post-deploy Checklist
 
+## Assessment Matching Logic
+
+`GradeCalculator._best_assignment_weight_key` in `api/calculator/grades.py` maps Canvas assignments to syllabus weight keys. It uses a two-pass strategy:
+
+1. **Direct match** (exact, substring, containment) against all available keys including the group's own key
+2. **Fuzzy keyword match** (with group_key excluded) — but only accepted if the fuzzy match has strictly more keyword overlap than the assignment's own group_key; otherwise returns None so the assignment falls back to its group-level weight
+
+This prevents two classes of bugs:
+- **Group-key exclusion**: a group named "Quizzes" fuzzy-matches to "quiz 1" as group_key, excluding it from candidates so "Quiz 1" assignment cross-matches to "quiz 2"
+- **Cross-group fuzzy bleed**: an assignment like "Reflective Paper" in group "Pre-Departure Paper" fuzzy-matches to "Reflective Journal" via the shared keyword "reflective" instead of falling back to its own group weight
+
+When modifying this logic, always add regression tests that reproduce the matching pattern (not the specific course data). Test fixtures must use generic assessment names — never reference real course codes, instructor names, or assessment titles from actual courses.
+
 ### Add Vite polyfill hash to `script-src`
 
 Vite injects a small inline `<script>` polyfill for `<link rel="modulepreload">` into the built `index.html`. The current `script-src 'self'` in `frontend/nginx.conf` will block it. After the first production build:
