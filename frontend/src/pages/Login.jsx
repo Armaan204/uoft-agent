@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import dashboardImg from '../assets/dashboard.png'
 import chatImg from '../assets/chat.png'
@@ -8,55 +8,50 @@ import acornImg from '../assets/acorn.png'
 const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
 const GITHUB_URL = 'https://github.com/Armaan204/uoft-agent'
 
-const INTERVAL = 5000
+const features = [
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+      </svg>
+    ),
+    title: 'Live Grades',
+    description: 'Weighted grades pulled directly from Quercus, updated automatically every time you open the app.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+    title: 'AI Assistant',
+    description: 'Ask about your deadlines, simulate what-if grade scenarios, or get a quick semester summary.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      </svg>
+    ),
+    title: 'Degree Planner',
+    description: 'Import your ACORN transcript and track graduation progress against your program requirements.',
+  },
+]
 
-const slides = [
-  { img: dashboardImg, label: 'Dashboard',       caption: 'All your courses, grades, and deadlines in one place' },
-  { img: chatImg,      label: 'AI Assistant',    caption: 'Ask anything about your grades, courses, or assignments' },
-  { img: gradeImg,     label: 'Grade Breakdown', caption: 'Weighted grade calculations and what-if scenarios' },
-  { img: acornImg,     label: 'ACORN History',   caption: 'Import and explore your full academic transcript' },
+const showcase = [
+  { img: dashboardImg, label: 'Dashboard' },
+  { img: chatImg, label: 'AI Chat' },
+  { img: gradeImg, label: 'Grade Breakdown' },
+  { img: acornImg, label: 'ACORN Import' },
 ]
 
 export default function Login() {
-  const [active, setActive] = useState(0)
-  const intervalRef = useRef(null)
-  const pausedRef = useRef(false)
-
-  const startInterval = () => {
-    clearInterval(intervalRef.current)
-    intervalRef.current = setInterval(() => {
-      if (!pausedRef.current) setActive(i => (i + 1) % slides.length)
-    }, INTERVAL)
-  }
-
-  useEffect(() => {
-    startInterval()
-    return () => clearInterval(intervalRef.current)
-  }, [])
-
-  const goTo = (i) => { setActive(i); startInterval() }
-  const prev = () => { setActive(i => (i - 1 + slides.length) % slides.length); startInterval() }
-  const next = () => { setActive(i => (i + 1) % slides.length); startInterval() }
+  const [activeTab, setActiveTab] = useState(0)
 
   return (
-    <main
-      className="login-screen login-screen--full"
-      onMouseDown={() => { pausedRef.current = true }}
-      onMouseUp={() => { pausedRef.current = false }}
-      onMouseLeave={() => { pausedRef.current = false }}
-      onTouchStart={() => { pausedRef.current = true }}
-      onTouchEnd={() => { pausedRef.current = false }}
-    >
-      <div className="login-bg-slider" aria-hidden="true">
-        {slides.map((slide, i) => (
-          <div key={i} className={`login-bg-slide${i === active ? ' login-bg-slide--active' : ''}`}>
-            <img src={slide.img} alt="" draggable={false} />
-          </div>
-        ))}
-      </div>
-
-      <div className="login-overlay" aria-hidden="true" />
-
+    <main className="landing">
+      {/* ── Nav ──────────────────────────────────────────── */}
       <nav className="login-nav">
         <div className="login-nav-brand">
           <svg viewBox="0 0 28 28" fill="none" aria-hidden="true" width="28" height="28">
@@ -88,55 +83,111 @@ export default function Login() {
         </div>
       </nav>
 
-      <button
-        className="login-arrow login-arrow--prev"
-        onClick={prev}
-        onMouseDown={e => e.stopPropagation()}
-        aria-label="Previous slide"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
+      {/* ── Hero ─────────────────────────────────────────── */}
+      <section className="landing-hero">
+        <div className="landing-hero-content">
+          <div className="landing-badge">
+            <svg viewBox="0 0 16 16" fill="none" width="14" height="14" aria-hidden="true">
+              <path d="M8 1l2.35 4.76 5.25.77-3.8 3.7.9 5.23L8 13.27l-4.7 2.19.9-5.23-3.8-3.7 5.25-.77L8 1z" fill="oklch(78% 0.15 85)" />
+            </svg>
+            Free &amp; open source
+          </div>
+          <h1 className="landing-headline">
+            Know exactly where<br />you stand in every course
+          </h1>
+          <p className="landing-sub">
+            UofT Agent connects to Quercus and calculates your real weighted grades,
+            upcoming deadlines, and what-if scenarios — so you never have to guess again.
+          </p>
+          <button className="btn-google landing-cta" type="button" onClick={() => window.location.assign(googleAuthUrl)}>
+            <svg className="g-logo" viewBox="0 0 18 18" aria-hidden="true">
+              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
+              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
+              <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
+              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
+            </svg>
+            Get started with Google
+          </button>
+          <p className="landing-trust">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+              <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            Read-only Quercus access. We never modify your data.
+          </p>
+        </div>
+        <div className="landing-hero-image">
+          <img src={dashboardImg} alt="UofT Agent dashboard showing course grades and deadlines" draggable={false} />
+        </div>
+      </section>
 
-      <button
-        className="login-arrow login-arrow--next"
-        onClick={next}
-        onMouseDown={e => e.stopPropagation()}
-        aria-label="Next slide"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
+      {/* ── Features ─────────────────────────────────────── */}
+      <section className="landing-features">
+        <h2 className="landing-section-title">Everything you need, nothing you don't</h2>
+        <div className="landing-features-grid">
+          {features.map((feature) => (
+            <div className="landing-feature-card" key={feature.title}>
+              <div className="landing-feature-icon">{feature.icon}</div>
+              <h3 className="landing-feature-title">{feature.title}</h3>
+              <p className="landing-feature-desc">{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      <footer className="login-footer">
+      {/* ── Showcase ─────────────────────────────────────── */}
+      <section className="landing-showcase">
+        <h2 className="landing-section-title">See it in action</h2>
+        <div className="landing-showcase-tabs">
+          {showcase.map((item, i) => (
+            <button
+              className={`landing-tab${i === activeTab ? ' landing-tab--active' : ''}`}
+              key={item.label}
+              type="button"
+              onClick={() => setActiveTab(i)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="landing-showcase-frame">
+          {showcase.map((item, i) => (
+            <img
+              key={item.label}
+              className={`landing-showcase-img${i === activeTab ? ' landing-showcase-img--active' : ''}`}
+              src={item.img}
+              alt={item.label}
+              draggable={false}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Bottom CTA ───────────────────────────────────── */}
+      <section className="landing-bottom-cta">
+        <h2 className="landing-cta-headline">Ready to take control of your grades?</h2>
+        <p className="landing-cta-sub">Set up takes 30 seconds. Just sign in and paste your Quercus token.</p>
+        <button className="btn-google landing-cta" type="button" onClick={() => window.location.assign(googleAuthUrl)}>
+          <svg className="g-logo" viewBox="0 0 18 18" aria-hidden="true">
+            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
+            <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
+          </svg>
+          Get started with Google
+        </button>
+        <p className="landing-origin">
+          Built by a UTSC student. Open source on{' '}
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub</a>.
+        </p>
+      </section>
+
+      {/* ── Footer ───────────────────────────────────────── */}
+      <footer className="landing-footer">
         <Link to="/privacy" className="site-footer-link">Privacy Policy</Link>
         <Link to="/terms" className="site-footer-link">Terms of Use</Link>
         <Link to="/disclaimers" className="site-footer-link">Disclaimers</Link>
       </footer>
-
-      <div className="login-slide-footer">
-        <div className="login-caption-stack">
-          {slides.map((slide, i) => (
-            <div key={i} className={`login-caption${i === active ? ' login-caption--active' : ''}`}>
-              <span className="login-slide-label">{slide.label}</span>
-              <p className="login-slide-text">{slide.caption}</p>
-            </div>
-          ))}
-        </div>
-        <div className="login-slide-dots">
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              className={`login-slide-dot${i === active ? ' login-slide-dot--active' : ''}`}
-              onClick={() => goTo(i)}
-              onMouseDown={e => e.stopPropagation()}
-              aria-label={`View ${slides[i].label}`}
-            />
-          ))}
-        </div>
-      </div>
     </main>
   )
 }
