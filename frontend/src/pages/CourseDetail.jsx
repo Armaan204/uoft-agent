@@ -105,7 +105,7 @@ export default function CourseDetail() {
         .filter((component) => component.status === 'graded')
         .map((component) => ({
           ...component,
-          assignmentRows: (assignmentsByComponent[component.component_key] ?? []).filter((row) => row.status === 'graded'),
+          assignmentRows: assignmentsByComponent[component.component_key] ?? [],
         })),
     [assignmentsByComponent, components],
   )
@@ -398,9 +398,11 @@ export default function CourseDetail() {
                       {row.assignmentRows.length > 1 ? (
                         <div className="comp-subrows">
                           {row.assignmentRows.map((assignment) => (
-                            <div className="comp-subrow" key={assignment.assignment_id}>
-                              {assignment.name || row.name} · {assignment.earned}/{assignment.possible} pts
-                              {typeof assignment.pct === 'number' ? ` (${assignment.pct}%)` : ''}
+                            <div className={`comp-subrow${assignment.status === 'ungraded' ? ' comp-subrow-pending' : ''}`} key={assignment.assignment_id}>
+                              {assignment.status === 'ungraded'
+                                ? <>{assignment.name || row.name} · <span className="comp-pending-label">pending</span></>
+                                : <>{assignment.name || row.name} · {assignment.earned}/{assignment.possible} pts{typeof assignment.pct === 'number' ? ` (${assignment.pct}%)` : ''}</>
+                              }
                             </div>
                           ))}
                         </div>

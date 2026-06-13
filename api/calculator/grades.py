@@ -817,39 +817,25 @@ class GradeCalculator:
                 "assignments_by_component": {comp_key: graded_rows},
             }
 
-        graded_weight = weight_info["weight"] * (possible / total_possible)
-        remaining_weight = weight_info["weight"] - graded_weight
-        comp_key_completed = f"group::{group_id}::{weight_info['name']}::completed"
-        comp_key_remaining = f"group::{group_id}::{weight_info['name']}::remaining"
+        # Mixed: some graded, some ungraded — single unified component.
+        # Score assumes remaining items get full marks.
+        ungraded_possible = total_possible - possible
+        assumed_earned = earned + ungraded_possible
+        pct = round((assumed_earned / total_possible) * 100, 2) if total_possible > 0 else None
+        comp_key = f"group::{group_id}::{weight_info['name']}::partial"
         return {
-            "components": [
-                {
-                    "component_key": comp_key_completed,
-                    "name": f"{weight_info['name']} (completed)",
-                    "weight": round(graded_weight, 2),
-                    "status": "graded",
-                    "pct": round((earned / possible) * 100, 2) if possible > 0 else None,
-                    "earned": earned,
-                    "possible": possible,
-                    "source": "group",
-                    "group_name": group_name,
-                },
-                {
-                    "component_key": comp_key_remaining,
-                    "name": f"{weight_info['name']} (remaining)",
-                    "weight": round(remaining_weight, 2),
-                    "status": "ungraded",
-                    "pct": None,
-                    "earned": 0.0,
-                    "possible": 0.0,
-                    "source": "group",
-                    "group_name": group_name,
-                },
-            ],
-            "assignments_by_component": {
-                comp_key_completed: graded_rows,
-                comp_key_remaining: ungraded_rows,
-            },
+            "components": [{
+                "component_key": comp_key,
+                "name": weight_info["name"],
+                "weight": weight_info["weight"],
+                "status": "graded",
+                "pct": pct,
+                "earned": earned,
+                "possible": possible,
+                "source": "group",
+                "group_name": group_name,
+            }],
+            "assignments_by_component": {comp_key: graded_rows + ungraded_rows},
         }
 
     @staticmethod

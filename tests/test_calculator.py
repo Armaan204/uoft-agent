@@ -340,7 +340,7 @@ class TestBuildWeightedComponents:
         ungraded_names = [c["name"] for c in model["components"] if c["status"] == "ungraded"]
         assert "FinalExam" in ungraded_names
 
-    def test_mixed_graded_and_ungraded_assignments_in_same_group_split_components(self):
+    def test_mixed_graded_and_ungraded_assignments_in_same_group_unified_component(self):
         groups = [{
             "id": 10,
             "name": "Assignments",
@@ -353,10 +353,13 @@ class TestBuildWeightedComponents:
         }]
         submissions = [{"assignment_id": 101, "score": 32.0}]
         model = calc.build_weighted_components(groups, submissions, {"Assignments": 100.0})
-        statuses = {component["status"] for component in model["components"]}
-        assert statuses == {"graded", "ungraded"}
-        assert model["graded_weight"] == pytest.approx(40.0)
-        assert model["ungraded_weight"] == pytest.approx(60.0)
+        assert len(model["components"]) == 1
+        comp = model["components"][0]
+        assert comp["status"] == "graded"
+        assert comp["weight"] == 100.0
+        assert comp["pct"] == pytest.approx(92.0)
+        assert model["graded_weight"] == pytest.approx(100.0)
+        assert model["ungraded_weight"] == pytest.approx(0.0)
 
     def test_unmatched_non_future_weight_marks_model_unreliable(self):
         with patch.object(GradeCalculator, "_is_missing_future_component", return_value=False):

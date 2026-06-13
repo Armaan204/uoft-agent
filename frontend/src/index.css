@@ -1745,6 +1745,15 @@ tfoot td {
   line-height: 1.5;
 }
 
+.comp-subrow-pending {
+  opacity: 0.55;
+}
+
+.comp-pending-label {
+  font-style: italic;
+  opacity: 0.8;
+}
+
 .score-cell {
   white-space: nowrap;
   min-width: 118px;
