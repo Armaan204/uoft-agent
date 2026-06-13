@@ -3352,7 +3352,7 @@ input[type='range']::-webkit-slider-thumb {
 
 .input-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -3367,9 +3367,13 @@ input[type='range']::-webkit-slider-thumb {
   outline: none;
   background: transparent;
   color: var(--text);
-  min-height: 30px;
+  min-height: 24px;
   max-height: 140px;
   font-size: 16px;
+  padding: 0;
+  margin: 0;
+  line-height: 24px;
+  field-sizing: content;
 }
 
 .send-btn {
@@ -3384,6 +3388,8 @@ input[type='range']::-webkit-slider-thumb {
   cursor: pointer;
   min-width: 44px;
   min-height: 44px;
+  align-self: flex-end;
+  flex-shrink: 0;
 }
 
 .typing-bubble {

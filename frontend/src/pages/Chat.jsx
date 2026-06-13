@@ -300,7 +300,7 @@ export default function Chat() {
           <textarea
             className="input-box"
             rows="1"
-            placeholder={isMobileComposer ? '' : 'Ask about your grades, exams, deadlines…'}
+            placeholder={isMobileComposer ? 'Ask anything…' : 'Ask about your grades, exams, deadlines…'}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
