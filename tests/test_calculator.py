@@ -718,3 +718,91 @@ class TestDroppedAssignmentHelpers:
             "assignments": [{"id": 1, "points_possible": 10}],
         }
         assert calc._resolve_dropped_assignment_ids(group, {}) == set()
+
+
+class TestQuizScoreMisattribution:
+    """Regression tests for the bug where Quiz 1's score was attributed to Quiz 2.
+
+    Root cause: when a group named "Quizzes" fuzzy-matched to "quiz 1" as
+    group_key, _best_assignment_weight_key excluded "quiz 1" from candidates,
+    causing the actual "Quiz 1" assignment to fuzzy-match to "quiz 2" instead.
+    """
+
+    def _eesa11_groups(self):
+        return [{
+            "id": 100,
+            "name": "Quizzes",
+            "group_weight": 25.0,
+            "rules": {},
+            "assignments": [
+                {"id": 1, "name": "Quiz 1", "points_possible": 50},
+                {"id": 2, "name": "Quiz 2", "points_possible": 50},
+            ],
+        }]
+
+    def _eesa11_weights(self):
+        return {
+            "Quiz 1": 12.5,
+            "Quiz 2": 12.5,
+            "Mid-Term Test": 30.0,
+            "Final Exam": 45.0,
+        }
+
+    def test_quiz1_graded_maps_to_quiz1_component(self):
+        """When only Quiz 1 is graded, only the Quiz 1 component should show as graded."""
+        submissions = [{"assignment_id": 1, "score": 50.0}]
+        model = calc.build_weighted_components(
+            self._eesa11_groups(), submissions, self._eesa11_weights(),
+        )
+        by_name = {c["name"]: c for c in model["components"]}
+        assert "Quiz 1" in by_name
+        assert "Quiz 2" in by_name
+        assert by_name["Quiz 1"]["status"] == "graded"
+        assert by_name["Quiz 1"]["pct"] == 100.0
+        assert by_name["Quiz 2"]["status"] == "ungraded"
+
+    def test_quiz2_graded_maps_to_quiz2_component(self):
+        """When only Quiz 2 is graded, only the Quiz 2 component should show as graded."""
+        submissions = [{"assignment_id": 2, "score": 40.0}]
+        model = calc.build_weighted_components(
+            self._eesa11_groups(), submissions, self._eesa11_weights(),
+        )
+        by_name = {c["name"]: c for c in model["components"]}
+        assert by_name["Quiz 2"]["status"] == "graded"
+        assert by_name["Quiz 2"]["pct"] == 80.0
+        assert by_name["Quiz 1"]["status"] == "ungraded"
+
+    def test_both_quizzes_graded_maps_correctly(self):
+        """Both quizzes graded — each component gets its own score."""
+        submissions = [
+            {"assignment_id": 1, "score": 50.0},
+            {"assignment_id": 2, "score": 25.0},
+        ]
+        model = calc.build_weighted_components(
+            self._eesa11_groups(), submissions, self._eesa11_weights(),
+        )
+        by_name = {c["name"]: c for c in model["components"]}
+        assert by_name["Quiz 1"]["pct"] == 100.0
+        assert by_name["Quiz 2"]["pct"] == 50.0
+
+    def test_numbered_items_in_group_all_match_correctly(self):
+        """Generalized: Lab 1/2/3 in a 'Labs' group with per-item syllabus weights."""
+        groups = [{
+            "id": 200,
+            "name": "Labs",
+            "group_weight": 30.0,
+            "rules": {},
+            "assignments": [
+                {"id": 10, "name": "Lab 1", "points_possible": 20},
+                {"id": 11, "name": "Lab 2", "points_possible": 20},
+                {"id": 12, "name": "Lab 3", "points_possible": 20},
+            ],
+        }]
+        submissions = [{"assignment_id": 11, "score": 18.0}]
+        weights = {"Lab 1": 10.0, "Lab 2": 10.0, "Lab 3": 10.0, "Final": 70.0}
+        model = calc.build_weighted_components(groups, submissions, weights)
+        by_name = {c["name"]: c for c in model["components"]}
+        assert by_name["Lab 2"]["status"] == "graded"
+        assert by_name["Lab 2"]["pct"] == 90.0
+        assert by_name["Lab 1"]["status"] == "ungraded"
+        assert by_name["Lab 3"]["status"] == "ungraded"

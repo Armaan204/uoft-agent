@@ -614,6 +614,25 @@ class GradeCalculator:
         }
 
     @classmethod
+    def _match_weight_key_direct(cls, name: str, weights_lower: dict[str, float]) -> str | None:
+        """Match by exact, substring, or containment only — no fuzzy keywords."""
+        name_lower = name.lower()
+
+        if name_lower in weights_lower:
+            return name_lower
+
+        for key in weights_lower:
+            if key in name_lower:
+                return key
+
+        candidates = [key for key in weights_lower if name_lower in key]
+        if candidates:
+            candidates.sort(key=len)
+            return candidates[0]
+
+        return None
+
+    @classmethod
     def _best_assignment_weight_key(
         cls,
         assignment_name: str,
@@ -621,11 +640,27 @@ class GradeCalculator:
         weights_lower: dict[str, float],
         unavailable_keys: set[str],
     ) -> str | None:
-        """Prefer only specific item-level matches over the broad group match."""
-        preferred = {
+        """Prefer only specific item-level matches over the broad group match.
+
+        Uses a two-pass strategy: first tries exact/substring matching against
+        all available keys (including group_key) so that an assignment named
+        "Quiz 1" always finds its weight key even when the group name
+        fuzzy-matched to that same key.  Only falls back to fuzzy keyword
+        matching (with group_key excluded) when no direct match exists.
+        """
+        available = {
             key: value
             for key, value in weights_lower.items()
-            if key not in unavailable_keys and key != group_key
+            if key not in unavailable_keys
+        }
+        direct = cls._match_weight_key_direct(assignment_name, available)
+        if direct is not None:
+            return direct
+
+        preferred = {
+            key: value
+            for key, value in available.items()
+            if key != group_key
         }
         return cls._match_weight_key(assignment_name, preferred)
 
