@@ -51,6 +51,10 @@ An AI academic assistant for University of Toronto students.
 - `frontend/src/hooks/useQuercusStatus.jsx` — checks whether the logged-in user has a saved Quercus token
 - `frontend/src/components/` — reusable UI pieces including sidebar shell, profile menu, cards, lists, and tool-call rendering
 - `frontend/src/pages/` — Login, Quercus onboarding, Dashboard, Course Detail, Chat, ACORN, and Degree Planner pages
+- `frontend/src/pages/demo/` — read-only demo versions of all main pages (Dashboard, Course Detail, Chat, ACORN, Degree Planner)
+- `frontend/src/data/mockData.js` — static mock data powering the demo (courses, grades, announcements, ACORN, degree planner, chat responses)
+- `frontend/src/context/DemoDataContext.jsx` — React context providing mock data to demo pages
+- `frontend/src/components/DemoShell.jsx` — demo app shell with sidebar nav, persistent demo banner, and sign-in CTA
 - `frontend/src/index.css` — shared design system, typography, layout, and animation styles, including the sticky chat composer and inline course-grade editing states
 
 ## Key Decisions
@@ -81,6 +85,7 @@ An AI academic assistant for University of Toronto students.
 - Requirements are cached per `acorn_name` in the `program_requirements_cache` Supabase table; the Degree Planner page never auto-refetches (all TanStack Query auto-refetch options disabled) to avoid burning API credits
 - Three requirement types: `required` (OR alternatives), `n_credits_from_list` (earn N credits from a list), `open_pool` (earn N credits from courses matching department+level filters, with optional sub-requirements)
 - Co-op status is tracked as satisfied/in_progress/remaining; course matching is greedy with most-constrained requirements first
+- The `/demo` route is fully client-side with no backend dependency; mock data uses dynamic dates (`inDays(n)` relative to today) so deadlines never appear stale; demo pages reuse presentational components but never import hooks that call the API
 
 ## Auth
 
@@ -191,6 +196,7 @@ Implemented:
 - React ACORN page implemented with onboarding/claim flow, summary cards, GPA chart, sortable course table, and re-import flow
 - Frontend and backend deployment scaffolding added for Railway: `Procfile`, frontend Dockerfile, nginx static config, and production API URL support
 - Degree Planner page (`/degree-planner`) implemented: fetches graduation progress from `/api/graduation/progress`, shows program credit summary with progress bar, collapsible requirement groups, and a Re-analyze button that clears the cache and re-extracts
+- Public demo mode at `/demo` — entirely client-side, no auth or backend calls; uses static mock data via `DemoDataContext`; covers Dashboard, Course Detail (with working what-if sliders), Chat (canned responses via suggestion chips), ACORN (GPA chart + course table), and Degree Planner; persistent amber banner links to sign-in; "Try the demo" button on landing page
 
 Not implemented yet:
 

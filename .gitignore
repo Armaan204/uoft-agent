@@ -19,7 +19,7 @@ build/
 *.zip
 
 # Local data imports
-data/
+/data/
 
 # IDEs
 .vscode/
