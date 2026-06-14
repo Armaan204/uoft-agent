@@ -3,7 +3,9 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { useQueryClient } from '@tanstack/react-query'
 
 import AppShell from './components/AppShell'
+import DemoShell from './components/DemoShell'
 import client from './api/client'
+import { DemoDataProvider } from './context/DemoDataContext'
 import { useAuth } from './hooks/useAuth'
 import { useQuercusStatus } from './hooks/useQuercusStatus'
 import Acorn from './pages/Acorn'
@@ -12,6 +14,11 @@ import ChatHistory from './pages/ChatHistory'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
 import DegreePlanner from './pages/DegreePlanner'
+import DemoAcorn from './pages/demo/DemoAcorn'
+import DemoChat from './pages/demo/DemoChat'
+import DemoCourseDetail from './pages/demo/DemoCourseDetail'
+import DemoDashboard from './pages/demo/DemoDashboard'
+import DemoPlanner from './pages/demo/DemoPlanner'
 import Disclaimers from './pages/Disclaimers'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
@@ -115,6 +122,20 @@ export default function App() {
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfUse />} />
       <Route path="/disclaimers" element={<Disclaimers />} />
+      <Route path="/demo" element={<Navigate to="/demo/dashboard" replace />} />
+      <Route
+        element={
+          <DemoDataProvider>
+            <DemoShell />
+          </DemoDataProvider>
+        }
+      >
+        <Route path="/demo/dashboard" element={<DemoDashboard />} />
+        <Route path="/demo/courses/:courseId" element={<DemoCourseDetail />} />
+        <Route path="/demo/chat" element={<DemoChat />} />
+        <Route path="/demo/acorn" element={<DemoAcorn />} />
+        <Route path="/demo/planner" element={<DemoPlanner />} />
+      </Route>
       <Route
         path="/onboarding"
         element={

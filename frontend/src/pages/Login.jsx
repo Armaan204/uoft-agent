@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import dashboardImg from '../assets/dashboard.png'
 import chatImg from '../assets/chat.png'
 import gradeImg from '../assets/gradebreakdown.png'
@@ -47,6 +47,7 @@ const showcase = [
 ]
 
 export default function Login() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(0)
   const [lightboxImage, setLightboxImage] = useState(null)
 
@@ -129,6 +130,9 @@ export default function Login() {
               <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
             </svg>
             Get started with Google
+          </button>
+          <button className="btn-demo landing-cta-secondary" type="button" onClick={() => navigate('/demo')}>
+            Try the demo
           </button>
           <p className="landing-trust">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
