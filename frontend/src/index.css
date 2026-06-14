@@ -671,9 +671,12 @@ h1 {
 
   .landing-showcase-tabs {
     width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    scroll-padding-inline: 4px;
   }
 
   .landing-showcase-tabs::-webkit-scrollbar {
@@ -683,7 +686,7 @@ h1 {
   .landing-tab {
     padding: 8px 14px;
     font-size: 13px;
-    flex: 1;
+    flex: 0 0 auto;
     text-align: center;
   }
 }
