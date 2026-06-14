@@ -6,10 +6,11 @@ import { displayCourseCode } from '../utils/courseCode'
 
 const COURSE_DETAIL_STALE_TIME_MS = 5 * 60 * 1000
 
-function badgeClass(flag) {
-  if (flag === 'Safe') return 'safe'
-  if (flag === 'At risk') return 'risk'
-  return 'track'
+function progressClass(pct) {
+  if (pct >= 80) return 'a-range'
+  if (pct >= 70) return 'b-range'
+  if (pct >= 60) return 'c-range'
+  return 'd-range'
 }
 
 function displayCourseName(name, courseCode) {
@@ -25,10 +26,10 @@ function displayCourseName(name, courseCode) {
 
 export default function CourseCard({ course }) {
   const queryClient = useQueryClient()
-  const badge = badgeClass(course.risk_flag)
   const gradeValue = typeof course.display_grade === 'number' ? course.display_grade : course.current_grade
   const grade = typeof gradeValue === 'number' ? Math.round(gradeValue) : '--'
   const noBreakdown = course.risk_flag === 'No breakdown'
+  const fillClass = typeof grade === 'number' ? progressClass(grade) : 'track'
 
   function prefetchCourseDetail() {
     queryClient.prefetchQuery({
@@ -48,14 +49,13 @@ export default function CourseCard({ course }) {
           <div className="course-code">{displayCourseCode(course.course_code)}</div>
           <div className="course-name">{displayCourseName(course.name, course.course_code)}</div>
         </div>
-        <span className={`badge ${badge}`}>{course.risk_flag}</span>
       </div>
       <div className="grade-row">
         <span className="grade-pct">{grade}</span>
         <span className="grade-letter">% · {course.letter_grade || 'N/A'}</span>
       </div>
       <div className="progress-wrap">
-        <div className={`progress-fill fill-${badge}`} style={{ width: `${Math.max(0, Math.min(100, grade || 0))}%` }} />
+        <div className={`progress-fill fill-${fillClass}`} style={{ width: `${Math.max(0, Math.min(100, grade || 0))}%` }} />
       </div>
       {noBreakdown ? (
         <span className="btn-view btn-view-disabled" aria-disabled="true">

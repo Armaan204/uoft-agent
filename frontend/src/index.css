@@ -1794,12 +1794,29 @@ tfoot td:not(:first-child),
   animation: shimmer-pass 1.8s ease-out 0.3s 1 forwards;
 }
 
+.fill-a-range {
+  background: linear-gradient(90deg, var(--green), oklch(75% 0.18 160));
+}
+
+.fill-b-range {
+  background: linear-gradient(90deg, oklch(65% 0.15 250), oklch(72% 0.14 230));
+}
+
+.fill-c-range {
+  background: linear-gradient(90deg, var(--yellow), oklch(82% 0.18 95));
+}
+
+.fill-d-range {
+  background: linear-gradient(90deg, var(--red), oklch(72% 0.2 30));
+}
+
+/* Legacy aliases for degree planner progress bars */
 .fill-safe {
   background: linear-gradient(90deg, var(--green), oklch(75% 0.18 160));
 }
 
 .fill-track {
-  background: linear-gradient(90deg, var(--yellow), oklch(82% 0.18 95));
+  background: linear-gradient(90deg, oklch(65% 0.15 250), oklch(72% 0.14 230));
 }
 
 .fill-risk {

@@ -7,8 +7,8 @@ export const MOCK_COURSES = [
     id: 'demo-1',
     course_code: 'CSCA08H3',
     name: 'CSCA08H3: Introduction to Computer Science I',
-    current_grade: 78.4,
-    display_grade: 78.4,
+    current_grade: 78.0,
+    display_grade: 78.0,
     letter_grade: 'B+',
     risk_flag: 'On track',
     term_name: 'Fall 2025',
@@ -20,9 +20,9 @@ export const MOCK_COURSES = [
     id: 'demo-2',
     course_code: 'STAB22H3',
     name: 'STAB22H3: Statistics I',
-    current_grade: 84.1,
-    display_grade: 84.1,
-    letter_grade: 'A-',
+    current_grade: 90.0,
+    display_grade: 90.0,
+    letter_grade: 'A+',
     risk_flag: 'Safe',
     term_name: 'Fall 2025',
     deadlines: [
@@ -33,10 +33,10 @@ export const MOCK_COURSES = [
     id: 'demo-3',
     course_code: 'ENGB06H3',
     name: 'ENGB06H3: English Literature',
-    current_grade: 71.2,
-    display_grade: 71.2,
-    letter_grade: 'B-',
-    risk_flag: 'At risk',
+    current_grade: 69.0,
+    display_grade: 69.0,
+    letter_grade: 'C+',
+    risk_flag: 'On track',
     term_name: 'Fall 2025',
     deadlines: [
       { course_code: 'ENGB06H3', name: 'Essay 3: Modernism', due_at: inDays(10) },
@@ -46,9 +46,9 @@ export const MOCK_COURSES = [
     id: 'demo-4',
     course_code: 'MGTA01H3',
     name: 'MGTA01H3: Introduction to Management',
-    current_grade: 88.9,
-    display_grade: 88.9,
-    letter_grade: 'A',
+    current_grade: 92.0,
+    display_grade: 92.0,
+    letter_grade: 'A+',
     risk_flag: 'Safe',
     term_name: 'Fall 2025',
     deadlines: [
@@ -76,48 +76,48 @@ export const MOCK_ANNOUNCEMENTS = [
 
 export const MOCK_COURSE_GRADES = {
   'demo-1': {
-    grade: { weighted_grade: 78.4 },
+    grade: { weighted_grade: 78.0 },
     component_model: {
       components: [
-        { component_key: 'assignments', name: 'Assignments', weight: 30, status: 'graded', pct: 82, earned: 82, possible: 100 },
-        { component_key: 'midterm', name: 'Midterm', weight: 25, status: 'graded', pct: 74, earned: 74, possible: 100 },
-        { component_key: 'labs', name: 'Labs', weight: 10, status: 'graded', pct: 91, earned: 91, possible: 100 },
-        { component_key: 'final', name: 'Final Exam', weight: 35, status: 'ungraded', pct: null, earned: null, possible: 100 },
+        { component_key: 'assignments', name: 'Assignments', weight: 35, status: 'graded', pct: 70, earned: 70, possible: 100 },
+        { component_key: 'midterm', name: 'Midterm', weight: 25, status: 'graded', pct: 66, earned: 66, possible: 100 },
+        { component_key: 'labs', name: 'Labs', weight: 15, status: 'graded', pct: 80, earned: 80, possible: 100 },
+        { component_key: 'final', name: 'Final Exam', weight: 25, status: 'ungraded', pct: null, earned: null, possible: 100 },
       ],
       assignments_by_component: {
         assignments: [
-          { assignment_id: 'a1', name: 'Assignment 1', status: 'graded', earned: 85, possible: 100, pct: 85 },
-          { assignment_id: 'a2', name: 'Assignment 2', status: 'graded', earned: 79, possible: 100, pct: 79 },
-          { assignment_id: 'a3', name: 'Assignment 3', status: 'graded', earned: 82, possible: 100, pct: 82 },
+          { assignment_id: 'a1', name: 'Assignment 1', status: 'graded', earned: 74, possible: 100, pct: 74 },
+          { assignment_id: 'a2', name: 'Assignment 2', status: 'graded', earned: 67, possible: 100, pct: 67 },
+          { assignment_id: 'a3', name: 'Assignment 3', status: 'graded', earned: 69, possible: 100, pct: 69 },
         ],
         midterm: [
-          { assignment_id: 'mt', name: 'Midterm Exam', status: 'graded', earned: 74, possible: 100, pct: 74 },
+          { assignment_id: 'mt', name: 'Midterm Exam', status: 'graded', earned: 66, possible: 100, pct: 66 },
         ],
         labs: [
-          { assignment_id: 'l1', name: 'Lab 1', status: 'graded', earned: 90, possible: 100, pct: 90 },
-          { assignment_id: 'l2', name: 'Lab 2', status: 'graded', earned: 92, possible: 100, pct: 92 },
+          { assignment_id: 'l1', name: 'Lab 1', status: 'graded', earned: 78, possible: 100, pct: 78 },
+          { assignment_id: 'l2', name: 'Lab 2', status: 'graded', earned: 82, possible: 100, pct: 82 },
         ],
       },
     },
     live_components: [],
   },
   'demo-2': {
-    grade: { weighted_grade: 84.1 },
+    grade: { weighted_grade: 90.0 },
     component_model: {
       components: [
-        { component_key: 'problem-sets', name: 'Problem Sets', weight: 25, status: 'graded', pct: 88, earned: 88, possible: 100 },
-        { component_key: 'midterm', name: 'Midterm', weight: 30, status: 'graded', pct: 81, earned: 81, possible: 100 },
+        { component_key: 'problem-sets', name: 'Problem Sets', weight: 25, status: 'graded', pct: 86, earned: 86, possible: 100 },
+        { component_key: 'midterm', name: 'Midterm', weight: 30, status: 'graded', pct: 80, earned: 80, possible: 100 },
         { component_key: 'tutorials', name: 'Tutorial Quizzes', weight: 10, status: 'graded', pct: 95, earned: 95, possible: 100 },
         { component_key: 'final', name: 'Final Exam', weight: 35, status: 'ungraded', pct: null, earned: null, possible: 100 },
       ],
       assignments_by_component: {
         'problem-sets': [
-          { assignment_id: 'ps1', name: 'Problem Set 1', status: 'graded', earned: 90, possible: 100, pct: 90 },
-          { assignment_id: 'ps2', name: 'Problem Set 2', status: 'graded', earned: 85, possible: 100, pct: 85 },
-          { assignment_id: 'ps3', name: 'Problem Set 3', status: 'graded', earned: 89, possible: 100, pct: 89 },
+          { assignment_id: 'ps1', name: 'Problem Set 1', status: 'graded', earned: 88, possible: 100, pct: 88 },
+          { assignment_id: 'ps2', name: 'Problem Set 2', status: 'graded', earned: 84, possible: 100, pct: 84 },
+          { assignment_id: 'ps3', name: 'Problem Set 3', status: 'graded', earned: 86, possible: 100, pct: 86 },
         ],
         midterm: [
-          { assignment_id: 'mt', name: 'Midterm Exam', status: 'graded', earned: 81, possible: 100, pct: 81 },
+          { assignment_id: 'mt', name: 'Midterm Exam', status: 'graded', earned: 80, possible: 100, pct: 80 },
         ],
         tutorials: [
           { assignment_id: 'tq1', name: 'Quiz 1', status: 'graded', earned: 93, possible: 100, pct: 93 },
@@ -128,36 +128,36 @@ export const MOCK_COURSE_GRADES = {
     live_components: [],
   },
   'demo-3': {
-    grade: { weighted_grade: 71.2 },
+    grade: { weighted_grade: 69.0 },
     component_model: {
       components: [
-        { component_key: 'essays', name: 'Essays', weight: 40, status: 'graded', pct: 69, earned: 69, possible: 100 },
-        { component_key: 'participation', name: 'Participation', weight: 15, status: 'graded', pct: 80, earned: 80, possible: 100 },
-        { component_key: 'midterm', name: 'Midterm Paper', weight: 20, status: 'graded', pct: 72, earned: 72, possible: 100 },
-        { component_key: 'final', name: 'Final Essay', weight: 25, status: 'ungraded', pct: null, earned: null, possible: 100 },
+        { component_key: 'essays', name: 'Essays', weight: 40, status: 'graded', pct: 59, earned: 59, possible: 100 },
+        { component_key: 'participation', name: 'Participation', weight: 15, status: 'graded', pct: 66, earned: 66, possible: 100 },
+        { component_key: 'midterm', name: 'Midterm Paper', weight: 25, status: 'graded', pct: 62, earned: 62, possible: 100 },
+        { component_key: 'final', name: 'Final Essay', weight: 20, status: 'ungraded', pct: null, earned: null, possible: 100 },
       ],
       assignments_by_component: {
         essays: [
-          { assignment_id: 'e1', name: 'Essay 1: Romanticism', status: 'graded', earned: 65, possible: 100, pct: 65 },
-          { assignment_id: 'e2', name: 'Essay 2: Victorian Lit', status: 'graded', earned: 73, possible: 100, pct: 73 },
+          { assignment_id: 'e1', name: 'Essay 1: Romanticism', status: 'graded', earned: 55, possible: 100, pct: 55 },
+          { assignment_id: 'e2', name: 'Essay 2: Victorian Lit', status: 'graded', earned: 63, possible: 100, pct: 63 },
         ],
         participation: [
-          { assignment_id: 'p1', name: 'Participation', status: 'graded', earned: 80, possible: 100, pct: 80 },
+          { assignment_id: 'p1', name: 'Participation', status: 'graded', earned: 66, possible: 100, pct: 66 },
         ],
         midterm: [
-          { assignment_id: 'mp', name: 'Midterm Paper', status: 'graded', earned: 72, possible: 100, pct: 72 },
+          { assignment_id: 'mp', name: 'Midterm Paper', status: 'graded', earned: 62, possible: 100, pct: 62 },
         ],
       },
     },
     live_components: [],
   },
   'demo-4': {
-    grade: { weighted_grade: 88.9 },
+    grade: { weighted_grade: 92.0 },
     component_model: {
       components: [
         { component_key: 'case-studies', name: 'Case Studies', weight: 30, status: 'graded', pct: 91, earned: 91, possible: 100 },
-        { component_key: 'midterm', name: 'Midterm', weight: 25, status: 'graded', pct: 85, earned: 85, possible: 100 },
-        { component_key: 'group-project', name: 'Group Project', weight: 20, status: 'graded', pct: 93, earned: 93, possible: 100 },
+        { component_key: 'midterm', name: 'Midterm', weight: 25, status: 'graded', pct: 86, earned: 86, possible: 100 },
+        { component_key: 'group-project', name: 'Group Project', weight: 20, status: 'graded', pct: 91, earned: 91, possible: 100 },
         { component_key: 'final', name: 'Final Exam', weight: 25, status: 'ungraded', pct: null, earned: null, possible: 100 },
       ],
       assignments_by_component: {
@@ -166,10 +166,10 @@ export const MOCK_COURSE_GRADES = {
           { assignment_id: 'cs2', name: 'Case Study 2', status: 'graded', earned: 93, possible: 100, pct: 93 },
         ],
         midterm: [
-          { assignment_id: 'mt', name: 'Midterm Exam', status: 'graded', earned: 85, possible: 100, pct: 85 },
+          { assignment_id: 'mt', name: 'Midterm Exam', status: 'graded', earned: 86, possible: 100, pct: 86 },
         ],
         'group-project': [
-          { assignment_id: 'gp', name: 'Group Project', status: 'graded', earned: 93, possible: 100, pct: 93 },
+          { assignment_id: 'gp', name: 'Group Project', status: 'graded', earned: 91, possible: 100, pct: 91 },
         ],
       },
     },
@@ -326,21 +326,21 @@ export const MOCK_CHAT_RESPONSES = {
 
 | Course | Grade | Letter |
 |--------|-------|--------|
-| CSCA08H3 | 78.4% | B+ |
-| STAB22H3 | 84.1% | A- |
-| ENGB06H3 | 71.2% | B- |
-| MGTA01H3 | 88.9% | A |
+| CSCA08H3 | 78.0% | B+ |
+| STAB22H3 | 90.0% | A+ |
+| ENGB06H3 | 69.0% | C+ |
+| MGTA01H3 | 92.0% | A+ |
 
-Your estimated semester GPA is **3.18** (using UofT's 4.0 scale). Your strongest course is MGTA01 and your lowest is ENGB06.`,
+Your estimated semester GPA is **3.40** (using UofT's 4.0 scale). Your strongest course is MGTA01 and your lowest is ENGB06.`,
 
-  "What do I need on my CSCA08 final?": `Your CSCA08H3 final exam is worth **35%** of your total grade. Here's what you'd need to hit each letter grade:
+  "What do I need on my CSCA08 final?": `Your CSCA08H3 final exam is worth **25%** of your total grade. Here's what you'd need to hit each letter grade:
 
-- **A+ (90%)**: You'd need **99%** on the final — very difficult given current standing
-- **A (85%)**: You'd need **85%** on the final
-- **A- (80%)**: You'd need **71%** on the final — very achievable
-- **B+ (77%)**: You'd need **62%** on the final — you're already close
+- **B+ (77%)**: You'd need **96%** on the final — very difficult but not impossible
+- **B (73%)**: You'd need **80%** on the final — achievable with strong prep
+- **B- (70%)**: You'd need **68%** on the final — solid and realistic
+- **C+ (67%)**: You'd need **56%** on the final — very manageable
 
-Your current standing before the final is **78.4%** (based on 65% of coursework completed). Focus on the recursion and object-oriented topics that were weaker on the midterm.`,
+Your current projected grade is **78.0%** (assuming 100% on the final). Focus on the recursion and object-oriented topics that were weaker on the midterm.`,
 
   "When is my next deadline?": `Here are your upcoming deadlines:
 

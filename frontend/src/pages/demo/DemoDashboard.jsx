@@ -5,10 +5,11 @@ import { useDemoData } from '../../context/DemoDataContext'
 import { displayCourseCode } from '../../utils/courseCode'
 import DeadlineList from '../../components/DeadlineList'
 
-function badgeClass(flag) {
-  if (flag === 'Safe') return 'safe'
-  if (flag === 'At risk') return 'risk'
-  return 'track'
+function progressClass(pct) {
+  if (pct >= 80) return 'a-range'
+  if (pct >= 70) return 'b-range'
+  if (pct >= 60) return 'c-range'
+  return 'd-range'
 }
 
 function displayCourseName(name, courseCode) {
@@ -21,8 +22,8 @@ function displayCourseName(name, courseCode) {
 }
 
 function DemoCourseCard({ course }) {
-  const badge = badgeClass(course.risk_flag)
   const grade = typeof course.display_grade === 'number' ? Math.round(course.display_grade) : '--'
+  const fillClass = typeof grade === 'number' ? progressClass(grade) : 'track'
 
   return (
     <article className="course-card rise">
@@ -31,14 +32,13 @@ function DemoCourseCard({ course }) {
           <div className="course-code">{displayCourseCode(course.course_code)}</div>
           <div className="course-name">{displayCourseName(course.name, course.course_code)}</div>
         </div>
-        <span className={`badge ${badge}`}>{course.risk_flag}</span>
       </div>
       <div className="grade-row">
         <span className="grade-pct">{grade}</span>
         <span className="grade-letter">% · {course.letter_grade || 'N/A'}</span>
       </div>
       <div className="progress-wrap">
-        <div className={`progress-fill fill-${badge}`} style={{ width: `${Math.max(0, Math.min(100, grade || 0))}%` }} />
+        <div className={`progress-fill fill-${fillClass}`} style={{ width: `${Math.max(0, Math.min(100, grade || 0))}%` }} />
       </div>
       <Link className="btn-view" to={`/demo/courses/${course.id}`}>
         View breakdown
