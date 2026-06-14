@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import dashboardImg from '../assets/dashboard.png'
 import chatImg from '../assets/chat.png'
@@ -48,6 +48,28 @@ const showcase = [
 
 export default function Login() {
   const [activeTab, setActiveTab] = useState(0)
+  const [lightboxImage, setLightboxImage] = useState(null)
+
+  const openLightbox = (item) => {
+    setLightboxImage(item)
+  }
+
+  const closeLightbox = () => {
+    setLightboxImage(null)
+  }
+
+  useEffect(() => {
+    if (!lightboxImage) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeLightbox()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [lightboxImage])
 
   return (
     <main className="landing">
@@ -93,7 +115,7 @@ export default function Login() {
             Free &amp; open source
           </div>
           <h1 className="landing-headline">
-            Know exactly where<br />you stand in every course
+            Know exactly where<br className="landing-br" />{' '}you stand in every course
           </h1>
           <p className="landing-sub">
             UofT Agent connects to Quercus and calculates your real weighted grades,
@@ -117,7 +139,18 @@ export default function Login() {
           </p>
         </div>
         <div className="landing-hero-image">
-          <img src={dashboardImg} alt="UofT Agent dashboard showing course grades and deadlines" draggable={false} />
+          <button
+            className="landing-image-button"
+            type="button"
+            onClick={() => openLightbox({
+              img: dashboardImg,
+              label: 'Dashboard',
+              alt: 'UofT Agent dashboard showing course grades and deadlines',
+            })}
+            aria-label="Enlarge dashboard screenshot"
+          >
+            <img src={dashboardImg} alt="UofT Agent dashboard showing course grades and deadlines" draggable={false} />
+          </button>
         </div>
       </section>
 
@@ -152,13 +185,19 @@ export default function Login() {
         </div>
         <div className="landing-showcase-frame">
           {showcase.map((item, i) => (
-            <img
+            <button
               key={item.label}
               className={`landing-showcase-img${i === activeTab ? ' landing-showcase-img--active' : ''}`}
-              src={item.img}
-              alt={item.label}
-              draggable={false}
-            />
+              type="button"
+              onClick={() => openLightbox({ ...item, alt: `${item.label} screenshot` })}
+              aria-label={`Enlarge ${item.label} screenshot`}
+            >
+              <img
+                src={item.img}
+                alt={item.label}
+                draggable={false}
+              />
+            </button>
           ))}
         </div>
       </section>
@@ -188,6 +227,31 @@ export default function Login() {
         <Link to="/terms" className="site-footer-link">Terms of Use</Link>
         <Link to="/disclaimers" className="site-footer-link">Disclaimers</Link>
       </footer>
+
+      {lightboxImage && (
+        <div
+          className="landing-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${lightboxImage.label} enlarged screenshot`}
+          onClick={closeLightbox}
+        >
+          <button
+            className="landing-lightbox-close"
+            type="button"
+            onClick={closeLightbox}
+            aria-label="Close enlarged image"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+          <figure className="landing-lightbox-figure" onClick={(event) => event.stopPropagation()}>
+            <img src={lightboxImage.img} alt={lightboxImage.alt} draggable={false} />
+            <figcaption>{lightboxImage.label}</figcaption>
+          </figure>
+        </div>
+      )}
     </main>
   )
 }
