@@ -41,7 +41,7 @@
   --hover-bg: oklch(19% 0.024 260);
   --btn-google-bg: oklch(97% 0.003 260);
   --btn-google-text: oklch(18% 0.01 260);
-  --nav-bg: oklch(8% 0.015 260 / 0.82);
+  --nav-bg: oklch(8% 0.015 260);
   --mobile-nav-height: 72px;
   font-family: 'DM Sans', sans-serif;
   color: var(--text);
@@ -94,7 +94,7 @@ html[data-theme="light"] {
   --hover-bg: oklch(90% 0.014 75);
   --btn-google-bg: oklch(96.5% 0.009 75);
   --btn-google-text: oklch(25% 0.008 55);
-  --nav-bg: oklch(93.5% 0.012 75 / 0.88);
+  --nav-bg: oklch(93.5% 0.012 75);
 }
 
 html[data-theme-transitioning] *,
@@ -285,8 +285,6 @@ h1 {
   justify-content: space-between;
   padding: 0 40px;
   height: 72px;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   background: var(--nav-bg);
   border-bottom: 1px solid var(--highlight2);
   box-shadow: 0 1px 0 var(--highlight);
@@ -1019,8 +1017,6 @@ h1 {
   justify-content: center;
   gap: 18px;
   height: 40px;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   background: var(--nav-bg);
   border-top: 1px solid var(--highlight2);
   font-size: 11px;
@@ -5423,6 +5419,11 @@ html[data-theme="light"] .acorn-code {
 html[data-theme="light"] .acorn-tooltip-card {
   fill: oklch(98% 0.008 75 / 0.96);
   stroke: var(--border);
+}
+
+html[data-theme="light"] .acorn-axis-line,
+html[data-theme="light"] .acorn-grid-line {
+  stroke: oklch(78% 0.01 75);
 }
 
 html[data-theme="light"] .msg-avatar.ai {

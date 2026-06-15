@@ -11,16 +11,15 @@ export default function DemoShell() {
   return (
     <div className="app-shell">
       <header className="mobile-topbar">
-        <div className="mobile-topbar-brand">
-          <Logo />
-        </div>
-        <ThemeToggle className="demo-mobile-theme" />
         <button className="demo-mobile-back" type="button" onClick={() => navigate('/login')}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
             <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Home
         </button>
+        <div className="mobile-topbar-brand">
+          <Logo />
+        </div>
       </header>
 
       <aside className="sidebar app-sidebar">
