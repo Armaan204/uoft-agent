@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme } from '../hooks/useTheme'
-import dashboardImg from '../assets/dashboard.png'
-import chatImg from '../assets/chat.png'
-import gradeImg from '../assets/gradebreakdown.png'
-import acornImg from '../assets/acorn.png'
+import dashboardDark from '../assets/dashboard_dark.png'
+import dashboardLight from '../assets/dashboard_light.png'
+import chatDark from '../assets/chat_dark.png'
+import chatLight from '../assets/chat_light.png'
+import gradeDark from '../assets/gradebreakdown_dark.png'
+import gradeLight from '../assets/gradebreakdown_light.png'
+import acornDark from '../assets/acorn_dark.png'
+import acornLight from '../assets/acorn_light.png'
 
 const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
 const GITHUB_URL = 'https://github.com/Armaan204/uoft-agent'
@@ -40,17 +44,17 @@ const features = [
   },
 ]
 
-const showcase = [
-  { img: dashboardImg, label: 'Dashboard' },
-  { img: chatImg, label: 'AI Chat' },
-  { img: gradeImg, label: 'Grade Breakdown' },
-  { img: acornImg, label: 'ACORN Import' },
-]
-
 export default function Login() {
   const navigate = useNavigate()
   const { isDark, toggleTheme } = useTheme()
   const [activeTab, setActiveTab] = useState(0)
+
+  const showcase = [
+    { img: isDark ? dashboardDark : dashboardLight, label: 'Dashboard' },
+    { img: isDark ? chatDark : chatLight, label: 'AI Chat' },
+    { img: isDark ? gradeDark : gradeLight, label: 'Grade Breakdown' },
+    { img: isDark ? acornDark : acornLight, label: 'ACORN Import' },
+  ]
   const [lightboxImage, setLightboxImage] = useState(null)
 
   const openLightbox = (item) => {
@@ -153,7 +157,7 @@ export default function Login() {
               <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
               <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
-            Read-only Quercus access. We never modify your data.
+            Read-only access. Your data is never modified.
           </p>
         </div>
         <div className="landing-hero-image">
@@ -161,13 +165,13 @@ export default function Login() {
             className="landing-image-button"
             type="button"
             onClick={() => openLightbox({
-              img: dashboardImg,
+              img: isDark ? dashboardDark : dashboardLight,
               label: 'Dashboard',
               alt: 'UofT Agent dashboard showing course grades and deadlines',
             })}
             aria-label="Enlarge dashboard screenshot"
           >
-            <img src={dashboardImg} alt="UofT Agent dashboard showing course grades and deadlines" draggable={false} />
+            <img key={isDark ? 'hero-dark' : 'hero-light'} src={isDark ? dashboardDark : dashboardLight} alt="UofT Agent dashboard showing course grades and deadlines" draggable={false} />
           </button>
         </div>
       </section>
@@ -204,7 +208,7 @@ export default function Login() {
         <div className="landing-showcase-frame">
           {showcase.map((item, i) => (
             <button
-              key={item.label}
+              key={`${item.label}-${isDark ? 'dark' : 'light'}`}
               className={`landing-showcase-img${i === activeTab ? ' landing-showcase-img--active' : ''}`}
               type="button"
               onClick={() => openLightbox({ ...item, alt: `${item.label} screenshot` })}

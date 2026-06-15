@@ -9,9 +9,9 @@ const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
 const WELCOME_TEXT = "Hi! I'm UofT Agent — your personal academic assistant. I can help you track grades, plan for exams, and monitor deadlines. Try one of the suggestions below to see how I work."
 
 const SUGGESTIONS = [
-  "What's my current GPA?",
   "What do I need on my CSCA08 final?",
   "When is my next deadline?",
+  "What's my current GPA?",
   "Am I on track to graduate?",
 ]
 
