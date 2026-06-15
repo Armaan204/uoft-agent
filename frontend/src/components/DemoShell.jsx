@@ -1,8 +1,11 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 
+const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
+
 export default function DemoShell() {
   const navigate = useNavigate()
+  const startGoogleAuth = () => window.location.assign(googleAuthUrl)
 
   return (
     <div className="app-shell">
@@ -10,6 +13,12 @@ export default function DemoShell() {
         <div className="mobile-topbar-brand">
           <Logo />
         </div>
+        <button className="demo-mobile-back" type="button" onClick={() => navigate('/login')}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+            <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Home
+        </button>
       </header>
 
       <aside className="sidebar app-sidebar">
@@ -33,7 +42,13 @@ export default function DemoShell() {
         </nav>
 
         <div className="sidebar-bottom">
-          <button className="btn-google demo-sidebar-cta" type="button" onClick={() => navigate('/login')}>
+          <button className="demo-back-link" type="button" onClick={() => navigate('/login')}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+              <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Back to home
+          </button>
+          <button className="btn-google demo-sidebar-cta" type="button" onClick={startGoogleAuth}>
             Sign in with Google
           </button>
         </div>
@@ -44,7 +59,7 @@ export default function DemoShell() {
           <span className="demo-banner-text">
             You're exploring a demo with sample data. Sign in to see your real grades.
           </span>
-          <button className="demo-banner-btn" type="button" onClick={() => navigate('/login')}>
+          <button className="demo-banner-btn" type="button" onClick={startGoogleAuth}>
             Sign in with Google
           </button>
         </div>

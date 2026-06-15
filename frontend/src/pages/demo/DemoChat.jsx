@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import { useDemoData } from '../../context/DemoDataContext'
 import Logo from '../../components/Logo'
 import MarkdownMessage from '../../components/MarkdownMessage'
+
+const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
 
 const WELCOME_TEXT = "Hi! I'm UofT Agent — your personal academic assistant. I can help you track grades, plan for exams, and monitor deadlines. Try one of the suggestions below to see how I work."
 
@@ -15,9 +16,9 @@ const SUGGESTIONS = [
 ]
 
 export default function DemoChat() {
-  const navigate = useNavigate()
   const { chatResponses } = useDemoData()
   const [activeChip, setActiveChip] = useState(null)
+  const startGoogleAuth = () => window.location.assign(googleAuthUrl)
 
   function handleChipClick(suggestion) {
     setActiveChip(suggestion)
@@ -62,9 +63,9 @@ export default function DemoChat() {
               <div className="msg-row ai">
                 <div className="msg-avatar ai"><Logo compact /></div>
                 <div className="msg-bubble-wrap">
-                  <div className="msg-bubble ai demo-cta-bubble">
+                  <div className="msg-bubble ai demo-cta-bubble demo-chat-locked">
                     <p>Sign in to ask your own questions about your real grades and courses.</p>
-                    <button className="btn-google demo-chat-signin" type="button" onClick={() => navigate('/login')}>
+                    <button className="btn-google demo-chat-signin" type="button" onClick={startGoogleAuth}>
                       Sign in with Google
                     </button>
                   </div>
@@ -83,7 +84,7 @@ export default function DemoChat() {
             </button>
           ))}
         </div>
-        <div className="input-row">
+        <div className="input-row demo-chat-locked">
           <textarea
             className="input-box"
             rows="1"
