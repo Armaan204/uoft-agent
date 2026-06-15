@@ -5420,6 +5420,11 @@ html[data-theme="light"] .acorn-code {
   border-color: var(--border);
 }
 
+html[data-theme="light"] .acorn-tooltip-card {
+  fill: oklch(98% 0.008 75 / 0.96);
+  stroke: var(--border);
+}
+
 html[data-theme="light"] .msg-avatar.ai {
   background: linear-gradient(135deg, var(--accent-dim), var(--surface2));
 }
