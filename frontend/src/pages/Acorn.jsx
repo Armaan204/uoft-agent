@@ -330,6 +330,9 @@ function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim
               Install the{' '}
               <a href={ACORN_EXTENSION_URL} target="_blank" rel="noreferrer">
                 UofT Agent Chrome extension
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" width="1em" height="1em" aria-hidden="true" style={{ marginLeft: 3, verticalAlign: '-0.15em' }}>
+                  <path d="M11 8.5v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1h3M8.5 2H12v3.5M12 2 6.5 7.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </a>
               .
             </li>
