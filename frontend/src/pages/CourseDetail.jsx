@@ -558,7 +558,7 @@ export default function CourseDetail() {
                         }))
                       }
                       style={{
-                        background: `linear-gradient(to right, oklch(68% 0.16 240) ${value}%, oklch(19% 0.022 260) ${value}%)`,
+                        background: `linear-gradient(to right, var(--accent) ${value}%, var(--surface3) ${value}%)`,
                       }}
                     />
                     <div className="slider-val">{value}%</div>

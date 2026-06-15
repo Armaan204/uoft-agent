@@ -18,6 +18,7 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 
 import App from './App'
 import { AuthProvider } from './hooks/useAuth'
+import { ThemeProvider } from './hooks/useTheme'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -35,7 +36,9 @@ ReactDOM.createRoot(document.getElementById('app')).render(
     <BrowserRouter>
       <PersistQueryClientProvider client={queryClient} persistOptions={{ persister, maxAge: 24 * 60 * 60 * 1000 }}>
         <AuthProvider>
-          <App />
+          <ThemeProvider>
+            <App />
+          </ThemeProvider>
         </AuthProvider>
       </PersistQueryClientProvider>
     </BrowserRouter>

@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 
 import Logo from './Logo'
 import ProfileMenu from './ProfileMenu'
+import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../hooks/useAuth'
 import { getInitials } from '../utils/initials'
 
@@ -13,7 +14,7 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <header className="mobile-topbar">
-        <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} />
+        <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} showThemeToggle />
         <div className="mobile-topbar-brand">
           <Logo />
         </div>
@@ -51,6 +52,7 @@ export default function AppShell() {
             </svg>
             Give Feedback
           </a>
+          <ThemeToggle className="sidebar-theme-toggle" labeled />
           <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} dropUp />
         </div>
       </aside>

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Logo from './Logo'
+import ThemeToggle from './ThemeToggle'
 
 const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
 
@@ -13,6 +14,7 @@ export default function DemoShell() {
         <div className="mobile-topbar-brand">
           <Logo />
         </div>
+        <ThemeToggle className="demo-mobile-theme" />
         <button className="demo-mobile-back" type="button" onClick={() => navigate('/login')}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
             <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -48,6 +50,7 @@ export default function DemoShell() {
             </svg>
             Back to home
           </button>
+          <ThemeToggle className="sidebar-theme-toggle" labeled />
           <button className="btn-google demo-sidebar-cta" type="button" onClick={startGoogleAuth}>
             Sign in with Google
           </button>
