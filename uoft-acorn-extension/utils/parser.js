@@ -77,9 +77,11 @@ export function parseCourseSegment(segment) {
     }
   }
 
-  // Co-op milestone courses (COP prefix) carry no academic credit.
+  // Co-op milestone courses (COP prefix) carry no academic credit and never
+  // have numeric marks — any digit captured is a stray work-term number.
   if (courseCode.startsWith("COP")) {
     credits = "0.00";
+    mark = null;
   } else {
     // CR/NCR courses are worth 0.5 credits even when ACORN shows 0.00.
     const gradeUpper = grade ? grade.toUpperCase() : null;
