@@ -45,7 +45,8 @@
       "Bash(npx vite *)",
       "Bash(mkdir -p \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\data\")",
       "Bash(mkdir -p \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\context\")",
-      "Bash(mkdir -p \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\pages\\\\demo\")"
+      "Bash(mkdir -p \"C:\\\\Users\\\\armaa\\\\OneDrive\\\\Documents\\\\Armaan\\\\UofT\\\\uoft-agent\\\\frontend\\\\src\\\\pages\\\\demo\")",
+      "Bash(pip list *)"
     ]
   }
 }

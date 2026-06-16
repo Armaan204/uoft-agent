@@ -285,6 +285,7 @@ class TestGetProgramRequirements:
         }
 
         with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
              patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
              patch("api.integrations.graduation_service._save_cache"):
@@ -296,6 +297,7 @@ class TestGetProgramRequirements:
         from api.integrations.graduation_service import get_program_requirements
 
         with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", return_value=None), \
              patch("api.integrations.graduation_service._save_failed"):
             result = get_program_requirements("Unknown Program XYZ")
@@ -311,6 +313,7 @@ class TestGetProgramRequirements:
         }
 
         with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
              patch("api.integrations.graduation_service._extract_with_llm", side_effect=ValueError("bad schema")), \
              patch("api.integrations.graduation_service._save_failed"):
@@ -328,6 +331,7 @@ class TestGetProgramRequirements:
         fake_reqs = {"groups": [], "program_name": "CS", "academic_year": "2024-2025"}
 
         with patch("api.integrations.graduation_service.clear_cache") as mock_clear, \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
              patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
              patch("api.integrations.graduation_service._save_cache"):
@@ -351,6 +355,7 @@ class TestGetProgramRequirements:
             return fake_page
 
         with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", side_effect=fake_discover), \
              patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
              patch("api.integrations.graduation_service._save_cache"):
@@ -368,6 +373,7 @@ class TestGetProgramRequirements:
         fake_reqs = {"groups": [], "program_name": "CS Co-op", "academic_year": "2024-2025"}
 
         with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
              patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
              patch("api.integrations.graduation_service._save_cache"):
@@ -631,6 +637,7 @@ class TestGraduationAdditionalHelpers:
         fake_page = {"url": "https://utsc.calendar.utoronto.ca/cs", "text": "text", "html": "<html></html>"}
         fake_reqs = {"groups": [], "program_name": "CS"}
         with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value=None), \
              patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
              patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
              patch("api.integrations.graduation_service._current_academic_year", return_value="2026-2027"), \
@@ -778,3 +785,183 @@ class TestGraduationAdditionalHelpers:
             set(),
         )
         assert completed["work_terms_status"] == "satisfied"
+
+
+# ── PDF calendar extraction ───────────────────────────────────────────────────
+
+class TestTocPageRange:
+    def test_known_section_returns_correct_range(self):
+        from api.integrations.graduation_service import _toc_page_range
+        start, end = _toc_page_range("computer science")
+        assert start == 417
+        assert end == 447  # next section (concurrent teacher education) starts at 448
+
+    def test_last_section_uses_last_page(self):
+        from api.integrations.graduation_service import _toc_page_range, _PDF_LAST_PAGE
+        start, end = _toc_page_range("women's and gender studies")
+        assert start == 1142
+        assert end == _PDF_LAST_PAGE
+
+    def test_unknown_section_raises(self):
+        from api.integrations.graduation_service import _toc_page_range
+        with pytest.raises(KeyError):
+            _toc_page_range("nonexistent department")
+
+
+class TestProgramToTocSection:
+    def test_statistics_specialist(self):
+        from api.integrations.graduation_service import _program_to_toc_section
+        result = _program_to_toc_section("Specialist Program in Statistics - Quantitative Finance Stream")
+        assert result == "statistics"
+
+    def test_computer_science_specialist(self):
+        from api.integrations.graduation_service import _program_to_toc_section
+        result = _program_to_toc_section("Specialist Program in Computer Science - Comprehensive Stream")
+        assert result == "computer science"
+
+    def test_biology_major(self):
+        from api.integrations.graduation_service import _program_to_toc_section
+        result = _program_to_toc_section("Major Program in Biological Sciences")
+        assert result is not None
+        assert "biological" in result
+
+    def test_no_match_returns_none(self):
+        from api.integrations.graduation_service import _program_to_toc_section
+        result = _program_to_toc_section("Program in XYZZY Qwzplk")
+        assert result is None
+
+    def test_coop_stripped_name_matches_department(self):
+        from api.integrations.graduation_service import _program_to_toc_section, _strip_coop_qualifier
+        name = _strip_coop_qualifier("Specialist (Co-operative) Program in Computer Science")
+        result = _program_to_toc_section(name)
+        assert result == "computer science"
+
+
+class TestFindProgramTextInSection:
+    def test_finds_specific_program_heading(self):
+        from api.integrations.graduation_service import _find_program_text_in_section
+        section = (
+            "Department info blah blah\n"
+            "SPECIALIST PROGRAM IN STATISTICS - Quantitative Finance Stream (SCIENCE) - SCSPE2289F\n"
+            "Program requirements: take STAB52H3...\n"
+            "SPECIALIST PROGRAM IN STATISTICS - Machine Learning Stream (SCIENCE) - SCSPE2289Y\n"
+            "Different requirements: take CSCA48H3...\n"
+        )
+        result = _find_program_text_in_section(section, "Specialist Program in Statistics - Quantitative Finance Stream")
+        assert "Quantitative Finance" in result
+        assert "Machine Learning" not in result
+
+    def test_falls_back_to_full_text_when_no_headings(self):
+        from api.integrations.graduation_service import _find_program_text_in_section
+        section = "Just some text with no program headings at all."
+        result = _find_program_text_in_section(section, "Statistics")
+        assert result == section
+
+
+class TestFindProgramInPdf:
+    def test_returns_none_when_pdf_missing(self):
+        from api.integrations.graduation_service import _find_program_in_pdf
+        with patch("api.integrations.graduation_service._CALENDAR_PDF_PATH") as mock_path:
+            mock_path.exists.return_value = False
+            result = _find_program_in_pdf("Specialist Program in Computer Science", is_coop=False)
+        assert result is None
+
+    def test_returns_none_when_no_toc_match(self):
+        from api.integrations.graduation_service import _find_program_in_pdf
+        with patch("api.integrations.graduation_service._CALENDAR_PDF_PATH") as mock_path:
+            mock_path.exists.return_value = True
+            result = _find_program_in_pdf("Program in XYZZY Qwzplk", is_coop=False)
+        assert result is None
+
+    def test_returns_text_for_valid_program(self):
+        from api.integrations.graduation_service import _find_program_in_pdf
+        with patch("api.integrations.graduation_service._CALENDAR_PDF_PATH") as mock_path, \
+             patch("api.integrations.graduation_service._extract_pdf_pages", return_value="SPECIALIST PROGRAM IN STATISTICS\nSTAB52H3\n"), \
+             patch("api.integrations.graduation_service._find_program_text_in_section", return_value="program text"):
+            mock_path.exists.return_value = True
+            result = _find_program_in_pdf("Specialist Program in Statistics", is_coop=False)
+        assert result == "program text"
+
+    def test_coop_appends_coop_section(self):
+        from api.integrations.graduation_service import _find_program_in_pdf
+
+        call_count = {"n": 0}
+        def fake_extract(start, end):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return "SPECIALIST PROGRAM IN STATISTICS\nbase requirements"
+            return "SPECIALIST (CO-OPERATIVE) PROGRAM IN STATISTICS\ncoop requirements"
+
+        def fake_find(text, name):
+            if "coop" in text.lower():
+                return "coop section"
+            return "base section"
+
+        with patch("api.integrations.graduation_service._CALENDAR_PDF_PATH") as mock_path, \
+             patch("api.integrations.graduation_service._extract_pdf_pages", side_effect=fake_extract), \
+             patch("api.integrations.graduation_service._find_program_text_in_section", side_effect=fake_find):
+            mock_path.exists.return_value = True
+            result = _find_program_in_pdf(
+                "Specialist (Co-operative) Program in Statistics", is_coop=True
+            )
+        assert "base section" in result
+        assert "CO-OP SPECIFIC REQUIREMENTS" in result
+        assert "coop section" in result
+
+
+class TestPdfPathInGetProgramRequirements:
+    def test_pdf_path_succeeds_skips_web_discovery(self):
+        from api.integrations.graduation_service import get_program_requirements
+        fake_reqs = {"groups": [], "program_name": "CS", "academic_year": "2025-2026"}
+
+        with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value="pdf text here"), \
+             patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs) as mock_llm, \
+             patch("api.integrations.graduation_service._discover_calendar_url") as mock_discover, \
+             patch("api.integrations.graduation_service._save_cache"):
+            result = get_program_requirements("Specialist Program in Computer Science")
+
+        assert result["program_name"] == "CS"
+        mock_llm.assert_called_once_with("pdf text here")
+        mock_discover.assert_not_called()
+
+    def test_pdf_path_failure_falls_back_to_web(self):
+        from api.integrations.graduation_service import get_program_requirements
+        fake_page = {"url": "https://utsc.calendar.utoronto.ca/cs", "text": "content", "html": "<html></html>"}
+        fake_reqs = {"groups": [], "program_name": "CS", "academic_year": "2025-2026"}
+
+        with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value="pdf text"), \
+             patch("api.integrations.graduation_service._extract_with_llm", side_effect=[ValueError("bad"), fake_reqs]), \
+             patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
+             patch("api.integrations.graduation_service._save_cache"):
+            result = get_program_requirements("Specialist Program in Computer Science")
+
+        assert result["program_name"] == "CS"
+
+    def test_pdf_coop_sets_is_coop(self):
+        from api.integrations.graduation_service import get_program_requirements
+        fake_reqs = {"groups": [], "program_name": "CS Co-op", "academic_year": "2025-2026"}
+
+        with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf", return_value="pdf coop text"), \
+             patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
+             patch("api.integrations.graduation_service._save_cache"):
+            result = get_program_requirements("Specialist (Co-operative) Program in Computer Science")
+
+        assert result["is_coop"] is True
+
+    def test_non_utsc_skips_pdf(self):
+        from api.integrations.graduation_service import get_program_requirements
+        fake_page = {"url": "https://utm.calendar.utoronto.ca/cs", "text": "content", "html": "<html></html>"}
+        fake_reqs = {"groups": [], "program_name": "UTM CS", "academic_year": "2025-2026"}
+
+        with patch("api.integrations.graduation_service._load_cache", return_value=None), \
+             patch("api.integrations.graduation_service._find_program_in_pdf") as mock_pdf, \
+             patch("api.integrations.graduation_service._discover_calendar_url", return_value=fake_page), \
+             patch("api.integrations.graduation_service._extract_with_llm", return_value=fake_reqs), \
+             patch("api.integrations.graduation_service._save_cache"):
+            result = get_program_requirements("Specialist Program in CS UTM Mississauga")
+
+        mock_pdf.assert_not_called()
+        assert result["program_name"] == "UTM CS"

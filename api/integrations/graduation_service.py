@@ -9,14 +9,19 @@ Public API:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import urllib.parse
 from datetime import datetime, timezone
+from pathlib import Path
 
 import anthropic
 import requests
+from pypdf import PdfReader
 from supabase import create_client
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -29,6 +34,243 @@ _CALENDAR_BASES = {
 }
 
 _UNEARNED_GRADES = {"IPR", "NGA", "LWD", "NCR", "GWR", "SDF", "WD"}
+
+_CALENDAR_PDF_PATH = Path(__file__).resolve().parent.parent / "data" / "UTSC_Calendar_2025-2026.pdf"
+
+# ---------------------------------------------------------------------------
+# PDF calendar — table-of-contents page index
+# ---------------------------------------------------------------------------
+# Maps each TOC section name (lowercased) to its (start_page, end_page)
+# range (1-indexed, inclusive).  Derived from the PDF's own TOC on pp. 2-4.
+# "Arts and Science Co-op" covers co-op-specific program listings that sit
+# outside their home department's section.  Every department section runs
+# from its own start up to (but not including) the next section's start.
+
+_PDF_TOC: list[tuple[str, int]] = [
+    ("african studies", 67),
+    ("anthropology", 74),
+    ("art history and visual culture", 102),
+    ("arts and science co-op", 109),
+    ("arts, culture and media", 248),
+    ("arts management", 251),
+    ("astronomy", 259),
+    ("biological sciences", 262),
+    ("certificates", 335),
+    ("chemistry", 345),
+    ("city studies", 379),
+    ("classical studies", 392),
+    ("climate change studies", 398),
+    ("combined degree programs", 406),
+    ("computer science", 417),
+    ("concurrent teacher education", 448),
+    ("curatorial studies", 449),
+    ("diaspora and transnational studies", 451),
+    ("double degree programs", 452),
+    ("economics for management studies", 460),
+    ("english", 472),
+    ("environmental science", 513),
+    ("environmental studies", 544),
+    ("food studies", 550),
+    ("french", 555),
+    ("geography", 577),
+    ("global asia studies", 596),
+    ("global leadership", 606),
+    ("health and society", 609),
+    ("historical and cultural studies", 643),
+    ("history", 645),
+    ("international development studies", 678),
+    ("international development studies (ids) co-op", 696),
+    ("joint programs", 699),
+    ("journalism", 710),
+    ("languages", 718),
+    ("linguistics", 729),
+    ("management", 746),
+    ("management co-op", 808),
+    ("mathematics", 834),
+    ("media studies", 862),
+    ("music", 874),
+    ("music industry and technology", 885),
+    ("neuroscience", 893),
+    ("new media studies", 923),
+    ("paramedicine", 928),
+    ("philosophy", 934),
+    ("physical sciences", 952),
+    ("physics and astrophysics", 961),
+    ("political science", 981),
+    ("psychology", 1004),
+    ("public law", 1046),
+    ("public policy", 1053),
+    ("religion", 1062),
+    ("sociology", 1064),
+    ("statistics", 1089),
+    ("studio art", 1117),
+    ("centre for teaching and learning", 1128),
+    ("theatre and performance", 1130),
+    ("women's and gender studies", 1142),
+]
+
+_PDF_LAST_PAGE = 1153
+
+
+def _toc_page_range(section_name: str) -> tuple[int, int]:
+    """Return (start, end) page range for a TOC section (1-indexed, inclusive)."""
+    for i, (name, start) in enumerate(_PDF_TOC):
+        if name == section_name:
+            end = _PDF_TOC[i + 1][1] - 1 if i + 1 < len(_PDF_TOC) else _PDF_LAST_PAGE
+            return start, end
+    raise KeyError(f"Unknown TOC section: {section_name}")
+
+
+def _extract_pdf_pages(start: int, end: int) -> str:
+    """Extract text from pages [start, end] (1-indexed) of the UTSC calendar PDF."""
+    reader = PdfReader(str(_CALENDAR_PDF_PATH))
+    parts: list[str] = []
+    for page_num in range(start - 1, min(end, len(reader.pages))):
+        text = reader.pages[page_num].extract_text()
+        if text:
+            parts.append(text)
+    return "\n\n".join(parts)
+
+
+# Keywords that carry no signal when matching a program name to a TOC section.
+_TOC_MATCH_STOP_WORDS = frozenset({
+    "specialist", "co-operative", "co-op", "coop", "program", "programs",
+    "in", "of", "the", "and", "or", "for", "stream", "major", "minor",
+    "certificate", "science", "arts", "honours", "bachelor", "degree",
+    "(science)", "(arts)", "a", "an",
+})
+
+
+def _program_to_toc_section(program_name: str) -> str | None:
+    """
+    Match an ACORN program name to the best TOC section.
+
+    Strategy: extract subject keywords from the program name, then score
+    each TOC section by how many keywords overlap — either as whole-word
+    matches or as substring containment in either direction (so
+    "biochemistry" matches "biological sciences" and vice versa).
+    """
+    words = re.findall(r'[a-z]+', program_name.lower())
+    keywords = [w for w in words if w not in _TOC_MATCH_STOP_WORDS and len(w) > 1]
+    if not keywords:
+        return None
+
+    best_section: str | None = None
+    best_score = 0
+
+    for section_name, _ in _PDF_TOC:
+        section_words = section_name.split()
+        score = 0
+        for kw in keywords:
+            if kw in section_name:
+                score += 1
+            elif any(kw in sw or sw in kw for sw in section_words):
+                score += 0.5
+        if score > best_score:
+            best_score = score
+            best_section = section_name
+
+    if best_score == 0:
+        return None
+    return best_section
+
+
+_PROGRAM_HEADING_RE = re.compile(
+    r'(?:SPECIALIST|MAJOR|MINOR|CERTIFICATE)'
+    r'(?:\s*\(CO-OPERATIVE\))?'
+    r'\s+PROGRAM\s+IN\s+'
+    r'[A-Z][\w &,/\n()-]*?'
+    r'\s*-\s*SCS?[A-Z]{2,5}\d{3,5}[A-Z]?',
+)
+
+
+_PROGRAM_TYPES = {"specialist", "major", "minor", "certificate"}
+
+
+def _find_program_text_in_section(section_text: str, program_name: str) -> str | None:
+    """
+    Locate the specific program within a section's text and return just that
+    program's content (from its heading to the next program heading or end).
+
+    Falls back to the full section text if no heading boundary can be found.
+    """
+    headings = list(_PROGRAM_HEADING_RE.finditer(section_text))
+    if not headings:
+        return section_text
+
+    name_lower = program_name.lower()
+    name_keywords = set(re.findall(r'[a-z]+', name_lower)) - _TOC_MATCH_STOP_WORDS
+    name_keywords = {kw for kw in name_keywords if len(kw) > 1}
+
+    name_type = next((t for t in _PROGRAM_TYPES if t in name_lower), None)
+    name_is_coop = "co-operative" in name_lower or "co-op" in name_lower
+
+    best_idx = -1
+    best_score = 0.0
+    for i, m in enumerate(headings):
+        heading_text = m.group(0).lower()
+        heading_words = set(re.findall(r'[a-z]+', heading_text))
+        score = float(len(name_keywords & heading_words))
+        if name_type and name_type in heading_text:
+            score += 0.5
+        heading_is_coop = "co-operative" in heading_text
+        if name_is_coop == heading_is_coop:
+            score += 0.25
+        if score > best_score:
+            best_score = score
+            best_idx = i
+
+    if best_idx < 0:
+        return section_text
+
+    start = headings[best_idx].start()
+    end = headings[best_idx + 1].start() if best_idx + 1 < len(headings) else len(section_text)
+    return section_text[start:end]
+
+
+def _find_program_in_pdf(program_name: str, is_coop: bool) -> str | None:
+    """
+    Look up a program in the local UTSC calendar PDF.
+
+    For co-op programs we search two places:
+      1. The "Arts and Science Co-op" section (co-op course requirements)
+      2. The base department section (academic course requirements)
+    The two texts are concatenated so the LLM sees both.
+
+    Returns the extracted text or None if the PDF doesn't exist or the
+    program can't be located.
+    """
+    if not _CALENDAR_PDF_PATH.exists():
+        return None
+
+    base_name = _strip_coop_qualifier(program_name) if is_coop else program_name
+    section = _program_to_toc_section(base_name)
+    if not section:
+        logger.info("PDF lookup: no TOC section matched for %r", program_name)
+        return None
+
+    try:
+        start, end = _toc_page_range(section)
+        section_text = _extract_pdf_pages(start, end)
+    except Exception:
+        logger.exception("PDF extraction failed for section %r", section)
+        return None
+
+    program_text = _find_program_text_in_section(section_text, base_name)
+    if not program_text:
+        return None
+
+    if is_coop:
+        try:
+            coop_start, coop_end = _toc_page_range("arts and science co-op")
+            coop_section_text = _extract_pdf_pages(coop_start, coop_end)
+            coop_program_text = _find_program_text_in_section(coop_section_text, program_name)
+            if coop_program_text:
+                program_text += "\n\n--- CO-OP SPECIFIC REQUIREMENTS ---\n\n" + coop_program_text
+        except Exception:
+            logger.debug("Could not find co-op section text for %r", program_name)
+
+    return program_text
 
 
 # ---------------------------------------------------------------------------
@@ -537,14 +779,19 @@ RULES:
 - COP-prefix courses (COPB*, COPC*) are CR/NCR with no academic weight; always set credits: 0 for every item that lists only COP-prefix courses
 """
 
-def _extract_with_llm(page_text: str, calendar_url: str, coop_text: str | None = None) -> dict:
+def _extract_with_llm(
+    page_text: str,
+    calendar_url: str | None = None,
+    coop_text: str | None = None,
+) -> dict:
     content = page_text[:15000]
     if coop_text:
         content += "\n\n--- CO-OP SPECIFIC REQUIREMENTS ---\n\n" + coop_text[:4000]
 
+    source_line = f"Calendar URL: {calendar_url}" if calendar_url else "Source: UTSC Academic Calendar 2025-2026 PDF"
     prompt = (
         f"Extract all graduation requirements from this academic calendar page.\n\n"
-        f"Calendar URL: {calendar_url}\n\n"
+        f"{source_line}\n\n"
         f"{_SCHEMA_HINT}\n\n"
         f"Page content:\n{content}"
     )
@@ -567,8 +814,8 @@ def _extract_with_llm(page_text: str, calendar_url: str, coop_text: str | None =
 def get_program_requirements(acorn_name: str, force_refresh: bool = False) -> dict | None:
     """
     Return structured program requirements for acorn_name.
-    Checks Supabase cache first; on miss discovers the calendar URL,
-    fetches the page, and extracts requirements with Claude.
+    Checks Supabase cache first; on miss tries extracting from the local
+    UTSC calendar PDF, then falls back to web-based URL discovery.
     Returns None if the program cannot be found or extracted.
     """
     if force_refresh:
@@ -581,10 +828,33 @@ def get_program_requirements(acorn_name: str, force_refresh: bool = False) -> di
     campus = _detect_campus(acorn_name)
     is_coop = "co-operative" in acorn_name.lower() or "co-op" in acorn_name.lower()
 
-    # Co-op calendar pages only list first-year requirements and COP prep courses.
-    # They explicitly say "complete the requirements described in the Specialist Program".
-    # Strip the co-op qualifier so URL discovery lands on the base specialist page directly,
-    # which has the full academic requirements.
+    # --- Strategy 1: Local PDF extraction (preferred for UTSC) ---
+    if campus == "UTSC":
+        pdf_text = _find_program_in_pdf(acorn_name, is_coop)
+        if pdf_text:
+            try:
+                logger.info("Using PDF extraction for %r", acorn_name)
+                requirements = _extract_with_llm(pdf_text)
+                if is_coop:
+                    requirements["is_coop"] = True
+                _save_cache(
+                    acorn_name     = acorn_name,
+                    canonical_name = requirements.get("program_name", acorn_name),
+                    program_code   = requirements.get("program_code"),
+                    campus         = campus,
+                    calendar_url   = "local:UTSC_Calendar_2025-2026.pdf",
+                    requirements   = requirements,
+                    academic_year  = requirements.get("academic_year", _current_academic_year()),
+                )
+                logger.info("PDF extraction succeeded for %r", acorn_name)
+                return requirements
+            except Exception as exc:
+                logger.warning("PDF extraction failed for %r, falling back to web: %s", acorn_name, exc)
+        else:
+            logger.info("PDF lookup found no match for %r, falling back to web", acorn_name)
+
+    # --- Strategy 2: Web-based URL discovery + extraction (fallback) ---
+    logger.info("Using web-based discovery for %r", acorn_name)
     discovery_name = _strip_coop_qualifier(acorn_name) if is_coop else acorn_name
 
     discovered = _discover_calendar_url(discovery_name, campus, is_coop=False)

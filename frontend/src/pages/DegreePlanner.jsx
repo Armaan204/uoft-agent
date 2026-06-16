@@ -1,7 +1,15 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
+
+function isUtscStudent(acornData) {
+  const programs = acornData?.programs
+  if (!Array.isArray(programs) || !programs.length) return null
+  return programs.some(
+    p => typeof p.institution === 'string' && p.institution.toLowerCase().includes('scarborough')
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Icons
@@ -359,8 +367,48 @@ function ComingSoon() {
 // Main page
 // ---------------------------------------------------------------------------
 
+function UtscOnlyGate() {
+  return (
+    <div className="grad-page rise">
+      <div className="grad-empty">
+        <div className="grad-empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 2 2 7l10 5 10-5-10-5Z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+        </div>
+        <p className="grad-empty-title">Degree Planner</p>
+        <div className="grad-coming-soon-badge">UTSC Beta</div>
+        <p className="grad-empty-note">
+          Degree Planner is currently available for UTSC students only.
+          Support for St.&nbsp;George and UTM programs is coming soon.
+          In the meantime, use{' '}
+          <a
+            href="https://acorn.utoronto.ca/sws/#/progress/undergraduate/auditDegree"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+          >
+            Degree Explorer on ACORN
+          </a>{' '}
+          for your official degree audit.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function DegreePlannerFull() {
   const queryClient = useQueryClient()
+
+  const acornQuery = useQuery({
+    queryKey: ['acorn'],
+    queryFn: () => client.get('/api/acorn/me').then(r => r.data.data),
+  })
+
+  const utsc = useMemo(() => isUtscStudent(acornQuery.data), [acornQuery.data])
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['graduation-progress'],
@@ -372,6 +420,7 @@ function DegreePlannerFull() {
     refetchOnMount: false,
     refetchOnReconnect: false,
     retry: false,
+    enabled: utsc === true,
   })
 
   const clearMutation = useMutation({
@@ -381,6 +430,19 @@ function DegreePlannerFull() {
       refetch()
     },
   })
+
+  if (acornQuery.isLoading) return <GradLoading />
+  if (utsc === false) return <UtscOnlyGate />
+  if (utsc === null || acornQuery.isError) {
+    return (
+      <GradEmpty
+        title="Import your ACORN data first"
+        note="Degree Planner needs your academic history to check graduation progress."
+        action={<Link to="/acorn" className="btn-view grad-cta">Go to ACORN →</Link>}
+        warning="You must be enrolled in a program to use this feature."
+      />
+    )
+  }
 
   if (clearMutation.isPending) return <GradLoading />
   if (isLoading) return <GradLoading />
