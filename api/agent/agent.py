@@ -23,7 +23,7 @@ load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-haiku-4-5-20251001"
 _MAX_HISTORY_MESSAGES = 10  # 5 prior exchanges (user + assistant each)
 
 

@@ -329,7 +329,7 @@ def _anthropic_web_search_url(program_name: str, base: str) -> str | None:
     for _ in range(5):  # max 5 turns (search → result → answer)
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-6",
+                model="claude-haiku-4-5-20251001",
                 max_tokens=512,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
                 messages=messages,
@@ -549,7 +549,7 @@ def _extract_with_llm(page_text: str, calendar_url: str, coop_text: str | None =
         f"Page content:\n{content}"
     )
     msg = _llm().messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=4096,
         system=_EXTRACTION_SYSTEM,
         messages=[{"role": "user", "content": prompt}],

@@ -9,11 +9,16 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, validator
-from starlette.requests import Request
+
+from limits import parse as parse_rate
+from limits.storage import MemoryStorage
+from limits.strategies import FixedWindowRateLimiter
 
 from api.agent.agent import run as run_agent
-from api.limiter import limit
 from api.dependencies import get_current_user
+
+_chat_limiter = FixedWindowRateLimiter(MemoryStorage())
+_chat_rate = parse_rate("10/minute")
 from api.services.chat_history_service import (
     ChatHistoryServiceError,
     delete_conversation,
@@ -57,8 +62,10 @@ def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
 
 
 @router.post("")
-@limit("10/minute")
-async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user), request: Request = None):
+async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
+    key = str(current_user.get("user_id", "anon"))
+    if not _chat_limiter.hit(_chat_rate, key):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded — try again in a minute.")
     quercus_token = _resolve_token(payload.quercus_token, current_user)
     conversation_id = str(payload.conversation_id or "").strip() or None
 
