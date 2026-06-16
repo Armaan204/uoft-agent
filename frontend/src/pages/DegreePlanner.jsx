@@ -320,10 +320,46 @@ function ProgramError({ prog }) {
 }
 
 // ---------------------------------------------------------------------------
+// Coming Soon placeholder (production only)
+// ---------------------------------------------------------------------------
+
+function ComingSoon() {
+  return (
+    <div className="grad-page rise">
+      <div className="grad-empty">
+        <div className="grad-empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 2 2 7l10 5 10-5-10-5Z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+        </div>
+        <p className="grad-empty-title">Degree Planner</p>
+        <div className="grad-coming-soon-badge">Coming Soon</div>
+        <p className="grad-empty-note">
+          Graduation planning is currently in beta and will be
+          available to all users shortly. In the meantime, use{' '}
+          <a
+            href="https://acorn.utoronto.ca/sws/#/progress/undergraduate/auditDegree"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+          >
+            ACORN Degree Explorer
+          </a>{' '}
+          for your official degree audit.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
-export default function DegreePlanner() {
+function DegreePlannerFull() {
   const queryClient = useQueryClient()
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -458,4 +494,8 @@ export default function DegreePlanner() {
       )}
     </div>
   )
+}
+
+export default function DegreePlanner() {
+  return import.meta.env.PROD ? <ComingSoon /> : <DegreePlannerFull />
 }
