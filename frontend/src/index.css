@@ -170,6 +170,7 @@ textarea {
 }
 
 .login-card {
+  position: relative;
   width: min(500px, calc(100vw - 32px));
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1038,6 +1039,29 @@ h1 {
 }
 
 /* ── End landing page ─────────────────────────────────────── */
+
+.onboarding-logout {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--muted2);
+  background: var(--surface2);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.onboarding-logout:hover {
+  color: var(--fg);
+  border-color: var(--muted2);
+  background: var(--hover);
+}
 
 .onboarding-copy {
   margin-bottom: 8px;

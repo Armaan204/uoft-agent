@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, Link } from 'react-router-dom'
 
 import client from '../api/client'
+import { useAuth } from '../hooks/useAuth'
 import tutorialAccount from '../assets/tutorial_clickaccount.png'
 import tutorialSettings from '../assets/tutorial_clicksettings.png'
 import tutorialNewToken from '../assets/tutorial_clicknewaccesstoken.png'
@@ -97,6 +98,7 @@ function TokenTutorial() {
 export default function Onboarding() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { logout } = useAuth()
   const [token, setToken] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -133,6 +135,15 @@ export default function Onboarding() {
   return (
     <main className="login-screen onboarding-screen">
       <div className="login-card onboarding-card">
+        <button type="button" className="onboarding-logout" onClick={logout}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+            strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M6 2H3.5A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14H6" />
+            <path d="M10.5 11.5L14 8l-3.5-3.5" />
+            <path d="M14 8H6" />
+          </svg>
+          Log out
+        </button>
         <div className="icon-wrap">
           <svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
             <path d="M14 6L3 11.5L14 17L25 11.5L14 6Z" fill="oklch(68% 0.16 240)" opacity="0.9" />
