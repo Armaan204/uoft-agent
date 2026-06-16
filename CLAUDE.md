@@ -89,44 +89,14 @@ An AI academic assistant for University of Toronto students.
 
 ## Auth
 
-There are now two auth paths in the repo:
+The app uses FastAPI Google OAuth with JWT-based sessions:
 
-- Streamlit app: still uses Streamlit's native Google auth (`st.login("google")`, `st.user`, `st.logout()`)
-- React + FastAPI app: uses FastAPI Google OAuth, then redirects to the frontend callback with a signed JWT
-
-The new React auth flow is:
-
-- frontend login button hits `GET /auth/google`
+- Frontend login button hits `GET /auth/google`
 - FastAPI sends the user to Google
 - Google returns to FastAPI at `REDIRECT_URI`
 - FastAPI callback signs a JWT and redirects to `${FRONTEND_URL}/auth/callback?token=...`
 - React stores the token in localStorage and uses it for protected API calls
 - After Google auth, React checks for a saved Quercus token; users without one are sent to `/onboarding`
-
-Expected Streamlit secrets structure:
-
-```toml
-ANTHROPIC_API_KEY = "..."
-SUPABASE_URL = "..."
-SUPABASE_KEY = "..."
-ENCRYPTION_KEY = "..."
-
-[auth]
-redirect_uri = "http://localhost:8501/oauth2callback"
-cookie_secret = "..."
-
-[auth.google]
-client_id = "..."
-client_secret = "..."
-server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
-```
-
-Important:
-
-- Keep flat app secrets such as `ANTHROPIC_API_KEY` at the top level
-- Do not place them under `[auth]` or `[auth.google]`
-- `app.py` reads flat app secrets on the main thread and mirrors runtime values such as `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, and `ENCRYPTION_KEY` into `os.environ` for helper modules
-- The app upserts the logged-in user by `st.user.sub` and stores encrypted Quercus tokens in the `quercus_tokens` table keyed by `user_id`
 
 ## Environment Variables
 
@@ -161,9 +131,9 @@ Implemented:
 - Canvas page syllabus support for courses where the syllabus is published as a Quercus page instead of a file
 - Short-lived Quercus caching: assignment groups and submissions are cached for 5 minutes
 - Syllabus parsing cache: in-process cache for 1 hour plus persistent Supabase cache in `syllabus_weights_cache`
-- ACORN import flow from the published Chrome extension to Railway-hosted backend to Streamlit readback
+- ACORN import flow from the published Chrome extension to Railway-hosted backend to React app
 - ACORN imports can now be claimed to the logged-in user account so returning users do not need to re-import on every visit
-- The Streamlit ACORN tab is behind the `ACORN_ENABLED` feature flag and, when enabled, shows either saved ACORN data or the onboarding / re-import flow
+- The ACORN page shows either saved ACORN data or the onboarding / re-import flow
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
 - ACORN tab shows a summary table (Courses Imported, Total Credits, Cumulative GPA) and an Altair line chart of GPA over time with a Sessional / Cumulative toggle; chart uses adaptive Y-axis zoom and labelled data points
 - ACORN data is structured per-term: the extension extracts term headings, sessional GPA, and cumulative GPA directly from the ACORN DOM and stores them in a `terms` top-level array alongside the flat `courses` list
@@ -211,7 +181,7 @@ Not implemented yet:
 
 - Courses with unresolved or only partially reliable syllabus-to-Canvas mappings intentionally show no weighted overview grade
 - What-if sliders are only enabled when the weighted component model is reliable
-- The ACORN backend still receives extension imports by import code first; the Streamlit app then claims the latest matching import to the logged-in user account
+- The ACORN backend still receives extension imports by import code first; the React app then claims the latest matching import to the logged-in user account
 - Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
 - Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
 - Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
@@ -250,18 +220,6 @@ Install dependencies:
 
 ```bash
 pip install -r requirements.txt
-```
-
-Run the Streamlit app:
-
-```bash
-streamlit run app.py
-```
-
-Run the ACORN backend:
-
-```bash
-python api_server.py
 ```
 
 Run the FastAPI backend (dev):

@@ -48,12 +48,7 @@ class SyllabusError(Exception):
 
 
 def _get_anthropic_client() -> anthropic.Anthropic:
-    """Build an Anthropic client from the runtime environment.
-
-    The Streamlit app resolves secrets on the main thread during startup and
-    mirrors ANTHROPIC_API_KEY into os.environ. Syllabus parsing may run in a
-    worker thread, so this module avoids reading st.secrets at import time.
-    """
+    """Build an Anthropic client from the runtime environment."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise SyllabusError("ANTHROPIC_API_KEY is not configured")

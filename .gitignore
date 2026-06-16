@@ -12,9 +12,6 @@ env/
 dist/
 build/
 
-# Streamlit
-.streamlit/
-
 # Build artifacts
 *.zip
 

@@ -31,7 +31,7 @@ def get_supabase_client() -> Client:
 
 
 def get_or_create_user(google_id: str, email: str | None) -> dict:
-    """Upsert the current Streamlit-auth user and return the stored row."""
+    """Upsert the current authenticated user and return the stored row."""
     if not google_id or not str(google_id).strip():
         raise UserStoreError("google_id must be a non-empty string")
 

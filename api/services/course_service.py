@@ -43,7 +43,7 @@ class CourseServiceError(RuntimeError):
 
 
 class UncachedQuercusClient(QuercusClient):
-    """Quercus client variant that avoids Streamlit cache decorators."""
+    """Quercus client variant that bypasses cache decorators on the base client."""
 
     def get_submissions(self, course_id: int | str) -> list:
         return self._get(
