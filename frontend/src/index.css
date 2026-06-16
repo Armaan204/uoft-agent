@@ -155,6 +155,11 @@ textarea {
   }
 }
 
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .login-screen,
 .callback-screen {
   min-height: 100vh;
@@ -1039,7 +1044,7 @@ h1 {
 }
 
 .onboarding-help {
-  margin: 0 0 28px;
+  margin: 0 0 12px;
   color: var(--muted2);
   font-size: 13px;
   line-height: 1.7;
@@ -1113,6 +1118,260 @@ h1 {
 .onboarding-submit {
   margin-bottom: 0;
   min-height: 52px;
+}
+
+/* --- Token tutorial (onboarding) --- */
+
+.token-tutorial-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: oklch(95% 0.04 85);
+  border: 1px solid oklch(75% 0.12 75);
+  color: oklch(40% 0.12 65);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 28px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.token-tutorial-toggle:hover {
+  background: oklch(88% 0.08 75);
+  border-color: oklch(65% 0.14 70);
+  transform: translateY(-1px);
+}
+
+.token-tutorial-toggle:active {
+  transform: translateY(0);
+}
+
+html[data-theme="dark"] .token-tutorial-toggle {
+  background: oklch(25% 0.04 75);
+  border-color: oklch(45% 0.1 70);
+  color: oklch(80% 0.1 75);
+}
+
+html[data-theme="dark"] .token-tutorial-toggle:hover {
+  background: oklch(30% 0.06 75);
+  border-color: oklch(55% 0.12 70);
+}
+
+.token-tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: oklch(0% 0 0 / 0.55);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 16px 16px 60px;
+  animation: fade-in 0.15s ease;
+}
+
+.token-tutorial-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  overflow: hidden;
+  padding: 24px 32px 28px;
+  animation: rise 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.token-tutorial-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.token-tutorial-note {
+  margin: 0 0 20px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.token-tutorial-do {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: oklch(92% 0.08 145);
+  color: oklch(35% 0.12 150);
+  border: 1px solid oklch(80% 0.1 145);
+}
+
+.token-tutorial-dont {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: oklch(92% 0.06 25);
+  color: oklch(40% 0.14 25);
+  border: 1px solid oklch(80% 0.08 25);
+}
+
+html[data-theme="dark"] .token-tutorial-do {
+  background: oklch(28% 0.06 150);
+  color: oklch(80% 0.12 150);
+  border-color: oklch(40% 0.08 150);
+}
+
+html[data-theme="dark"] .token-tutorial-dont {
+  background: oklch(28% 0.06 25);
+  color: oklch(80% 0.1 25);
+  border-color: oklch(40% 0.08 25);
+}
+
+.token-tutorial-modal-title {
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--text);
+  margin: 0;
+}
+
+.token-tutorial-close {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.token-tutorial-close:hover {
+  background: var(--border);
+}
+
+.token-tutorial-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.token-tutorial-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.token-tutorial-step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.token-tutorial-number {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.token-tutorial-label {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.token-tutorial-img {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  display: block;
+  cursor: zoom-in;
+  transition: opacity 0.15s ease;
+}
+
+.token-tutorial-img--1,
+.token-tutorial-img--2 {
+  object-fit: cover;
+  object-position: top;
+}
+
+.token-tutorial-img--3,
+.token-tutorial-img--4 {
+  object-fit: contain;
+  object-position: center;
+  background: var(--surface2);
+  padding: 12px;
+}
+
+.token-tutorial-img:hover {
+  opacity: 0.85;
+}
+
+.token-tutorial-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: oklch(0% 0 0 / 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  cursor: zoom-out;
+  animation: fade-in 0.15s ease;
+}
+
+.token-tutorial-lightbox-img {
+  max-width: 95vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 24px 80px oklch(0% 0 0 / 0.5);
+}
+
+@media (max-width: 700px) {
+  .token-tutorial-overlay {
+    padding: 12px 12px 48px;
+  }
+  .token-tutorial-modal {
+    padding: 20px 16px 24px;
+    overflow-y: auto;
+  }
+  .token-tutorial-steps {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  .token-tutorial-step {
+    min-height: auto;
+  }
+  .token-tutorial-img {
+    width: 85%;
+    flex: none;
+    height: auto;
+    min-height: auto;
+    align-self: center;
+  }
 }
 
 .dashboard-page,
