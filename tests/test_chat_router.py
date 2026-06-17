@@ -19,6 +19,15 @@ def _user(user_id="u-test"):
     }
 
 
+@pytest.fixture(autouse=True)
+def _reset_chat_limiter():
+    """Reset the in-memory rate limiter between tests."""
+    from api.routers.chat import _chat_limiter
+    _chat_limiter.storage.reset()
+    yield
+    _chat_limiter.storage.reset()
+
+
 # ── _resolve_token ─────────────────────────────────────────────────────────────
 
 class TestResolveToken:
@@ -116,6 +125,36 @@ class TestChatHandler:
             result = await chat(payload, _user())
         mock_save.assert_not_called()
         assert result["conversation_id"] is None
+
+    async def test_chat_rate_limit_returns_429(self):
+        from api.routers.chat import chat, ChatRequest
+        payload = ChatRequest(message="hello", quercus_token="tok")
+        with patch("api.routers.chat.run_agent", return_value=("answer", [])):
+            for _ in range(10):
+                await chat(payload, _user())
+            with pytest.raises(HTTPException) as exc:
+                await chat(payload, _user())
+        assert exc.value.status_code == 429
+
+    async def test_chat_rate_limit_keyed_by_quercus_token(self):
+        from api.routers.chat import chat, ChatRequest
+        payload_a = ChatRequest(message="hello", quercus_token="token-a")
+        payload_b = ChatRequest(message="hello", quercus_token="token-b")
+        with patch("api.routers.chat.run_agent", return_value=("answer", [])):
+            for _ in range(10):
+                await chat(payload_a, _user("user-1"))
+            result = await chat(payload_b, _user("user-2"))
+        assert result["answer"] == "answer"
+
+    async def test_chat_rate_limit_shared_token_across_users(self):
+        from api.routers.chat import chat, ChatRequest
+        payload = ChatRequest(message="hello", quercus_token="shared-tok")
+        with patch("api.routers.chat.run_agent", return_value=("answer", [])):
+            for _ in range(10):
+                await chat(payload, _user("user-1"))
+            with pytest.raises(HTTPException) as exc:
+                await chat(payload, _user("user-2"))
+        assert exc.value.status_code == 429
 
 
 # ── history (GET /api/chat/history) ───────────────────────────────────────────

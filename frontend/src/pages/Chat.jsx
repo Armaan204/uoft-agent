@@ -93,6 +93,22 @@ export default function Chat() {
         },
       ])
     },
+    onError: (error) => {
+      const isRateLimit = error?.response?.status === 429
+      const text = isRateLimit
+        ? "You’re sending messages too quickly. Please wait a moment before trying again."
+        : "Something went wrong — please try again."
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text,
+          toolCalls: [],
+          isError: true,
+        },
+      ])
+    },
   })
 
   const loadConversationMutation = useMutation({
@@ -266,7 +282,7 @@ export default function Chat() {
                     ))}
                   </div>
                 )}
-                <div className={`msg-bubble ${message.role === 'user' ? 'user' : 'ai'}`}>
+                <div className={`msg-bubble ${message.role === 'user' ? 'user' : 'ai'}${message.isError ? ' error' : ''}`}>
                   {message.role === 'assistant' ? <MarkdownMessage text={message.text} /> : message.text}
                 </div>
               </div>

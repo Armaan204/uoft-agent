@@ -63,10 +63,9 @@ def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
 
 @router.post("")
 async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
-    key = str(current_user.get("user_id", "anon"))
-    if not _chat_limiter.hit(_chat_rate, key):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded — try again in a minute.")
     quercus_token = _resolve_token(payload.quercus_token, current_user)
+    if not _chat_limiter.hit(_chat_rate, quercus_token):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded — try again in a minute.")
     conversation_id = str(payload.conversation_id or "").strip() or None
 
     history: list[dict] = []
