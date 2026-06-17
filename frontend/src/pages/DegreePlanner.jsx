@@ -559,5 +559,5 @@ function DegreePlannerFull() {
 }
 
 export default function DegreePlanner() {
-  return import.meta.env.PROD ? <ComingSoon /> : <DegreePlannerFull />
+  return <DegreePlannerFull />
 }
