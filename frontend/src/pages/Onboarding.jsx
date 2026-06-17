@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 
 import client from '../api/client'
 import { useAuth } from '../hooks/useAuth'
@@ -97,10 +97,12 @@ function TokenTutorial() {
 
 export default function Onboarding() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { logout } = useAuth()
   const [token, setToken] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const isExpired = searchParams.get('expired') === 'true'
 
   const connectMutation = useMutation({
     mutationFn: async (quercusToken) => {
@@ -158,7 +160,16 @@ export default function Onboarding() {
           </svg>
         </div>
 
-        <h1 className="login-title">Connect Quercus</h1>
+        <h1 className="login-title">{isExpired ? 'Reconnect Quercus' : 'Connect Quercus'}</h1>
+        {isExpired && (
+          <div className="onboarding-expired-banner" role="alert">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.5" />
+              <path d="M8 5v3.5M8 10.5v.5" strokeLinecap="round" />
+            </svg>
+            Your Quercus token has expired. Please enter a new one to continue.
+          </div>
+        )}
         <p className="tagline onboarding-copy">Enter your Quercus personal access token to get started.</p>
         <p className="onboarding-help">
           Generate one at{' '}

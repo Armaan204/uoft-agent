@@ -1139,6 +1139,21 @@ h1 {
   line-height: 1.55;
 }
 
+.onboarding-expired-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid oklch(70% 0.12 70 / 0.35);
+  background: oklch(30% 0.04 70 / 0.35);
+  color: oklch(85% 0.08 70);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.onboarding-expired-banner svg { flex-shrink: 0; }
+
 .onboarding-submit {
   margin-bottom: 0;
   min-height: 52px;
@@ -1651,89 +1666,6 @@ html[data-theme="dark"] .token-tutorial-dont {
 .dashboard-loading-copy {
   color: var(--muted2);
   font-size: 15px;
-}
-
-.token-expired-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 24px 28px;
-  background: linear-gradient(135deg, var(--red-bg), var(--surface));
-  border: 1px solid oklch(45% 0.12 25 / 0.35);
-  border-radius: 16px;
-  box-shadow: var(--shadow-card);
-}
-.token-expired-card > svg {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  color: oklch(70% 0.14 25);
-}
-.token-expired-body {
-  flex: 1;
-}
-.token-expired-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 3px;
-}
-.token-expired-sub {
-  font-size: 13px;
-  color: var(--muted2);
-}
-.btn-reconnect {
-  flex-shrink: 0;
-  padding: 9px 18px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  background: oklch(55% 0.16 240);
-  color: #fff;
-  text-decoration: none;
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn-reconnect:hover:not(:disabled) {
-  background: oklch(62% 0.16 240);
-}
-.btn-reconnect:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.auth-error-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 18px;
-  margin-bottom: 16px;
-  background: oklch(16% 0.03 25 / 0.6);
-  border: 1px solid oklch(45% 0.12 25 / 0.3);
-  border-radius: 12px;
-  font-size: 13px;
-  color: oklch(78% 0.08 25);
-}
-.auth-error-banner > svg {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-}
-.auth-error-reconnect {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: oklch(68% 0.16 240);
-  text-decoration: none;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-.auth-error-reconnect:hover:not(:disabled) {
-  color: oklch(75% 0.16 240);
 }
 
 .dashboard-refresh-indicator {
@@ -5749,6 +5681,12 @@ html[data-theme="light"] .mobile-topbar .brand-icon {
 
 html[data-theme="light"] .onboarding-badge {
   background: var(--accent-dim);
+}
+
+html[data-theme="light"] .onboarding-expired-banner {
+  border-color: oklch(70% 0.12 70 / 0.4);
+  background: oklch(92% 0.04 70 / 0.5);
+  color: oklch(35% 0.08 70);
 }
 
 html[data-theme="light"] .dashboard-loading-card,

@@ -241,9 +241,12 @@ async def _background_refresh_dashboard(token: str, user_id: str) -> None:
             logger.warning("Background snapshot save failed user_id=%s error=%s", user_id, exc)
         logger.info("Background dashboard refresh completed user_id=%s", user_id)
     except QuercusAuthError:
-        logger.warning("Background dashboard refresh: token invalid/expired user_id=%s", user_id)
-        if user_id in _dashboard_cache:
-            _dashboard_cache[user_id]["auth_error"] = "quercus_token_invalid"
+        logger.warning("Background dashboard refresh: token invalid/expired user_id=%s — deleting stored token", user_id)
+        _evict_user_cache(user_id)
+        try:
+            delete_quercus_token(user_id)
+        except UserStoreError:
+            logger.warning("Failed to delete stored Quercus token during background refresh user_id=%s", user_id)
     except Exception:
         logger.exception("Background dashboard refresh failed user_id=%s", user_id)
 
@@ -306,7 +309,12 @@ async def dashboard_courses(
         )
         return _dashboard_cache[user_id]
     except QuercusAuthError as exc:
-        logger.warning("Dashboard load failed: token invalid/expired user_id=%s", user_id)
+        logger.warning("Dashboard load failed: token invalid/expired user_id=%s — deleting stored token", user_id)
+        _evict_user_cache(user_id)
+        try:
+            delete_quercus_token(user_id)
+        except UserStoreError:
+            pass
         raise HTTPException(status_code=424, detail="quercus_token_invalid") from exc
     except (CourseServiceError, QuercusError) as exc:
         logger.exception(
@@ -334,6 +342,13 @@ async def _background_refresh_course_grades(token: str, user_id: str, course_id:
         _course_grades_cache[f"{user_id}:{course_id}"] = data
         await asyncio.to_thread(save_course_detail_snapshot, user_id, course_id, data)
         logger.info("Background course grades refresh completed user_id=%s course_id=%s", user_id, course_id)
+    except QuercusAuthError:
+        logger.warning("Background course grades refresh: token invalid/expired user_id=%s course_id=%s — deleting stored token", user_id, course_id)
+        _evict_user_cache(user_id)
+        try:
+            delete_quercus_token(user_id)
+        except UserStoreError:
+            pass
     except Exception:
         logger.exception("Background course grades refresh failed user_id=%s course_id=%s", user_id, course_id)
 
@@ -389,6 +404,14 @@ async def course_grades(
         except GradesSnapshotServiceError as exc:
             logger.warning("Failed to save course detail snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
         return data
+    except QuercusAuthError as exc:
+        logger.warning("Course grades load failed: token invalid/expired user_id=%s course_id=%s", user_id, course_id)
+        _evict_user_cache(user_id)
+        try:
+            delete_quercus_token(user_id)
+        except UserStoreError:
+            pass
+        raise HTTPException(status_code=424, detail="quercus_token_invalid") from exc
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

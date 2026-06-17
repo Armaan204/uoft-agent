@@ -532,6 +532,21 @@ class TestDashboardCoursesAdditional:
         assert result["term_name"] == "Winter 2025"
         del mod._dashboard_cache["u-fallback"]
 
+    def test_raises_424_and_deletes_token_on_auth_error(self):
+        import api.routers.courses as mod
+        from api.integrations.quercus import QuercusAuthError
+
+        async def run():
+            with patch("api.routers.courses._resolve_token", return_value="tok"), \
+                 patch("api.routers.courses._live_fetch_dashboard", side_effect=QuercusAuthError("expired")), \
+                 patch("api.routers.courses.delete_quercus_token") as mock_delete:
+                return await mod.dashboard_courses(True, "tok", _user())
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(run())
+        assert exc.value.status_code == 424
+        assert exc.value.detail == "quercus_token_invalid"
+
     def test_raises_400_on_course_service_failure(self):
         import api.routers.courses as mod
         from api.services.course_service import CourseServiceError
@@ -574,19 +589,20 @@ class TestDashboardCoursesAdditional:
 
 
 class TestBackgroundRefreshDashboardAdditional:
-    def test_marks_auth_error_on_cached_entry(self):
+    def test_deletes_token_and_evicts_cache_on_auth_error(self):
         import api.routers.courses as mod
         from api.integrations.quercus import QuercusAuthError
 
         mod._dashboard_cache["u-auth"] = {"courses": []}
 
         async def run():
-            with patch("api.routers.courses._live_fetch_dashboard", side_effect=QuercusAuthError("expired")):
+            with patch("api.routers.courses._live_fetch_dashboard", side_effect=QuercusAuthError("expired")), \
+                 patch("api.routers.courses.delete_quercus_token") as mock_delete:
                 await mod._background_refresh_dashboard("tok", "u-auth")
+                mock_delete.assert_called_once_with("u-auth")
 
         asyncio.run(run())
-        assert mod._dashboard_cache["u-auth"]["auth_error"] == "quercus_token_invalid"
-        del mod._dashboard_cache["u-auth"]
+        assert "u-auth" not in mod._dashboard_cache
 
     def test_snapshot_save_failure_is_swallowed(self):
         import api.routers.courses as mod
@@ -670,6 +686,22 @@ class TestCourseGradesAdditional:
         result = asyncio.run(run())
         assert result["course_id"] == 6001  # pragma: no cover
 
+    def test_raises_424_and_deletes_token_on_auth_error(self):
+        import api.routers.courses as mod
+        from api.integrations.quercus import QuercusAuthError
+
+        async def run():
+            with patch("api.routers.courses._resolve_token", return_value="tok"), \
+                 patch("api.routers.courses.get_course_detail_snapshot", return_value=None), \
+                 patch("api.routers.courses.get_course_grades", side_effect=QuercusAuthError("expired")), \
+                 patch("api.routers.courses.delete_quercus_token") as mock_delete:
+                return await mod.course_grades(7002, False, "tok", _user())
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(run())
+        assert exc.value.status_code == 424
+        assert exc.value.detail == "quercus_token_invalid"
+
     def test_raises_400_on_course_grades_error(self):
         import api.routers.courses as mod
         from api.services.course_service import CourseServiceError
@@ -706,6 +738,21 @@ class TestBackgroundRefreshCourseGrades:
                 await mod._background_refresh_course_grades("tok", "u-course", 13)
 
         asyncio.run(run())
+
+    def test_deletes_token_and_evicts_cache_on_auth_error(self):
+        import api.routers.courses as mod
+        from api.integrations.quercus import QuercusAuthError
+
+        mod._course_grades_cache["u-bg-auth:14"] = {"old": True}
+
+        async def run():
+            with patch("api.routers.courses.get_course_grades", side_effect=QuercusAuthError("expired")), \
+                 patch("api.routers.courses.delete_quercus_token") as mock_delete:
+                await mod._background_refresh_course_grades("tok", "u-bg-auth", 14)
+                mock_delete.assert_called_once_with("u-bg-auth")
+
+        asyncio.run(run())
+        assert "u-bg-auth:14" not in mod._course_grades_cache
 
 
 class TestWriteCourseGradeOverridesAdditional:

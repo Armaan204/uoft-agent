@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import AnnouncementList from '../components/AnnouncementList'
@@ -40,27 +40,10 @@ function RefreshIcon() {
 
 export default function Dashboard() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const courseGridRef = useRef(null)
   const deadlinesLabelRef = useRef(null)
   const [deadlinesMaxHeight, setDeadlinesMaxHeight] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [isReconnecting, setIsReconnecting] = useState(false)
-
-  async function reconnectQuercus() {
-    if (isReconnecting) return
-    setIsReconnecting(true)
-    try {
-      await client.delete('/api/courses/quercus-token')
-      await queryClient.removeQueries({ queryKey: ['dashboard'] })
-      await queryClient.removeQueries({ queryKey: ['courses'] })
-      await queryClient.removeQueries({ queryKey: ['course-grades'] })
-      await queryClient.invalidateQueries({ queryKey: ['quercus-token-status'] })
-      navigate('/onboarding', { replace: true })
-    } finally {
-      setIsReconnecting(false)
-    }
-  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
@@ -68,8 +51,6 @@ export default function Dashboard() {
     staleTime: DASHBOARD_STALE_TIME_MS,
     refetchOnWindowFocus: false,
   })
-
-  const isTokenExpired = error?.response?.status === 424 || data?.auth_error === 'quercus_token_invalid'
 
   const fetchedAt = data?.fetched_at ?? null
   const termName = useMemo(
@@ -152,37 +133,10 @@ queryClient.setQueryData(['dashboard'], fresh)
           <div className="dashboard-loading-copy">Loading dashboard…</div>
         </div>
       )}
-      {error && !isTokenExpired && <div className="empty-card">Failed to load courses.</div>}
-      {error && isTokenExpired && (
-        <div className="token-expired-card">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-            <circle cx="10" cy="10" r="8.5" />
-            <path d="M10 6v4.5M10 13.5v.5" strokeLinecap="round" />
-          </svg>
-          <div className="token-expired-body">
-            <div className="token-expired-title">Quercus token expired</div>
-            <div className="token-expired-sub">Your token is no longer valid. Reconnect to reload your courses.</div>
-          </div>
-          <button className="btn-reconnect" type="button" onClick={reconnectQuercus} disabled={isReconnecting}>
-            {isReconnecting ? 'Disconnecting…' : 'Reconnect Quercus'}
-          </button>
-        </div>
-      )}
+      {error && <div className="empty-card">Failed to load courses.</div>}
 
-      {!isLoading && (!error || isTokenExpired) && data && (
+      {!isLoading && !error && data && (
         <>
-          {isTokenExpired && (
-            <div className="auth-error-banner" role="alert">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                <circle cx="8" cy="8" r="6.5" />
-                <path d="M8 5v3.5M8 10.5v.5" strokeLinecap="round" />
-              </svg>
-              Your Quercus token has expired — grades shown may be outdated.
-              <button className="auth-error-reconnect" type="button" onClick={reconnectQuercus} disabled={isReconnecting}>
-                {isReconnecting ? 'Disconnecting…' : 'Reconnect'}
-              </button>
-            </div>
-          )}
         <div className="dashboard-main">
           <section className="dashboard-top">
             <section className="course-grid" ref={courseGridRef}>
