@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -36,6 +36,7 @@ export default function Chat() {
   const [conversationId, setConversationId] = useState(null)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isMobileComposer, setIsMobileComposer] = useState(() => window.innerWidth < 768)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const scrollRef = useRef(null)
   const loadedRouteIdRef = useRef(null)
   const queryClient = useQueryClient()
@@ -94,10 +95,14 @@ export default function Chat() {
       ])
     },
     onError: (error) => {
-      const isRateLimit = error?.response?.status === 429
-      const text = isRateLimit
-        ? "You’re sending messages too quickly. Please wait a moment before trying again."
-        : "Something went wrong — please try again."
+      const detail = error?.response?.data?.detail
+      const isDailyLimit = error?.response?.status === 429 && detail === 'daily_limit'
+      const isRateLimit = error?.response?.status === 429 && detail === 'rate_limit'
+      const text = isDailyLimit
+        ? "You've hit the daily chat limit. Please try again tomorrow."
+        : isRateLimit
+          ? "You're sending messages too quickly. Please wait a moment before trying again."
+          : "Something went wrong — please try again."
       setMessages((current) => [
         ...current,
         {
@@ -138,6 +143,22 @@ export default function Chat() {
 
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    function handleScroll() {
+      setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 200)
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    }
   }, [])
 
   useEffect(() => {
@@ -300,6 +321,14 @@ export default function Chat() {
             </div>
           )}
         </div>
+
+        {showScrollBtn && (
+          <button className="scroll-to-bottom-btn" type="button" onClick={scrollToBottom} aria-label="Scroll to bottom">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="input-area">

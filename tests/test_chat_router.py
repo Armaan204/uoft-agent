@@ -126,7 +126,7 @@ class TestChatHandler:
         mock_save.assert_not_called()
         assert result["conversation_id"] is None
 
-    async def test_chat_rate_limit_returns_429(self):
+    async def test_chat_per_minute_rate_limit_returns_429(self):
         from api.routers.chat import chat, ChatRequest
         payload = ChatRequest(message="hello", quercus_token="tok")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])):
@@ -135,8 +135,9 @@ class TestChatHandler:
             with pytest.raises(HTTPException) as exc:
                 await chat(payload, _user())
         assert exc.value.status_code == 429
+        assert exc.value.detail == "rate_limit"
 
-    async def test_chat_rate_limit_keyed_by_quercus_token(self):
+    async def test_chat_per_minute_rate_limit_keyed_by_quercus_token(self):
         from api.routers.chat import chat, ChatRequest
         payload_a = ChatRequest(message="hello", quercus_token="token-a")
         payload_b = ChatRequest(message="hello", quercus_token="token-b")
@@ -146,7 +147,7 @@ class TestChatHandler:
             result = await chat(payload_b, _user("user-2"))
         assert result["answer"] == "answer"
 
-    async def test_chat_rate_limit_shared_token_across_users(self):
+    async def test_chat_per_minute_rate_limit_shared_token_across_users(self):
         from api.routers.chat import chat, ChatRequest
         payload = ChatRequest(message="hello", quercus_token="shared-tok")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])):
@@ -155,6 +156,57 @@ class TestChatHandler:
             with pytest.raises(HTTPException) as exc:
                 await chat(payload, _user("user-2"))
         assert exc.value.status_code == 429
+        assert exc.value.detail == "rate_limit"
+
+    async def test_chat_daily_limit_returns_429(self):
+        from api.routers.chat import chat, ChatRequest, _chat_limiter, _chat_rate_minute
+        payload = ChatRequest(message="hello", quercus_token="daily-tok")
+        original_hit = _chat_limiter.hit
+        def _hit_skip_minute(rate, *args, **kwargs):
+            if rate is _chat_rate_minute:
+                return True
+            return original_hit(rate, *args, **kwargs)
+        with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
+             patch.object(_chat_limiter, "hit", side_effect=_hit_skip_minute):
+            for _ in range(50):
+                await chat(payload, _user())
+            with pytest.raises(HTTPException) as exc:
+                await chat(payload, _user())
+        assert exc.value.status_code == 429
+        assert exc.value.detail == "daily_limit"
+
+    async def test_chat_daily_limit_shared_token_across_users(self):
+        from api.routers.chat import chat, ChatRequest, _chat_limiter, _chat_rate_minute
+        payload = ChatRequest(message="hello", quercus_token="daily-shared-tok")
+        original_hit = _chat_limiter.hit
+        def _hit_skip_minute(rate, *args, **kwargs):
+            if rate is _chat_rate_minute:
+                return True
+            return original_hit(rate, *args, **kwargs)
+        with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
+             patch.object(_chat_limiter, "hit", side_effect=_hit_skip_minute):
+            for _ in range(50):
+                await chat(payload, _user("user-1"))
+            with pytest.raises(HTTPException) as exc:
+                await chat(payload, _user("user-2"))
+        assert exc.value.status_code == 429
+        assert exc.value.detail == "daily_limit"
+
+    async def test_chat_daily_limit_independent_tokens(self):
+        from api.routers.chat import chat, ChatRequest, _chat_limiter, _chat_rate_minute
+        payload_a = ChatRequest(message="hello", quercus_token="daily-a")
+        payload_b = ChatRequest(message="hello", quercus_token="daily-b")
+        original_hit = _chat_limiter.hit
+        def _hit_skip_minute(rate, *args, **kwargs):
+            if rate is _chat_rate_minute:
+                return True
+            return original_hit(rate, *args, **kwargs)
+        with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
+             patch.object(_chat_limiter, "hit", side_effect=_hit_skip_minute):
+            for _ in range(50):
+                await chat(payload_a, _user("user-1"))
+            result = await chat(payload_b, _user("user-2"))
+        assert result["answer"] == "answer"
 
 
 # ── history (GET /api/chat/history) ───────────────────────────────────────────

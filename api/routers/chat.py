@@ -18,7 +18,8 @@ from api.agent.agent import run as run_agent
 from api.dependencies import get_current_user
 
 _chat_limiter = FixedWindowRateLimiter(MemoryStorage())
-_chat_rate = parse_rate("10/minute")
+_chat_rate_minute = parse_rate("10/minute")
+_chat_rate_daily = parse_rate("50/day")
 from api.services.chat_history_service import (
     ChatHistoryServiceError,
     delete_conversation,
@@ -64,8 +65,10 @@ def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
 @router.post("")
 async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
     quercus_token = _resolve_token(payload.quercus_token, current_user)
-    if not _chat_limiter.hit(_chat_rate, quercus_token):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded — try again in a minute.")
+    if not _chat_limiter.hit(_chat_rate_daily, quercus_token):
+        raise HTTPException(status_code=429, detail="daily_limit")
+    if not _chat_limiter.hit(_chat_rate_minute, quercus_token):
+        raise HTTPException(status_code=429, detail="rate_limit")
     conversation_id = str(payload.conversation_id or "").strip() or None
 
     history: list[dict] = []
