@@ -1992,6 +1992,13 @@ tfoot td:not(:first-child),
   margin-bottom: 32px;
 }
 
+@media (min-width: 769px) {
+  .graded-with-rail,
+  .whatif-outer-wrap {
+    margin-left: 70px;
+  }
+}
+
 .graded-with-rail .grade-table-wrap,
 .whatif-outer-wrap .whatif-card {
   width: 100%;
@@ -4792,7 +4799,9 @@ input[type='range']::-webkit-slider-thumb {
     padding: 18px 14px;
   }
 
-  .grade-toggle-btn {
+  .grade-toggle-btn,
+  .grade-toggle-rail,
+  .whatif-toggle-rail {
     display: none;
   }
 }
