@@ -165,7 +165,7 @@ def list_current_term_courses(quercus_token: str) -> list[dict[str, Any]]:
     return result
 
 
-def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str, Any]:
+def get_dashboard_course(quercus_token: str, course: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
     client = UncachedQuercusClient(token=quercus_token)
     course_id = course["id"]
     canvas_ids: list[int] = course.get("canvas_ids") or [course_id]
@@ -180,6 +180,13 @@ def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str
         submissions = client.get_submissions(course_id)
         weights, _source = _resolve_course_weights_uncached(course_id, client)
 
+    overrides: dict[str, dict[str, Any]] = {}
+    if user_id:
+        try:
+            overrides = get_grade_overrides(user_id, course_id)
+        except Exception:
+            overrides = {}
+
     current_grade = 0.0
     projected_grade = 0.0
     displayed_grade = 0.0
@@ -188,9 +195,12 @@ def get_dashboard_course(quercus_token: str, course: dict[str, Any]) -> dict[str
     if weights:
         component_model = _calc.build_weighted_components(groups, submissions, weights)
         if component_model["reliable"]:
-            grade = _grade_from_components(component_model["components"])
+            components = component_model["components"]
+            if overrides:
+                components = _apply_grade_overrides(components, overrides)
+            grade = _grade_from_components(components)
             current_grade = grade["weighted_grade"]
-            projected_grade = _calc.projected_grade(component_model["components"], {})
+            projected_grade = _calc.projected_grade(components, {})
             displayed_grade = projected_grade
             displayed_letter = _calc._to_letter(projected_grade)
         else:

@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom'
+
 export default function Logo({ compact = false }) {
   return (
-    <div className="brand">
+    <Link to="/" className="brand" style={{ textDecoration: 'none' }}>
       <div className="brand-icon">
         <svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
           <path d="M14 6L3 11.5L14 17L25 11.5L14 6Z" fill="oklch(68% 0.16 240)" opacity="0.9" />
@@ -13,6 +15,6 @@ export default function Logo({ compact = false }) {
         </svg>
       </div>
       {!compact && <span className="brand-name">UofT Agent</span>}
-    </div>
+    </Link>
   )
 }

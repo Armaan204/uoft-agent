@@ -331,10 +331,10 @@ def list_courses(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-async def _live_fetch_dashboard(token: str) -> tuple[list, list]:
+async def _live_fetch_dashboard(token: str, user_id: str | None = None) -> tuple[list, list]:
     """Fetch courses and announcements from Quercus. Returns (dashboard, announcements)."""
     courses = await asyncio.to_thread(list_current_term_courses, token)
-    tasks = [asyncio.to_thread(get_dashboard_course, token, course) for course in courses]
+    tasks = [asyncio.to_thread(get_dashboard_course, token, course, user_id) for course in courses]
     dashboard = list(await asyncio.gather(*tasks))
     announcements = await asyncio.to_thread(get_dashboard_announcements, token, courses)
     return dashboard, announcements
@@ -342,7 +342,7 @@ async def _live_fetch_dashboard(token: str) -> tuple[list, list]:
 
 async def _background_refresh_dashboard(token: str, user_id: str) -> None:
     try:
-        dashboard, announcements = await _live_fetch_dashboard(token)
+        dashboard, announcements = await _live_fetch_dashboard(token, user_id)
         term_name = next((c.get("term_name") for c in dashboard if c.get("term_name")), "")
         _dashboard_cache[user_id] = {
             "courses": dashboard,
@@ -441,7 +441,7 @@ async def dashboard_courses(
             _token_debug_value(token),
             force_refresh,
         )
-        dashboard, announcements = await _live_fetch_dashboard(token)
+        dashboard, announcements = await _live_fetch_dashboard(token, user_id)
         fetched_at = datetime.now(timezone.utc).isoformat()
         term_name = next((c.get("term_name") for c in dashboard if c.get("term_name")), "")
         _dashboard_cache[user_id] = {
@@ -699,6 +699,7 @@ def write_course_grade_overrides(
         data = _build_manual_course_grades(user_id, course_id)
         cache_key = f"{user_id}:{course_id}"
         _course_grades_cache[cache_key] = data
+        _dashboard_cache.pop(user_id, None)
         return data
 
     token = _resolve_token(quercus_token, current_user)
@@ -715,6 +716,7 @@ def write_course_grade_overrides(
             additional_canvas_ids=_additional_ids,
         )
         _course_grades_cache[cache_key] = data
+        _dashboard_cache.pop(user_id, None)
         try:
             save_course_detail_snapshot(user_id, course_id, data)
         except GradesSnapshotServiceError as exc:
@@ -739,6 +741,7 @@ def remove_course_grade_override(
         data = _build_manual_course_grades(user_id, course_id)
         cache_key = f"{user_id}:{course_id}"
         _course_grades_cache[cache_key] = data
+        _dashboard_cache.pop(user_id, None)
         return data
 
     token = _resolve_token(quercus_token, current_user)
@@ -749,6 +752,7 @@ def remove_course_grade_override(
         cached = _course_grades_cache.get(cache_key)
         data = delete_course_grade_override(token, user_id, course_id, component_key, cached, _additional_ids)
         _course_grades_cache[cache_key] = data
+        _dashboard_cache.pop(user_id, None)
         try:
             save_course_detail_snapshot(user_id, course_id, data)
         except GradesSnapshotServiceError as exc:

@@ -39,7 +39,7 @@ def get_grade_snapshot(user_id: str | int, quercus_token: str, force_refresh: bo
 
     for course in courses:
         try:
-            dashboard_course = get_dashboard_course(quercus_token, course)
+            dashboard_course = get_dashboard_course(quercus_token, course, str(user_id))
             grade_rows.append({
                 "course_id": dashboard_course["id"],
                 "course_name": dashboard_course["name"],

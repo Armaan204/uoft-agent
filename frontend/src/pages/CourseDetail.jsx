@@ -48,6 +48,17 @@ function parseScoreValue(rawValue) {
   return Math.max(0, Math.min(100, parsed))
 }
 
+function computeProjectedGrade(components) {
+  if (!components?.length) return null
+  const totalWeight = components.reduce((s, c) => s + (c.weight || 0), 0)
+  if (totalWeight <= 0) return null
+  const projected = components.reduce((s, c) => {
+    const pct = c.status === 'graded' ? (c.pct ?? 0) : 100
+    return s + pct * (c.weight || 0)
+  }, 0)
+  return Math.round((projected / totalWeight) * 100) / 100
+}
+
 export default function CourseDetail() {
   const { id } = useParams()
   const [sliderValues, setSliderValues] = useState({})
@@ -150,6 +161,22 @@ export default function CourseDetail() {
     rows.forEach((row, i) => { if (slots[i]) slots[i].style.minHeight = `${row.offsetHeight}px` })
   }, [remainingComponents])
 
+  function updateDashboardGrade(gradeData) {
+    const comps = gradeData?.component_model?.components
+    const grade = computeProjectedGrade(comps)
+    if (grade === null) return
+    const letter = toLetter(grade)
+    queryClient.setQueryData(['dashboard'], (old) => {
+      if (!old) return old
+      return {
+        ...old,
+        courses: (old.courses || []).map((c) =>
+          String(c.id) !== id ? c : { ...c, current_grade: grade, projected_grade: grade, display_grade: grade, letter_grade: letter }
+        ),
+      }
+    })
+  }
+
   const saveOverrideMutation = useMutation({
     mutationFn: async (override) => {
       const response = await client.post(`/api/courses/${id}/grade-overrides`, {
@@ -159,8 +186,7 @@ export default function CourseDetail() {
     },
     onSuccess: async (data) => {
       queryClient.setQueryData(['course-grades', id], data)
-      await queryClient.invalidateQueries({ queryKey: ['course-grades', id] })
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      updateDashboardGrade(data)
       setEditingKey(null)
     },
   })
@@ -192,7 +218,7 @@ export default function CourseDetail() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['course-grades', id], data)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      updateDashboardGrade(data)
     },
   })
 
@@ -220,7 +246,7 @@ export default function CourseDetail() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['course-grades', id], data)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      updateDashboardGrade(data)
     },
   })
 

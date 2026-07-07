@@ -1508,6 +1508,11 @@ html[data-theme="dark"] .token-tutorial-dont {
 .brand-name {
   font-size: 18px;
   font-weight: 600;
+  transition: color 0.15s ease;
+}
+
+.brand:hover .brand-name {
+  color: var(--accent);
 }
 
 .header-right,
