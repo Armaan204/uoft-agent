@@ -448,18 +448,19 @@ class TestGetCurrentUser:
         assert exc.value.status_code == 401
         assert "Invalid token payload" in exc.value.detail
 
-    def test_raises_401_when_google_id_missing(self):
+    def test_accepts_password_token_without_google_id(self):
         from api.dependencies import get_current_user
-        from fastapi import HTTPException
         from fastapi.security import HTTPAuthorizationCredentials
 
         creds = MagicMock(spec=HTTPAuthorizationCredentials)
         creds.credentials = "tok"
+        payload = {"user_id": "u1", "email": "a@b.com", "auth_user_id": "auth-1", "auth_provider": "password"}
 
-        with patch("api.dependencies.decode_access_token", return_value={"user_id": "u1"}):
-            with pytest.raises(HTTPException) as exc:
-                get_current_user(creds)
-        assert exc.value.status_code == 401
+        with patch("api.dependencies.decode_access_token", return_value=payload):
+            result = get_current_user(creds)
+        assert result["user_id"] == "u1"
+        assert result["google_id"] is None
+        assert result["auth_user_id"] == "auth-1"
 
     def test_returns_user_dict_on_success(self):
         from api.dependencies import get_current_user

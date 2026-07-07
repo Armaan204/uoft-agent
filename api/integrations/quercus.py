@@ -77,10 +77,16 @@ class QuercusClient:
     BASE_URL = "https://q.utoronto.ca/api/v1"
     _UPCOMING_TERM_WINDOW_DAYS = 45
 
-    def __init__(self, token: str = None):
-        token = token or os.getenv("QUERCUS_API_TOKEN")
+    _UNSET = object()
+
+    def __init__(self, token: str = _UNSET):
+        if token is QuercusClient._UNSET:
+            token = os.getenv("QUERCUS_API_TOKEN")
         if not token:
-            raise QuercusError("QUERCUS_API_TOKEN is not set")
+            self._token = None
+            self._token_cache_key = None
+            self._headers = {}
+            return
         self._token = token
         self._token_cache_key = sha256(token.encode("utf-8")).hexdigest()
         self._headers = {"Authorization": f"Bearer {token}"}

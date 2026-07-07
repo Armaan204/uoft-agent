@@ -6,9 +6,14 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:8001',
-      '/auth/google': 'http://localhost:8001',
-      '/auth/me': 'http://localhost:8001',
-      '/auth/logout': 'http://localhost:8001',
+      '/auth': {
+        target: 'http://localhost:8001',
+        bypass(req) {
+          if (req.url.startsWith('/auth/reset-password') || req.url.startsWith('/auth/callback')) {
+            return req.url
+          }
+        },
+      },
     },
   },
 })

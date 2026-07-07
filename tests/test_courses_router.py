@@ -128,13 +128,13 @@ class TestDashboardCourses:
                 )
 
         result = asyncio.run(run())
-        assert result["courses"] == [{"id": 1}]
+        assert result["courses"] == [{"id": 1, "source": "quercus"}]
         del mod._dashboard_cache[user_id]
 
     def test_force_refresh_bypasses_cache(self):
         """force_refresh=True skips both cache tiers and does a live fetch."""
         import api.routers.courses as mod
-        fake_dashboard = [{"id": 1, "name": "CS", "term_name": "Fall 2024"}]
+        fake_dashboard = [{"id": 1, "name": "CS", "term_name": "Fall 2024", "source": "quercus"}]
         fake_announcements = []
 
         async def run():
@@ -192,7 +192,7 @@ class TestDashboardCourses:
                 )
 
         result = asyncio.run(run())
-        assert result["courses"] == [{"id": 99}]
+        assert result["courses"] == [{"id": 99, "source": "quercus"}]
 
     def test_cached_dashboard_kicks_off_background_refresh(self):
         import api.routers.courses as mod
@@ -212,7 +212,7 @@ class TestDashboardCourses:
             return result
 
         result = asyncio.run(run())
-        assert result["courses"] == [{"id": 1}]
+        assert result["courses"] == [{"id": 1, "source": "quercus"}]
         del mod._dashboard_cache[user_id]
 
 
@@ -575,7 +575,7 @@ class TestDashboardCoursesAdditional:
     def test_live_fetch_snapshot_persist_failure_is_swallowed(self):
         import api.routers.courses as mod
         from api.services.grades_snapshot_service import GradesSnapshotServiceError
-        fake_dashboard = [{"id": 2, "term_name": "Summer 2025"}]
+        fake_dashboard = [{"id": 2, "term_name": "Summer 2025", "source": "quercus"}]
 
         async def run():
             with patch("api.routers.courses._resolve_token", return_value="tok"), \

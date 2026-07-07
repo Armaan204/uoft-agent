@@ -25,8 +25,7 @@ def get_current_user(
         ) from exc
 
     user_id = payload.get("user_id")
-    google_id = payload.get("google_id")
-    if user_id is None or not google_id:
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
@@ -37,5 +36,7 @@ def get_current_user(
         "user_id": user_id,
         "email": payload.get("email"),
         "name": payload.get("name"),
-        "google_id": google_id,
+        "google_id": payload.get("google_id"),
+        "auth_user_id": payload.get("auth_user_id"),
+        "auth_provider": payload.get("auth_provider"),
     }

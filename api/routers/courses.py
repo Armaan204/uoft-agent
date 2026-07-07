@@ -41,6 +41,13 @@ from api.auth.user_store import (
     get_quercus_token,
     save_quercus_token,
 )
+from api.services.manual_course_service import (
+    ManualCourseServiceError,
+    list_manual_courses,
+    list_manual_deadlines,
+    get_manual_course,
+)
+from api.integrations.grades_cache import get_grade_overrides
 
 router = APIRouter(tags=["courses"])
 logger = logging.getLogger(__name__)
@@ -150,6 +157,19 @@ def _resolve_token(
     return saved
 
 
+def _resolve_token_optional(
+    quercus_token: str | None,
+    current_user: dict,
+) -> str | None:
+    """Like _resolve_token but returns None instead of raising when no token exists."""
+    if quercus_token:
+        return quercus_token
+    try:
+        return get_quercus_token(current_user["user_id"])
+    except UserStoreError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Quercus token management
 # ---------------------------------------------------------------------------
@@ -197,6 +217,102 @@ def remove_quercus_token(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     _evict_user_cache(current_user["user_id"])
     return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Manual course dashboard helpers
+# ---------------------------------------------------------------------------
+
+def _build_manual_dashboard_card(course: dict, overrides: dict, deadlines: list[dict]) -> dict:
+    """Build a dashboard-shaped dict from a manual_courses row."""
+    from api.calculator.grades import GradeCalculator
+
+    weights = course.get("weights") or {}
+    components = []
+    for name, weight in weights.items():
+        override = overrides.get(name)
+        if override:
+            score = float(override.get("manual_score", 0))
+            possible = float(override.get("manual_possible", 100))
+            pct = (score / possible * 100) if possible else 0.0
+            components.append({
+                "name": name, "weight": float(weight), "status": "graded",
+                "pct": round(pct, 2), "earned": score, "possible": possible,
+            })
+        else:
+            components.append({
+                "name": name, "weight": float(weight), "status": "ungraded",
+                "pct": None, "earned": 0.0, "possible": 0.0,
+            })
+
+    total_weight = sum(c["weight"] for c in components)
+
+    if total_weight > 0:
+        projected_sum = sum((c["pct"] if c["status"] == "graded" else 100) * c["weight"] for c in components)
+        current_grade = round(projected_sum / total_weight, 2)
+        letter_grade = GradeCalculator._to_letter(current_grade)
+    else:
+        current_grade = 0.0
+        letter_grade = "N/A"
+
+    graded_weight = sum(c["weight"] for c in components if c["status"] == "graded")
+    progress_pct = round(graded_weight / total_weight * 100, 1) if total_weight > 0 else 0.0
+    risk_flag = "No breakdown" if not weights else ("On track" if current_grade >= 50 else "At risk")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    fourteen_days = 14 * 24 * 3600
+    course_deadlines = []
+    for d in deadlines:
+        if d.get("course_id") != course["id"]:
+            continue
+        course_deadlines.append({
+            "course_code": course["course_code"],
+            "name": d["name"],
+            "due_at": d["due_at"],
+            "manual_deadline_id": d["id"],
+        })
+
+    return {
+        "id": course["id"],
+        "canvas_ids": [],
+        "course_code": course["course_code"],
+        "name": course["course_name"],
+        "term_name": course.get("term", ""),
+        "current_grade": current_grade,
+        "projected_grade": current_grade,
+        "display_grade": current_grade,
+        "letter_grade": letter_grade,
+        "risk_flag": risk_flag,
+        "progress_pct": progress_pct,
+        "deadlines": course_deadlines,
+        "source": "manual",
+    }
+
+
+def _get_manual_dashboard_cards(user_id: str) -> list[dict]:
+    """Build dashboard cards for all manual courses of a user."""
+    try:
+        courses = list_manual_courses(user_id)
+    except ManualCourseServiceError:
+        logger.warning("Failed to load manual courses user_id=%s", user_id)
+        return []
+
+    if not courses:
+        return []
+
+    try:
+        deadlines = list_manual_deadlines(user_id)
+    except ManualCourseServiceError:
+        deadlines = []
+
+    cards = []
+    for course in courses:
+        try:
+            overrides = get_grade_overrides(user_id, course["id"])
+        except Exception:
+            overrides = {}
+        cards.append(_build_manual_dashboard_card(course, overrides, deadlines))
+    return cards
 
 
 # ---------------------------------------------------------------------------
@@ -257,14 +373,52 @@ async def dashboard_courses(
     quercus_token: str | None = Query(default=None, description="Quercus personal access token"),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token_optional(quercus_token, current_user)
     user_id = current_user["user_id"]
+
+    manual_cards = await asyncio.to_thread(_get_manual_dashboard_cards, user_id)
+
+    try:
+        all_manual_deadlines = list_manual_deadlines(user_id)
+    except Exception:
+        all_manual_deadlines = []
+    orphan_deadlines = [d for d in all_manual_deadlines if d.get("course_id") is None]
+
+    def _merge_manual(result: dict) -> dict:
+        merged_courses = []
+        for c in result.get("courses") or []:
+            c_copy = {**c, "source": c.get("source", "quercus")}
+            code = c_copy.get("course_code", "")
+            matching = [d for d in orphan_deadlines if d.get("course_code") == code]
+            if matching:
+                c_copy["deadlines"] = list(c_copy.get("deadlines") or []) + [
+                    {
+                        "course_code": code,
+                        "name": d["name"],
+                        "due_at": d["due_at"],
+                        "manual_deadline_id": d["id"],
+                    }
+                    for d in matching
+                ]
+            merged_courses.append(c_copy)
+        return {**result, "courses": merged_courses + manual_cards}
+
+    if not token:
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        result = {
+            "courses": manual_cards,
+            "announcements": [],
+            "term_name": "",
+            "fetched_at": fetched_at,
+        }
+        _dashboard_cache[user_id] = result
+        return result
 
     # Layer 1: in-memory cache — survives tab refreshes, instant
     if not force_refresh and user_id in _dashboard_cache:
         logger.info("Serving in-memory cached dashboard user_id=%s", user_id)
         asyncio.create_task(_background_refresh_dashboard(token, user_id))
-        return _dashboard_cache[user_id]
+        return _merge_manual(_dashboard_cache[user_id])
 
     # Layer 2: Supabase snapshot — survives server restarts, no Quercus calls needed
     if not force_refresh:
@@ -278,7 +432,7 @@ async def dashboard_courses(
             _update_canvas_id_groups(user_id, snapshot.get("courses") or [])
             logger.info("Serving Supabase snapshot user_id=%s fetched_at=%s", user_id, snapshot["fetched_at"])
             asyncio.create_task(_background_refresh_dashboard(token, user_id))
-            return snapshot
+            return _merge_manual(snapshot)
 
     try:
         logger.info(
@@ -307,7 +461,7 @@ async def dashboard_courses(
             len(dashboard),
             len(announcements),
         )
-        return _dashboard_cache[user_id]
+        return _merge_manual(_dashboard_cache[user_id])
     except QuercusAuthError as exc:
         logger.warning("Dashboard load failed: token invalid/expired user_id=%s — deleting stored token", user_id)
         _evict_user_cache(user_id)
@@ -353,6 +507,109 @@ async def _background_refresh_course_grades(token: str, user_id: str, course_id:
         logger.exception("Background course grades refresh failed user_id=%s course_id=%s", user_id, course_id)
 
 
+def _build_manual_course_grades(user_id: str, course_id: int) -> dict:
+    """Build a course-grades-shaped response for a manual course."""
+    from api.calculator.grades import GradeCalculator
+
+    course = get_manual_course(user_id, course_id)
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manual course not found")
+
+    weights = course.get("weights") or {}
+    try:
+        overrides = get_grade_overrides(user_id, course_id)
+    except Exception:
+        overrides = {}
+
+    components = []
+    for name, weight in weights.items():
+        override = overrides.get(name)
+        if override:
+            score = float(override.get("manual_score", 0))
+            possible = float(override.get("manual_possible", 100))
+            pct = (score / possible * 100) if possible else 0.0
+            components.append({
+                "component_key": name,
+                "name": name,
+                "weight": float(weight),
+                "status": "graded",
+                "pct": round(pct, 2),
+                "earned": score,
+                "possible": possible,
+                "is_manual": True,
+                "manual_score": score,
+                "manual_possible": possible,
+                "source": "manual",
+                "group_name": name,
+            })
+        else:
+            components.append({
+                "component_key": name,
+                "name": name,
+                "weight": float(weight),
+                "status": "ungraded",
+                "pct": None,
+                "earned": 0.0,
+                "possible": 0.0,
+                "is_manual": False,
+                "manual_score": None,
+                "manual_possible": None,
+                "source": "manual",
+                "group_name": name,
+            })
+
+    graded = [c for c in components if c["status"] == "graded"]
+    graded_weight = sum(c["weight"] for c in graded)
+    total_weight = sum(c["weight"] for c in components)
+
+    if graded_weight > 0:
+        weighted_sum = sum(c["pct"] * c["weight"] for c in graded)
+        weighted_grade = round(weighted_sum / graded_weight, 2)
+        letter = GradeCalculator._to_letter(weighted_grade)
+    else:
+        weighted_grade = 0.0
+        letter = "N/A"
+
+    return {
+        "course_id": course_id,
+        "canvas_ids": [],
+        "weights_source": "syllabus" if course.get("syllabus_source") else "manual",
+        "weights": weights,
+        "grade": {
+            "weighted_grade": weighted_grade,
+            "letter": letter,
+            "graded_weight": graded_weight,
+        },
+        "component_model": {
+            "reliable": bool(weights),
+            "components": components,
+            "assignments_by_component": {},
+        },
+        "live_components": [
+            {
+                "component_key": name,
+                "name": name,
+                "weight": float(w),
+                "status": "ungraded",
+                "pct": None,
+                "earned": 0.0,
+                "possible": 0.0,
+                "is_manual": False,
+                "manual_score": None,
+                "manual_possible": None,
+                "source": "manual",
+                "group_name": name,
+            }
+            for name, w in weights.items()
+        ],
+        "overrides": {k: v for k, v in overrides.items()},
+        "saved_grades": {},
+        "new_grade_keys": [],
+        "enrollment": None,
+        "source": "manual",
+    }
+
+
 @router.get("/{course_id}/grades")
 async def course_grades(
     course_id: int,
@@ -360,8 +617,15 @@ async def course_grades(
     quercus_token: str | None = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
     user_id = current_user["user_id"]
+
+    if course_id < 0:
+        try:
+            return _build_manual_course_grades(user_id, course_id)
+        except ManualCourseServiceError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    token = _resolve_token(quercus_token, current_user)
     cache_key = f"{user_id}:{course_id}"
     _siblings = _canvas_id_groups.get(cache_key)
     _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
@@ -423,8 +687,21 @@ def write_course_grade_overrides(
     quercus_token: str | None = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
     user_id = current_user["user_id"]
+
+    if course_id < 0:
+        from api.integrations.grades_cache import save_grade_override
+        for override in body.overrides:
+            save_grade_override(
+                user_id, course_id,
+                override.component_key, override.manual_score, override.manual_possible,
+            )
+        data = _build_manual_course_grades(user_id, course_id)
+        cache_key = f"{user_id}:{course_id}"
+        _course_grades_cache[cache_key] = data
+        return data
+
+    token = _resolve_token(quercus_token, current_user)
     cache_key = f"{user_id}:{course_id}"
     _siblings = _canvas_id_groups.get(cache_key)
     _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
@@ -454,8 +731,17 @@ def remove_course_grade_override(
     quercus_token: str | None = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
     user_id = current_user["user_id"]
+
+    if course_id < 0:
+        from api.integrations.grades_cache import delete_grade_override
+        delete_grade_override(user_id, course_id, component_key)
+        data = _build_manual_course_grades(user_id, course_id)
+        cache_key = f"{user_id}:{course_id}"
+        _course_grades_cache[cache_key] = data
+        return data
+
+    token = _resolve_token(quercus_token, current_user)
     cache_key = f"{user_id}:{course_id}"
     _siblings = _canvas_id_groups.get(cache_key)
     _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None

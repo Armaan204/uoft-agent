@@ -1,15 +1,39 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 
 import Logo from './Logo'
 import ProfileMenu from './ProfileMenu'
 import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../hooks/useAuth'
+import { useQuercusStatus } from '../hooks/useQuercusStatus'
 import { getInitials } from '../utils/initials'
+import client from '../api/client'
 
 export default function AppShell() {
   const { user, logout } = useAuth()
   const displayName = user?.name || user?.email || 'You'
   const initials = getInitials(displayName)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { data: quercusStatus } = useQuercusStatus()
+  const hasQuercusToken = quercusStatus?.hasToken ?? false
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  async function handleDisconnect() {
+    if (disconnecting) return
+    setDisconnecting(true)
+    try {
+      await client.delete('/api/courses/quercus-token')
+      await queryClient.removeQueries({ queryKey: ['dashboard'] })
+      await queryClient.removeQueries({ queryKey: ['courses'] })
+      await queryClient.removeQueries({ queryKey: ['course-grades'] })
+      await queryClient.invalidateQueries({ queryKey: ['quercus-token-status'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    } finally {
+      setDisconnecting(false)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -41,6 +65,32 @@ export default function AppShell() {
         </nav>
 
         <div className="sidebar-bottom">
+          {hasQuercusToken ? (
+            <button
+              type="button"
+              className="sidebar-item sidebar-quercus sidebar-quercus-connected"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              {disconnecting ? 'Disconnecting…' : 'Quercus Connected'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="sidebar-item sidebar-quercus sidebar-quercus-connect"
+              onClick={() => navigate('/onboarding')}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              Connect Quercus
+            </button>
+          )}
           <a
             href="https://forms.gle/XjeMfbbynAMnpvye7"
             target="_blank"

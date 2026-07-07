@@ -6,6 +6,7 @@ execute_tool  : called by the agent loop; accepts a QuercusClient so the
                 token flows in from session state rather than from .env.
 """
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from html import unescape
@@ -13,13 +14,81 @@ from html import unescape
 from api.services.acorn_service import get_academic_history as load_academic_history
 from api.services.grade_snapshot_cache import get_grade_snapshot, invalidate_grade_snapshot
 from api.services.grades_snapshot_service import get_snapshot as load_grades_snapshot, save_snapshot
+from api.services.manual_course_service import (
+    ManualCourseServiceError,
+    list_manual_courses,
+    list_manual_deadlines,
+    get_manual_course,
+)
+from api.integrations.grades_cache import get_grade_overrides
 from api.integrations.graduation_service import check_graduation_progress as _check_grad_progress
 from api.integrations.graduation_service import get_program_requirements as _get_prog_reqs
 from api.integrations.quercus import QuercusClient
 from api.integrations.syllabus import parse_syllabus_weights
 from api.calculator.grades import GradeCalculator
 
+logger = logging.getLogger(__name__)
+
 _calc = GradeCalculator()
+
+
+def _has_token(client: QuercusClient) -> bool:
+    return bool(getattr(client, "_token", None))
+
+
+def _manual_course_summaries(user_id: str | int) -> list[dict]:
+    try:
+        courses = list_manual_courses(str(user_id))
+    except ManualCourseServiceError:
+        return []
+    results = []
+    for c in courses:
+        try:
+            overrides = get_grade_overrides(str(user_id), c["id"])
+        except Exception:
+            overrides = {}
+        weights = c.get("weights") or {}
+        grade_info = _compute_manual_grade(weights, overrides)
+        results.append({
+            "course_id": c["id"],
+            "course_name": c["course_name"],
+            "course_code": c["course_code"],
+            "source": "manual",
+            **grade_info,
+        })
+    return results
+
+
+def _compute_manual_grade(weights: dict, overrides: dict) -> dict:
+    components = []
+    for name, weight in weights.items():
+        override = overrides.get(name)
+        if override is not None:
+            score = float(override.get("manual_score", 0))
+            possible = float(override.get("manual_possible", 100))
+            pct = (score / possible * 100) if possible > 0 else 0.0
+            components.append({"name": name, "weight": float(weight), "pct": pct, "graded": True})
+        else:
+            components.append({"name": name, "weight": float(weight), "pct": None, "graded": False})
+
+    total_weight = sum(c["weight"] for c in components)
+    graded_weight = sum(c["weight"] for c in components if c["graded"])
+
+    if total_weight > 0:
+        projected_sum = sum((c["pct"] if c["graded"] else 100) * c["weight"] for c in components)
+        current_grade = round(projected_sum / total_weight, 2)
+        letter = GradeCalculator._to_letter(current_grade)
+    else:
+        current_grade = 0.0
+        letter = "N/A"
+
+    return {
+        "current_grade": current_grade,
+        "letter": letter,
+        "gpa_points": GradeCalculator._to_gpa_points(current_grade) if letter != "N/A" else None,
+        "graded_weight": graded_weight,
+    }
+
 
 # ---------------------------------------------------------------------------
 # JSON schemas — passed to Claude as the `tools` parameter
@@ -232,16 +301,38 @@ TOOL_SCHEMAS = [
 # Tool implementations — each takes (inp, client)
 # ---------------------------------------------------------------------------
 
-def _get_courses(inp: dict, client: QuercusClient) -> list:
-    courses = client.get_courses()
-    return [
-        {"id": c["id"], "name": c["name"], "course_code": c["course_code"]}
-        for c in courses
-    ]
+def _get_courses(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> list:
+    quercus_courses = []
+    if _has_token(client):
+        try:
+            quercus_courses = [
+                {"id": c["id"], "name": c["name"], "course_code": c["course_code"], "source": "quercus"}
+                for c in client.get_courses()
+            ]
+        except Exception:
+            pass
+
+    manual = []
+    if user_id:
+        try:
+            manual = [
+                {"id": c["id"], "name": c["course_name"], "course_code": c["course_code"], "source": "manual"}
+                for c in list_manual_courses(str(user_id))
+            ]
+        except ManualCourseServiceError:
+            pass
+
+    return quercus_courses + manual
 
 
-def _get_course_weights(inp: dict, client: QuercusClient) -> dict:
+def _get_course_weights(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
     course_id = inp["course_id"]
+
+    if course_id < 0 and user_id:
+        course = get_manual_course(str(user_id), course_id)
+        if course:
+            return course.get("weights") or {}
+        return {"error": "Manual course not found"}
 
     # Preferred path: Canvas group_weight — no LLM or PDF needed
     canvas_weights = client.get_canvas_weights(course_id)
@@ -272,8 +363,27 @@ def _build_grade_summary(course: dict, client: QuercusClient) -> dict:
     }
 
 
-def _get_current_grade(inp: dict, client: QuercusClient) -> dict:
-    course_id   = inp["course_id"]
+def _get_current_grade(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    course_id = inp["course_id"]
+
+    if course_id < 0 and user_id:
+        course = get_manual_course(str(user_id), course_id)
+        if not course:
+            return {"error": "Manual course not found"}
+        weights = course.get("weights") or {}
+        try:
+            overrides = get_grade_overrides(str(user_id), course_id)
+        except Exception:
+            overrides = {}
+        info = _compute_manual_grade(weights, overrides)
+        return {
+            "weighted_grade": info["current_grade"],
+            "letter": info["letter"],
+            "gpa_points": info["gpa_points"],
+            "graded_weight": info["graded_weight"],
+            "source": "manual",
+        }
+
     groups      = client.get_assignment_groups(course_id)
     submissions = client.get_submissions(course_id)
     weights     = _get_course_weights(inp, client)
@@ -299,32 +409,41 @@ def _get_cached_grades(inp: dict, client: QuercusClient, user_id: str | int | No
         return {"error": "Cached grades require an authenticated user context"}
 
     snapshot_rows = load_grades_snapshot(user_id)
-    if not snapshot_rows:
-        return {"courses": [], "errors": [], "fetched_at": None}
+    courses = [
+        {
+            "course_id": row["course_id"],
+            "course_name": row.get("course_name"),
+            "course_code": row.get("course_code"),
+            "current_grade": row.get("current_grade"),
+            "letter": row.get("letter_grade"),
+            "graded_weight": None,
+        }
+        for row in snapshot_rows
+    ] if snapshot_rows else []
 
-    fetched_values = [row.get("fetched_at") for row in snapshot_rows if row.get("fetched_at")]
+    manual = _manual_course_summaries(user_id)
+    courses += manual
+
+    fetched_values = [row.get("fetched_at") for row in (snapshot_rows or []) if row.get("fetched_at")]
     fetched_at = max(fetched_values) if fetched_values else None
 
     return {
-        "courses": [
-            {
-                "course_id": row["course_id"],
-                "course_name": row.get("course_name"),
-                "course_code": row.get("course_code"),
-                "current_grade": row.get("current_grade"),
-                "letter": row.get("letter_grade"),
-                "graded_weight": None,
-            }
-            for row in snapshot_rows
-        ],
+        "courses": courses,
         "errors": [],
         "fetched_at": fetched_at,
     }
 
 
 def _get_all_grades(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
-    if user_id is not None:
-        return get_grade_snapshot(user_id, client._token)
+    manual = _manual_course_summaries(user_id) if user_id else []
+
+    if user_id is not None and _has_token(client):
+        snapshot = get_grade_snapshot(user_id, client._token)
+        snapshot["courses"] = snapshot.get("courses", []) + manual
+        return snapshot
+
+    if not _has_token(client):
+        return {"courses": manual, "errors": []}
 
     courses = client.get_courses()
     grades = []
@@ -342,18 +461,21 @@ def _get_all_grades(inp: dict, client: QuercusClient, user_id: str | int | None 
             })
 
     return {
-        "courses": grades,
+        "courses": grades + manual,
         "errors": errors,
     }
 
 
 def _refresh_grades(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
-    if user_id is None:
-        return _get_all_grades(inp, client, user_id=None)
+    manual = _manual_course_summaries(user_id) if user_id else []
+
+    if user_id is None or not _has_token(client):
+        return {"courses": manual, "errors": []}
 
     invalidate_grade_snapshot(user_id)
     fresh = get_grade_snapshot(user_id, client._token, force_refresh=True)
     save_snapshot(user_id, fresh.get("courses", []))
+    fresh["courses"] = fresh.get("courses", []) + manual
     return fresh
 
 
@@ -364,6 +486,9 @@ def _get_all_announcements(inp: dict, client: QuercusClient, user_id: str | int 
         for row in snapshot_rows:
             if row.get("announcements") is not None:
                 return {"announcements": row["announcements"], "source": "snapshot"}
+
+    if not _has_token(client):
+        return {"announcements": [], "source": "none", "note": "Announcements require a Quercus connection."}
 
     # Live path: one API call for all courses
     courses = client.get_courses()
@@ -397,6 +522,8 @@ def _get_all_announcements(inp: dict, client: QuercusClient, user_id: str | int 
 
 def _get_course_announcements(inp: dict, client: QuercusClient) -> dict:
     course_id = inp["course_id"]
+    if course_id < 0 or not _has_token(client):
+        return {"course_id": course_id, "announcements": [], "note": "Announcements require a Quercus connection."}
     announcements = client.get_course_announcements(course_id, limit=10)
     return {
         "course_id": course_id,
@@ -415,6 +542,8 @@ def _get_course_announcements(inp: dict, client: QuercusClient) -> dict:
 
 def _get_announcement_detail(inp: dict, client: QuercusClient) -> dict:
     course_id = inp["course_id"]
+    if course_id < 0 or not _has_token(client):
+        return {"error": "Announcements require a Quercus connection."}
     announcement_id = inp["announcement_id"]
     announcement = client.get_announcement_detail(announcement_id)
     return {
@@ -432,6 +561,30 @@ def _get_upcoming_deadlines_tool(inp: dict, client: QuercusClient, user_id: str 
     now = datetime.now(timezone.utc)
     cutoff = now + timedelta(days=days)
     deadlines: list[dict] = []
+
+    # Include manual deadlines
+    if user_id is not None:
+        try:
+            manual_dls = list_manual_deadlines(str(user_id))
+            for dl in manual_dls:
+                due_raw = dl.get("due_at")
+                if not due_raw:
+                    continue
+                try:
+                    due_dt = datetime.fromisoformat(due_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if now <= due_dt <= cutoff:
+                    deadlines.append({
+                        "name": dl.get("name"),
+                        "due_at": due_dt.isoformat(),
+                        "course_code": dl.get("course_code", ""),
+                        "course_name": None,
+                        "url": None,
+                        "source": "manual",
+                    })
+        except ManualCourseServiceError:
+            pass
 
     # Fast path: read from cached dashboard snapshot (avoids Quercus API calls)
     if user_id is not None:
@@ -460,6 +613,10 @@ def _get_upcoming_deadlines_tool(inp: dict, client: QuercusClient, user_id: str 
             if deadlines or snapshot_rows:
                 deadlines.sort(key=lambda d: d["due_at"])
                 return {"deadlines": deadlines, "days": days, "source": "snapshot"}
+
+    if not _has_token(client):
+        deadlines.sort(key=lambda d: d["due_at"])
+        return {"deadlines": deadlines, "days": days, "source": "manual_only"}
 
     # Live fetch fallback: query Quercus directly
     courses = client.get_courses()
@@ -515,8 +672,39 @@ def _check_graduation_progress(inp: dict, client: QuercusClient, user_id: str | 
     return _check_grad_progress(requirements, acorn_data)
 
 
-def _get_grade_scenarios(inp: dict, client: QuercusClient) -> dict:
-    course_id   = inp["course_id"]
+def _get_grade_scenarios(inp: dict, client: QuercusClient, user_id: str | int | None = None) -> dict:
+    course_id = inp["course_id"]
+
+    if course_id < 0 and user_id:
+        course = get_manual_course(str(user_id), course_id)
+        if not course:
+            return {"error": "Manual course not found"}
+        weights = course.get("weights") or {}
+        if not weights:
+            return {"error": "No weights defined for this manual course"}
+        try:
+            overrides = get_grade_overrides(str(user_id), course_id)
+        except Exception:
+            overrides = {}
+        info = _compute_manual_grade(weights, overrides)
+        graded_names = set(overrides.keys())
+        ungraded = [(float(w), name) for name, w in weights.items() if name not in graded_names]
+        if not ungraded:
+            return {"error": "No ungraded assessments found"}
+        ungraded.sort(reverse=True)
+        final_weight_pct, final_name = ungraded[0]
+        final_weight = final_weight_pct / 100.0
+        scenarios = _calc.grade_scenarios(info["current_grade"], final_weight)
+        return {
+            "current_grade": info["current_grade"],
+            "final_assessment": final_name,
+            "final_weight_pct": final_weight_pct,
+            "scenarios": {
+                letter: {"status": r["status"], "needed": r["needed"]}
+                for letter, r in scenarios.items()
+            },
+        }
+
     groups      = client.get_assignment_groups(course_id)
     submissions = client.get_submissions(course_id)
     weights     = _get_course_weights(inp, client)
@@ -599,9 +787,10 @@ _HANDLERS = {
 }
 
 _USER_ID_TOOLS = {
-    "get_cached_grades", "get_all_grades", "refresh_grades",
+    "get_courses", "get_cached_grades", "get_all_grades", "refresh_grades",
     "get_academic_history", "check_graduation_progress",
     "get_upcoming_deadlines", "get_all_announcements",
+    "get_course_weights", "get_current_grade", "get_grade_scenarios",
 }
 
 

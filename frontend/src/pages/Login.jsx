@@ -10,7 +10,6 @@ import gradeLight from '../assets/gradebreakdown_light.png'
 import acornDark from '../assets/acorn_dark.png'
 import acornLight from '../assets/acorn_light.png'
 
-const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
 const GITHUB_URL = 'https://github.com/Armaan204/uoft-agent'
 
 const features = [
@@ -90,7 +89,7 @@ export default function Login() {
             <circle cx="20.5" cy="5.2" r="0.7" fill="oklch(75% 0.14 220)" opacity="0.6" />
             <circle cx="24.2" cy="6" r="0.6" fill="oklch(72% 0.14 260)" opacity="0.5" />
           </svg>
-          <span>UofT Agent</span>
+          <Link to="/login" className="login-nav-brand-link">UofT Agent</Link>
         </div>
 
         <div className="login-nav-actions">
@@ -112,14 +111,8 @@ export default function Login() {
             </svg>
             <span className="btn-github-label">GitHub</span>
           </a>
-          <button className="btn-google btn-google--nav" type="button" onClick={() => window.location.assign(googleAuthUrl)}>
-            <svg className="g-logo" viewBox="0 0 18 18" aria-hidden="true">
-              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
-              <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
-              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
-            </svg>
-            <span className="btn-google-label">Sign in with Google</span>
+          <button className="btn-signin-nav" type="button" onClick={() => navigate('/signin')}>
+            Sign in
           </button>
         </div>
       </nav>
@@ -140,25 +133,14 @@ export default function Login() {
             UofT Agent connects to Quercus and calculates your real weighted grades,
             upcoming deadlines, and what-if scenarios — so you never have to guess again.
           </p>
-          <button className="btn-google landing-cta" type="button" onClick={() => window.location.assign(googleAuthUrl)}>
-            <svg className="g-logo" viewBox="0 0 18 18" aria-hidden="true">
-              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
-              <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
-              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
-            </svg>
-            Get started with Google
-          </button>
-          <button className="btn-demo landing-cta-secondary" type="button" onClick={() => navigate('/demo')}>
-            Try the demo
-          </button>
-          <p className="landing-trust">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-              <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-              <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-            Read-only access. Your data is never modified.
-          </p>
+          <div className="landing-hero-buttons">
+            <button className="btn-signin-hero" type="button" onClick={() => navigate('/signin')}>
+              Get started
+            </button>
+            <button className="btn-demo landing-cta-secondary" type="button" onClick={() => navigate('/demo')}>
+              Try the demo
+            </button>
+          </div>
         </div>
         <div className="landing-hero-image">
           <button
@@ -227,15 +209,9 @@ export default function Login() {
       {/* ── Bottom CTA ───────────────────────────────────── */}
       <section className="landing-bottom-cta">
         <h2 className="landing-cta-headline">Ready to take control of your grades?</h2>
-        <p className="landing-cta-sub">Set up takes 30 seconds. Just sign in and paste your Quercus token.</p>
-        <button className="btn-google landing-cta" type="button" onClick={() => window.location.assign(googleAuthUrl)}>
-          <svg className="g-logo" viewBox="0 0 18 18" aria-hidden="true">
-            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
-            <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
-            <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
-            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
-          </svg>
-          Get started with Google
+        <p className="landing-cta-sub">Set up takes 30 seconds. Create an account, then connect Quercus when you are ready.</p>
+        <button className="btn-signin-hero landing-cta" type="button" onClick={() => navigate('/signin')}>
+          Get started
         </button>
         <p className="landing-origin">
           Built by a UTSC student. Open source on{' '}

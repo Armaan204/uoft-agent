@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
+import AddCourseCard from '../components/AddCourseCard'
+import AddCourseModal from '../components/AddCourseModal'
 import AnnouncementList from '../components/AnnouncementList'
 import CourseCard from '../components/CourseCard'
 import DeadlineList from '../components/DeadlineList'
+import { useQuercusStatus } from '../hooks/useQuercusStatus'
 
 const DASHBOARD_STALE_TIME_MS = 5 * 60 * 1000
 
@@ -40,10 +43,14 @@ function RefreshIcon() {
 
 export default function Dashboard() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const courseGridRef = useRef(null)
   const deadlinesLabelRef = useRef(null)
   const [deadlinesMaxHeight, setDeadlinesMaxHeight] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [addCourseOpen, setAddCourseOpen] = useState(false)
+  const { data: quercusStatus } = useQuercusStatus()
+  const hasQuercusToken = quercusStatus?.hasToken ?? false
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
@@ -135,33 +142,62 @@ queryClient.setQueryData(['dashboard'], fresh)
       )}
       {error && <div className="empty-card">Failed to load courses.</div>}
 
-      {!isLoading && !error && data && (
-        <>
+      {!isLoading && !error && data && (data.courses ?? []).length === 0 && (
+        <div className="dashboard-empty rise">
+          <div className="dashboard-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" width="48" height="48">
+              <rect x="6" y="10" width="36" height="28" rx="4" />
+              <path d="M6 18h36M16 26h16M16 32h10" strokeLinecap="round" />
+            </svg>
+          </div>
+          <h2 className="dashboard-empty-title">No courses yet</h2>
+          <p className="dashboard-empty-desc">Add courses manually or connect Quercus to import them automatically.</p>
+          <div className="dashboard-empty-actions">
+            <button type="button" className="btn-save" onClick={() => setAddCourseOpen(true)}>Add course manually</button>
+            <span className="dashboard-empty-or">or</span>
+            <button type="button" className="btn-cancel" onClick={() => navigate('/onboarding')}>Connect Quercus</button>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !error && data && (data.courses ?? []).length > 0 && (
         <div className="dashboard-main">
           <section className="dashboard-top">
             <section className="course-grid" ref={courseGridRef}>
               {(data?.courses ?? []).map((course) => (
                 <CourseCard course={course} key={course.id} />
               ))}
+              <AddCourseCard onClick={() => setAddCourseOpen(true)} />
             </section>
 
             <aside className="dashboard-rail">
               <div className="section-label rise" ref={deadlinesLabelRef}>Upcoming Deadlines</div>
-              <DeadlineList deadlines={deadlines} maxHeight={deadlinesMaxHeight} />
+              <DeadlineList deadlines={deadlines} maxHeight={deadlinesMaxHeight} courses={data?.courses ?? []} />
             </aside>
           </section>
 
           <section className="dashboard-announcements">
             <div className="section-label rise">Recent Announcements</div>
-            <AnnouncementList announcements={announcements} />
+            {announcements.length > 0 ? (
+              <AnnouncementList announcements={announcements} />
+            ) : !hasQuercusToken && (
+              <button type="button" className="announcements-cta rise" onClick={() => navigate('/onboarding')}>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18" aria-hidden="true">
+                  <path d="M10 2a6 6 0 0 1 6 6c0 2.22-1.21 4.16-3 5.2V15a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-1.8C5.21 12.16 4 10.22 4 8a6 6 0 0 1 6-6Z" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M8 18h4" strokeLinecap="round" />
+                </svg>
+                Connect your Quercus to automatically retrieve announcements
+              </button>
+            )}
           </section>
         </div>
-        </>
       )}
 
+      <AddCourseModal open={addCourseOpen} onClose={() => setAddCourseOpen(false)} />
+
       <footer style={{
-        marginTop: 48,
-        paddingTop: 16,
+        marginTop: 'auto',
+        padding: '16px 0 12px',
         borderTop: '1px solid var(--border)',
         display: 'flex',
         gap: 16,

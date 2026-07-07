@@ -9,6 +9,7 @@ import os
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from api.dependencies import get_current_user
@@ -18,10 +19,34 @@ from api.services.auth_service import (
     create_access_token,
     exchange_google_code,
     get_or_create_backend_user,
+    login_with_password,
+    reset_password,
+    send_password_reset,
+    signup_with_password,
 )
 
 router = APIRouter(tags=["auth"])
 logger = logging.getLogger(__name__)
+
+
+class PasswordSignupRequest(BaseModel):
+    email: str
+    password: str
+
+
+class PasswordLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    access_token: str
+    refresh_token: str
+    password: str
 
 
 def _redirect_uri(request: Request) -> str:
@@ -58,6 +83,43 @@ def google_oauth_callback(request: Request, code: str):
     frontend_redirect = _frontend_callback_url(token)
     logger.info("Frontend auth callback URL: %s", frontend_redirect)
     return RedirectResponse(frontend_redirect, status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/signup")
+async def password_signup(payload: PasswordSignupRequest):
+    try:
+        signup_with_password(payload.email, payload.password)
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"ok": True, "message": "Check your email to verify your account before signing in."}
+
+
+@router.post("/login")
+async def password_login(payload: PasswordLoginRequest):
+    try:
+        user = login_with_password(payload.email, payload.password)
+        token = create_access_token(user)
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    return {"token": token, "user": user}
+
+
+@router.post("/password/forgot")
+async def forgot_password(payload: ForgotPasswordRequest):
+    try:
+        send_password_reset(payload.email)
+    except AuthServiceError:
+        logger.info("Password reset request failed for submitted email")
+    return {"ok": True, "message": "If an account exists for that email, a reset link has been sent."}
+
+
+@router.post("/password/reset")
+async def complete_password_reset(payload: ResetPasswordRequest):
+    try:
+        reset_password(payload.access_token, payload.refresh_token, payload.password)
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"ok": True, "message": "Password updated. You can now sign in."}
 
 
 @router.post("/logout")

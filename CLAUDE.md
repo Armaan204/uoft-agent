@@ -25,16 +25,18 @@ An AI academic assistant for University of Toronto students.
 - `api/` — entire Python backend powering the deployed app at `https://uoft-agent.com`
   - `api/main.py` — FastAPI app with CORS, mounts all routers, health check at `GET /`
   - `api/dependencies.py` — JWT-based `get_current_user` dependency
-  - `api/routers/auth.py` — Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
+  - `api/routers/auth.py` — email/password auth, Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
   - `api/routers/courses.py` — course, grade, scenario, weight routes + Quercus token CRUD
   - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`, persists exchanges by `conversation_id`, and exposes chat-history list/detail/delete routes
   - `api/routers/acorn.py` — public ACORN routes
   - `api/routers/graduation.py` — `GET /api/graduation/progress` and `DELETE /api/graduation/cache`
+  - `api/routers/manual_courses.py` — CRUD for manually added courses and deadlines, plus syllabus upload endpoint
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers
+  - `api/services/manual_course_service.py` — Supabase-backed CRUD for `manual_courses` and `manual_deadlines` tables
   - `api/services/grade_snapshot_cache.py` — 5-minute in-memory per-user cache for aggregate semester grade snapshots used by chat tools
   - `api/services/grades_snapshot_service.py` — Supabase-backed persistence layer for dashboard and course detail snapshots; `grades_snapshot` table stores `dashboard_data`, `announcements`, and `course_detail_data` JSONB columns per `(user_id, course_id)` row
   - `api/services/acorn_service.py` — ACORN business logic for the FastAPI router
-  - `api/services/auth_service.py` — user lookup/creation and JWT signing helpers
+  - `api/services/auth_service.py` — email/password signup/login, Google OAuth helpers, password reset, JWT signing, and cross-provider guardrails
   - `api/agent/` — Anthropic tool-calling loop, tool schemas, prompt
   - `api/auth/user_store.py` — Supabase-backed user lookup and encrypted Quercus token persistence
   - `api/calculator/` — deterministic grade calculations and weighted-component modeling
@@ -90,14 +92,20 @@ An AI academic assistant for University of Toronto students.
 
 ## Auth
 
-The app uses FastAPI Google OAuth with JWT-based sessions:
+The app uses FastAPI auth routes with app-issued JWT sessions. Two auth providers: email/password (via Supabase Auth) and Google OAuth.
 
-- Frontend login button hits `GET /auth/google`
-- FastAPI sends the user to Google
-- Google returns to FastAPI at `REDIRECT_URI`
-- FastAPI callback signs a JWT and redirects to `${FRONTEND_URL}/auth/callback?token=...`
-- React stores the token in localStorage and uses it for protected API calls
-- After Google auth, React checks for a saved Quercus token; users without one are sent to `/onboarding`
+- **Sign-in page** at `/signin` — unified page with Google OAuth button, email/password login/signup tabs, and forgot-password flow
+- Email/password signup hits `POST /auth/signup`; Supabase Auth sends a verification email via Resend SMTP (custom SMTP configured in Supabase to bypass the free-tier 3 emails/hour limit)
+- Verification emails redirect to `/signin?confirmed=true`, which shows a green confirmation banner
+- Email/password login hits `POST /auth/login`; FastAPI validates with Supabase Auth, checks email is confirmed, links/creates the app `users` row, and returns an app JWT
+- Password reset: `POST /auth/password/forgot` sends a Supabase reset email; `POST /auth/password/reset` applies the new password using the Supabase session tokens from the reset link
+- Password reset page at `/auth/reset-password` parses the Supabase `access_token` and `refresh_token` from the URL fragment
+- Google login starts at `GET /auth/google`; the callback signs an app JWT and redirects to `${FRONTEND_URL}/auth/callback?token=...`
+- React stores the app JWT in localStorage and uses it for protected API calls
+- After auth, React checks for a saved Quercus token; users without one are sent to `/onboarding`
+- **Cross-provider guardrails**: if a Google-only user tries to sign up with email/password, the signup is blocked with a message to use Google instead; if a Google-only user requests a password reset, the endpoint silently returns success without sending an email (anti-enumeration)
+- The Axios 401 interceptor excludes `/auth/*` endpoints so failed login attempts don't redirect away from the sign-in page
+- Password validation requires 8–128 characters with at least one letter and one number
 
 ## Environment Variables
 
@@ -112,6 +120,8 @@ Common variables:
 - `ENCRYPTION_KEY`
 - `ACORN_BACKEND_URL` optional override for the hosted ACORN API
 - `HOST` and `PORT` for `api_server.py`
+- `SUPABASE_ANON_KEY` optional explicit key for Supabase Auth client; falls back to `SUPABASE_KEY`
+- `PASSWORD_RESET_REDIRECT_URL`, e.g. `http://localhost:5173/auth/reset-password`
 - `JWT_SECRET` for signing FastAPI JWTs (generate: `python -c "import secrets; print(secrets.token_hex(32))"`)
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for FastAPI Google OAuth
 - `REDIRECT_URI` for FastAPI Google OAuth callback, e.g. `http://localhost:8001/auth/callback`
@@ -168,9 +178,10 @@ Implemented:
 - Frontend and backend deployment scaffolding added for Railway: `Procfile`, frontend Dockerfile, nginx static config, and production API URL support
 - Degree Planner page (`/degree-planner`) implemented: fetches graduation progress from `/api/graduation/progress`, shows program credit summary with progress bar, collapsible requirement groups, and a Re-analyze button that clears the cache and re-extracts
 - Public demo mode at `/demo` — entirely client-side, no auth or backend calls; uses static mock data via `DemoDataContext`; covers Dashboard, Course Detail (with working what-if sliders), Chat (canned responses via suggestion chips), ACORN (GPA chart + course table), and Degree Planner; persistent amber banner links to sign-in; "Try the demo" button on landing page
-
-Not implemented yet:
-
+- Email/password authentication with Supabase Auth: signup with email verification, login with confirmation check, password reset flow, and cross-provider guardrails (Google-only accounts blocked from password signup, silent no-op on password reset)
+- Dedicated `/signin` page with Google OAuth, email/password login/signup tabs, forgot-password mode, and green email-verified confirmation banner
+- Verification emails sent via Resend custom SMTP (configured in Supabase dashboard) to avoid the free-tier rate limit
+- Manual course entry pivot: Quercus API tokens are now optional. Users can add courses manually with weight entry or syllabus upload (PDF/DOCX). Manual courses use negative BIGINT IDs to avoid collision with Canvas IDs. Dashboard merges Quercus and manual courses. Course detail, what-if sliders, and grade overrides work identically for manual courses. Chat agent tools include manual courses and handle missing Quercus tokens gracefully. Manual deadlines can be added and deleted from the dashboard deadline rail.
 - React frontend polish and completion of remaining product flows
 - Chat history polish such as rename support and any further navigation / UX refinement
 - UTM and St. George program support in the Degree Planner: the graduation pipeline currently only discovers and extracts UTSC calendar pages. When adding support for UTM (`utm.calendar.utoronto.ca`) or St. George (`artsci.calendar.utoronto.ca`) programs, two changes are required:

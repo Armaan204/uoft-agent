@@ -56,6 +56,7 @@ def save_snapshot(
             .delete() \
             .eq("user_id", user_id) \
             .filter("course_id", "not.in", f"({id_list})") \
+            .filter("course_id", "gt", "0") \
             .execute()
     except Exception as exc:
         logger.warning("Failed to delete stale snapshot rows user_id=%s error=%s", user_id, exc)

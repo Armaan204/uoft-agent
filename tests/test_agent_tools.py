@@ -361,13 +361,12 @@ class TestGradeToolsHelpers:
         assert result["courses"] == [{"course_id": 1}]
         assert result["errors"][0]["course_id"] == 2
 
-    def test_refresh_grades_without_user_id_falls_back_to_live_fetch(self):
+    def test_refresh_grades_without_user_id_returns_empty(self):
         from api.agent.tools import _refresh_grades
         mock_client = MagicMock()
-        with patch("api.agent.tools._get_all_grades", return_value={"courses": []}) as mock_all:
-            result = _refresh_grades({}, mock_client, user_id=None)
-        mock_all.assert_called_once()
-        assert result == {"courses": []}
+        mock_client._token = None
+        result = _refresh_grades({}, mock_client, user_id=None)
+        assert result == {"courses": [], "errors": []}
 
     def test_check_graduation_progress_without_user_id(self):
         from api.agent.tools import _check_graduation_progress

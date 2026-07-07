@@ -104,7 +104,7 @@ export default function DemoDashboard() {
 
           <aside className="dashboard-rail">
             <div className="section-label rise" ref={deadlinesLabelRef}>Upcoming Deadlines</div>
-            <DeadlineList deadlines={deadlines} maxHeight={deadlinesMaxHeight} />
+            <DeadlineList deadlines={deadlines} maxHeight={deadlinesMaxHeight} readOnly />
           </aside>
         </section>
 

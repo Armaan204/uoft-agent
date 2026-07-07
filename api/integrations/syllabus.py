@@ -674,3 +674,9 @@ def _parse_syllabus_weights_cached(
     _save_persisted_weights(course_id, source_url, weights)
 
     return source_url, weights
+
+
+def extract_weights_from_bytes(pdf_bytes: bytes) -> dict[str, float]:
+    """Extract grade weights from raw PDF bytes via LLM."""
+    text = _extract_text(pdf_bytes)
+    return _ask_claude(text)

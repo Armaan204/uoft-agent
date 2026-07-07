@@ -477,10 +477,10 @@ class TestDropRuleIntegration:
 
 
 class TestQuercusAdditional:
-    def test_init_requires_token(self, monkeypatch):
+    def test_init_no_token_creates_tokenless_client(self, monkeypatch):
         monkeypatch.delenv("QUERCUS_API_TOKEN", raising=False)
-        with pytest.raises(QuercusError, match="QUERCUS_API_TOKEN is not set"):
-            QuercusClient(token=None)
+        c = QuercusClient(token=None)
+        assert c._token is None
 
     def test_cached_paginated_get_raises_auth_and_http_errors(self):
         from api.integrations.quercus import _cached_paginated_get

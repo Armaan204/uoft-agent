@@ -47,27 +47,23 @@ class ChatRequest(BaseModel):
         return v
 
 
-def _resolve_token(quercus_token: str | None, current_user: dict) -> str:
+def _resolve_token_optional(quercus_token: str | None, current_user: dict) -> str | None:
     if quercus_token:
         return quercus_token
     try:
         saved = get_quercus_token(current_user["user_id"])
-    except UserStoreError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    if not saved:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No Quercus token provided and no saved token found.",
-        )
-    return saved
+    except UserStoreError:
+        return None
+    return saved or None
 
 
 @router.post("")
 async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
-    quercus_token = _resolve_token(payload.quercus_token, current_user)
-    if not _chat_limiter.hit(_chat_rate_daily, quercus_token):
+    quercus_token = _resolve_token_optional(payload.quercus_token, current_user)
+    rate_key = quercus_token or current_user["user_id"]
+    if not _chat_limiter.hit(_chat_rate_daily, rate_key):
         raise HTTPException(status_code=429, detail="daily_limit")
-    if not _chat_limiter.hit(_chat_rate_minute, quercus_token):
+    if not _chat_limiter.hit(_chat_rate_minute, rate_key):
         raise HTTPException(status_code=429, detail="rate_limit")
     conversation_id = str(payload.conversation_id or "").strip() or None
 

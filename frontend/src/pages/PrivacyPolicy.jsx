@@ -53,7 +53,7 @@ export default function PrivacyPolicy() {
       <section className="legal-section">
         <h2 className="legal-h2">2. How We Use Your Information</h2>
         <ul className="legal-ul">
-          <li className="legal-li">Authenticate you and maintain your session via Google OAuth and signed JWT tokens.</li>
+          <li className="legal-li">Authenticate you and maintain your session via email/password, Google OAuth, and signed JWT tokens.</li>
           <li className="legal-li">Fetch your course and grade data from Quercus on your behalf using your stored token.</li>
           <li className="legal-li">Generate AI-powered responses to your academic questions (see Section 3).</li>
           <li className="legal-li">Display your ACORN academic history and compute graduation progress estimates.</li>
@@ -167,6 +167,7 @@ export default function PrivacyPolicy() {
         <ul className="legal-ul">
           <li className="legal-li">Quercus tokens are encrypted with Fernet symmetric encryption before storage.</li>
           <li className="legal-li">All data in transit is protected with HTTPS.</li>
+          <li className="legal-li">Email/password authentication is handled by Supabase Auth; raw passwords are not stored in UofT Agent tables.</li>
           <li className="legal-li">Session management uses signed JWT tokens with expiry.</li>
         </ul>
         <p className="legal-p">

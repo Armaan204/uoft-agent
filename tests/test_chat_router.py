@@ -32,30 +32,28 @@ def _reset_chat_limiter():
 
 class TestResolveToken:
     def test_returns_provided_token(self):
-        from api.routers.chat import _resolve_token
-        result = _resolve_token("my-token", _user())
+        from api.routers.chat import _resolve_token_optional
+        result = _resolve_token_optional("my-token", _user())
         assert result == "my-token"
 
     def test_returns_saved_token_when_none_provided(self):
-        from api.routers.chat import _resolve_token
+        from api.routers.chat import _resolve_token_optional
         with patch("api.routers.chat.get_quercus_token", return_value="saved-tok"):
-            result = _resolve_token(None, _user())
+            result = _resolve_token_optional(None, _user())
         assert result == "saved-tok"
 
-    def test_raises_400_when_no_token_at_all(self):
-        from api.routers.chat import _resolve_token
+    def test_returns_none_when_no_token_at_all(self):
+        from api.routers.chat import _resolve_token_optional
         with patch("api.routers.chat.get_quercus_token", return_value=None):
-            with pytest.raises(HTTPException) as exc:
-                _resolve_token(None, _user())
-        assert exc.value.status_code == 400
+            result = _resolve_token_optional(None, _user())
+        assert result is None
 
-    def test_raises_400_on_user_store_error(self):
-        from api.routers.chat import _resolve_token
+    def test_returns_none_on_user_store_error(self):
+        from api.routers.chat import _resolve_token_optional
         from api.auth.user_store import UserStoreError
         with patch("api.routers.chat.get_quercus_token", side_effect=UserStoreError("db error")):
-            with pytest.raises(HTTPException) as exc:
-                _resolve_token(None, _user())
-        assert exc.value.status_code == 400
+            result = _resolve_token_optional(None, _user())
+        assert result is None
 
 
 # ── chat (async POST handler) ──────────────────────────────────────────────────

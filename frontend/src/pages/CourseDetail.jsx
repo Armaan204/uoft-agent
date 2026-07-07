@@ -321,7 +321,11 @@ export default function CourseDetail() {
             {displayCourseCode(course?.course_code) + (termName ? ` · ${termName}` : '')}
           </div>
           <div className="course-name-h">{displayCourseName(course?.name, course?.course_code) || `Course ${id}`}</div>
-          <div className="course-sub">Weighted breakdown generated from your current Quercus data.</div>
+          <div className="course-sub">
+            {gradesQuery.data?.source === 'manual'
+              ? 'Manually added course — enter your scores below.'
+              : 'Weighted breakdown generated from your current Quercus data.'}
+          </div>
         </div>
         <div className="grade-hero">
           <div className="grade-big">

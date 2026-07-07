@@ -1,16 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 
-import client from '../api/client'
 import { useTheme } from '../hooks/useTheme'
 
 export default function ProfileMenu({ displayName, initials, onLogout, dropUp = false, showThemeToggle = false }) {
   const [open, setOpen] = useState(false)
-  const [disconnecting, setDisconnecting] = useState(false)
   const menuRef = useRef(null)
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { isDark, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -33,22 +27,6 @@ export default function ProfileMenu({ displayName, initials, onLogout, dropUp = 
       document.removeEventListener('keydown', handleEscape)
     }
   }, [])
-
-  async function disconnectQuercus() {
-    if (disconnecting) return
-    setDisconnecting(true)
-    try {
-      await client.delete('/api/courses/quercus-token')
-      await queryClient.removeQueries({ queryKey: ['dashboard'] })
-      await queryClient.removeQueries({ queryKey: ['courses'] })
-      await queryClient.removeQueries({ queryKey: ['course-grades'] })
-      await queryClient.invalidateQueries({ queryKey: ['quercus-token-status'] })
-      navigate('/onboarding', { replace: true })
-    } finally {
-      setDisconnecting(false)
-      setOpen(false)
-    }
-  }
 
   return (
     <div className="profile-menu" ref={menuRef}>
@@ -81,9 +59,6 @@ export default function ProfileMenu({ displayName, initials, onLogout, dropUp = 
           )}
           <button className="profile-dropdown-item" type="button" onClick={onLogout}>
             Log out
-          </button>
-          <button className="profile-dropdown-item" type="button" onClick={disconnectQuercus} disabled={disconnecting}>
-            {disconnecting ? 'Disconnecting…' : 'Disconnect Quercus'}
           </button>
         </div>
       )}

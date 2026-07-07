@@ -12,7 +12,7 @@ AI academic assistant for University of Toronto students.
 
 ## 🚀 Live App
 
-**[uoft-agent.com](https://uoft-agent.com/)** — sign in with your Google account and connect your Quercus token to get started.
+**[uoft-agent.com](https://uoft-agent.com/)** — create an account or sign in with Google, then connect your Quercus token to get started.
 
 **[Chrome Extension](https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb)** — import your ACORN academic history in one click.
 
@@ -57,7 +57,7 @@ Stop juggling Quercus, ACORN, and a calculator at the same time. UofT Agent pull
 
 ## ⚡ How It Works
 
-1. Sign in with Google
+1. Create an account with email/password, or sign in with Google
 2. Paste your Quercus personal access token (Settings → Profile → Approved Integrations)
 3. The app encrypts it and stores it in Supabase so you never have to paste it again
 4. Dashboard loads automatically — grades, deadlines, announcements
@@ -70,7 +70,7 @@ Stop juggling Quercus, ACORN, and a calculator at the same time. UofT Agent pull
 
 ```
 frontend/          Vite + React  →  uoft-agent.com
-api/               FastAPI       →  Google OAuth, grades, chat, ACORN, graduation
+api/               FastAPI       →  email/password auth, Google OAuth, grades, chat, ACORN, graduation
 agent/             Anthropic tool-calling loop (no LangChain)
 calculator/        Deterministic grade engine + UofT GPA mapping
 integrations/      Quercus client, syllabus parser, graduation service, ACORN store
@@ -82,6 +82,8 @@ Key FastAPI routes:
 
 | Method | Route | What it does |
 |--------|-------|-------------|
+| `POST` | `/auth/signup` | Create an email/password account |
+| `POST` | `/auth/login` | Sign in with email/password |
 | `GET` | `/auth/google` | Start Google OAuth |
 | `GET` | `/auth/me` | Current user info |
 | `GET` | `/api/courses/dashboard` | Courses + deadlines + announcements |
@@ -104,12 +106,14 @@ pip install -r requirements.txt
 ANTHROPIC_API_KEY=...
 SUPABASE_URL=...
 SUPABASE_KEY=...
+SUPABASE_ANON_KEY=...
 ENCRYPTION_KEY=...
 JWT_SECRET=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 REDIRECT_URI=http://localhost:8001/auth/callback
 FRONTEND_URL=http://localhost:5173
+PASSWORD_RESET_REDIRECT_URL=http://localhost:5173/auth/reset-password
 
 # Run FastAPI
 uvicorn api.main:app --reload --port 8001
