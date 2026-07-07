@@ -111,9 +111,9 @@ export default function Onboarding() {
     },
     onSuccess: async () => {
       setErrorMessage('')
-      await queryClient.invalidateQueries({ queryKey: ['quercus-token-status'] })
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      await queryClient.invalidateQueries({ queryKey: ['courses'] })
+      queryClient.setQueryData(['quercus-token-status'], { hasToken: true })
+      queryClient.removeQueries({ queryKey: ['dashboard'] })
+      queryClient.removeQueries({ queryKey: ['courses'] })
       navigate('/', { replace: true })
     },
     onError: () => {

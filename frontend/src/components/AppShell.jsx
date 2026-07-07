@@ -23,15 +23,19 @@ export default function AppShell() {
   async function handleDisconnect() {
     if (disconnecting) return
     setDisconnecting(true)
+    queryClient.setQueryData(['quercus-token-status'], { hasToken: false })
+    queryClient.setQueryData(['dashboard'], (old) => {
+      if (!old) return old
+      const manualOnly = (old.courses || []).filter((c) => c.source === 'manual')
+      return { ...old, courses: manualOnly, announcements: [] }
+    })
+    queryClient.removeQueries({ queryKey: ['courses'] })
+    queryClient.removeQueries({ queryKey: ['course-grades'] })
     try {
       await client.delete('/api/courses/quercus-token')
-      await queryClient.removeQueries({ queryKey: ['dashboard'] })
-      await queryClient.removeQueries({ queryKey: ['courses'] })
-      await queryClient.removeQueries({ queryKey: ['course-grades'] })
-      await queryClient.invalidateQueries({ queryKey: ['quercus-token-status'] })
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     } finally {
       setDisconnecting(false)
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     }
   }
 
@@ -76,7 +80,7 @@ export default function AppShell() {
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
-              {disconnecting ? 'Disconnecting…' : 'Quercus Connected'}
+              {disconnecting ? 'Disconnecting…' : 'Disconnect Quercus'}
             </button>
           ) : (
             <button
