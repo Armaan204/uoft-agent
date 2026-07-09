@@ -5,6 +5,8 @@ api/services/acorn_service.py - ACORN import storage logic for FastAPI routes.
 from __future__ import annotations
 
 import os
+import time
+from datetime import datetime, timezone
 from typing import Any
 
 from dotenv import load_dotenv
@@ -235,6 +237,31 @@ def get_academic_history(user_id: str | int) -> dict[str, Any]:
         "imported_at": latest.get("importedAt"),
         "programs": latest.get("programs") or [],
     }
+
+
+def store_acorn_pdf_import(user_id: str | int, parsed_data: dict) -> dict:
+    """Persist a PDF-parsed ACORN import directly for the given user."""
+    if user_id in (None, ""):
+        raise AcornServiceError("user_id must be provided")
+
+    imported_at = parsed_data.get("importedAt") or datetime.now(timezone.utc).isoformat()
+    synthetic_code = f"pdf-{str(user_id)[:8]}-{int(time.time())}"
+
+    row = {
+        "import_code": synthetic_code,
+        "user_id": user_id,
+        "data": parsed_data,
+        "imported_at": imported_at,
+    }
+    try:
+        response = get_supabase_client().table("acorn_imports").insert(row).execute()
+    except Exception as exc:
+        raise AcornServiceError("Failed to store PDF ACORN import") from exc
+
+    rows = getattr(response, "data", None) or []
+    if not rows:
+        raise AcornServiceError("Supabase returned no inserted ACORN import row")
+    return parsed_data
 
 
 def claim_latest_import_for_user(import_code: str, user_id: str | int) -> dict | None:

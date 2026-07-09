@@ -25,6 +25,16 @@ const features = [
   {
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+      </svg>
+    ),
+    title: 'No Quercus? No Problem.',
+    description: 'Add courses and enter grades yourself. The calculator, what-if scenarios, and AI assistant all work without a Quercus connection.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
     ),
@@ -130,8 +140,8 @@ export default function Login() {
             Know exactly where<br className="landing-br" />{' '}you stand in every course
           </h1>
           <p className="landing-sub">
-            UofT Agent connects to Quercus and calculates your real weighted grades,
-            upcoming deadlines, and what-if scenarios — so you never have to guess again.
+            Track your weighted grades, upcoming deadlines, and what-if scenarios.
+            Enter grades manually or connect Quercus for automatic sync — your choice.
           </p>
           <div className="landing-hero-buttons">
             <button className="btn-signin-hero" type="button" onClick={() => navigate('/signin')}>
@@ -209,7 +219,7 @@ export default function Login() {
       {/* ── Bottom CTA ───────────────────────────────────── */}
       <section className="landing-bottom-cta">
         <h2 className="landing-cta-headline">Ready to take control of your grades?</h2>
-        <p className="landing-cta-sub">Set up takes 30 seconds. Create an account, then connect Quercus when you are ready.</p>
+        <p className="landing-cta-sub">Set up takes 30 seconds. Enter grades manually or connect Quercus when you're ready — either way works.</p>
         <button className="btn-signin-hero landing-cta" type="button" onClick={() => navigate('/signin')}>
           Get started
         </button>

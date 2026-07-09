@@ -7,10 +7,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from api.dependencies import get_current_user
+from api.integrations.acorn_pdf_parser import AcornPdfParseError, parse_acorn_pdf
 from api.services.acorn_service import (
     AcornServiceError,
     claim_latest_import_for_user,
@@ -18,6 +19,7 @@ from api.services.acorn_service import (
     get_latest_import,
     get_latest_import_for_user,
     import_acorn_data,
+    store_acorn_pdf_import,
 )
 from api.integrations.acorn_store import AcornStoreError
 
@@ -107,3 +109,31 @@ def claim_import(payload: dict[str, Any] = Body(...), current_user: dict = Depen
         return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
 
     return JSONResponse(status_code=200, content={"ok": True, "data": latest})
+
+
+@router.post("/upload")
+async def upload_acorn_pdf(
+    file: UploadFile,
+    current_user: dict = Depends(get_current_user),
+):
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".pdf"):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Only PDF files are accepted"})
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "File exceeds 10 MB limit"})
+
+    try:
+        parsed = parse_acorn_pdf(content)
+    except AcornPdfParseError as exc:
+        logger.exception("ACORN PDF parse error: %s", exc)
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(exc)})
+
+    try:
+        stored = store_acorn_pdf_import(current_user["user_id"], parsed)
+    except AcornServiceError as exc:
+        logger.exception("ACORN PDF storage error: %s", exc)
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+
+    return JSONResponse(status_code=200, content={"ok": True, "data": stored})

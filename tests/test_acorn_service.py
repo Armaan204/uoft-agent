@@ -452,3 +452,134 @@ class TestClaimLatestImportForUser:
         with patch("api.services.acorn_service.get_supabase_client", return_value=mock_sb):
             with pytest.raises(AcornServiceError, match="Failed to claim"):
                 claim_latest_import_for_user("ABC123", "u1")
+
+
+# ── store_acorn_pdf_import ────────────────────────────────────────────────────
+
+class TestStoreAcornPdfImport:
+    def test_raises_for_blank_user_id(self):
+        from api.services.acorn_service import store_acorn_pdf_import, AcornServiceError
+        with pytest.raises(AcornServiceError, match="user_id must be provided"):
+            store_acorn_pdf_import("", {"courses": []})
+
+    def test_raises_for_none_user_id(self):
+        from api.services.acorn_service import store_acorn_pdf_import, AcornServiceError
+        with pytest.raises(AcornServiceError, match="user_id must be provided"):
+            store_acorn_pdf_import(None, {"courses": []})
+
+    def test_success_returns_parsed_data(self):
+        from api.services.acorn_service import store_acorn_pdf_import
+        mock_sb = _mock_sb()
+        inserted_row = {"id": 1, "data": {"courses": []}}
+        mock_sb.table.return_value.execute.return_value = MagicMock(data=[inserted_row])
+        parsed = {"courses": [{"courseCode": "CSCA08H3"}], "importedAt": "2024-06-01T00:00:00+00:00"}
+        with patch("api.services.acorn_service.get_supabase_client", return_value=mock_sb):
+            result = store_acorn_pdf_import("user-abc", parsed)
+        assert result is parsed
+        call_args = mock_sb.table.return_value.insert.call_args[0][0]
+        assert call_args["user_id"] == "user-abc"
+        assert call_args["import_code"].startswith("pdf-user-abc")
+        assert call_args["data"] is parsed
+
+    def test_uses_parsed_imported_at(self):
+        from api.services.acorn_service import store_acorn_pdf_import
+        mock_sb = _mock_sb()
+        mock_sb.table.return_value.execute.return_value = MagicMock(data=[{"id": 1}])
+        parsed = {"courses": [], "importedAt": "2025-01-15T12:00:00+00:00"}
+        with patch("api.services.acorn_service.get_supabase_client", return_value=mock_sb):
+            store_acorn_pdf_import("u1", parsed)
+        call_args = mock_sb.table.return_value.insert.call_args[0][0]
+        assert call_args["imported_at"] == "2025-01-15T12:00:00+00:00"
+
+    def test_generates_imported_at_when_missing(self):
+        from api.services.acorn_service import store_acorn_pdf_import
+        mock_sb = _mock_sb()
+        mock_sb.table.return_value.execute.return_value = MagicMock(data=[{"id": 1}])
+        parsed = {"courses": []}
+        with patch("api.services.acorn_service.get_supabase_client", return_value=mock_sb):
+            store_acorn_pdf_import("u1", parsed)
+        call_args = mock_sb.table.return_value.insert.call_args[0][0]
+        assert call_args["imported_at"] is not None
+
+    def test_raises_on_supabase_error(self):
+        from api.services.acorn_service import store_acorn_pdf_import, AcornServiceError
+        mock_sb = MagicMock()
+        mock_sb.table.side_effect = Exception("DB down")
+        with patch("api.services.acorn_service.get_supabase_client", return_value=mock_sb):
+            with pytest.raises(AcornServiceError, match="Failed to store PDF ACORN import"):
+                store_acorn_pdf_import("u1", {"courses": []})
+
+    def test_raises_when_no_rows_returned(self):
+        from api.services.acorn_service import store_acorn_pdf_import, AcornServiceError
+        mock_sb = _mock_sb()
+        mock_sb.table.return_value.execute.return_value = MagicMock(data=[])
+        with patch("api.services.acorn_service.get_supabase_client", return_value=mock_sb):
+            with pytest.raises(AcornServiceError, match="Supabase returned no inserted"):
+                store_acorn_pdf_import("u1", {"courses": []})
+
+
+# ── upload_acorn_pdf (router endpoint) ────────────────────────────────────────
+
+def _user(user_id="u-test"):
+    return {"user_id": user_id, "email": "test@example.com"}
+
+
+def _make_upload(filename="Academic History.pdf", content=b"%PDF-fake"):
+    import asyncio
+    upload = MagicMock()
+    upload.filename = filename
+
+    async def _read():
+        return content
+
+    upload.read = _read
+    return upload
+
+
+class TestUploadAcornPdf:
+    async def test_rejects_non_pdf(self):
+        from api.routers.acorn import upload_acorn_pdf
+        upload = _make_upload(filename="history.docx")
+        resp = await upload_acorn_pdf(file=upload, current_user=_user())
+        assert resp.status_code == 400
+        assert b"Only PDF" in resp.body
+
+    async def test_rejects_oversized_file(self):
+        from api.routers.acorn import upload_acorn_pdf
+        upload = _make_upload(content=b"x" * (10 * 1024 * 1024 + 1))
+        resp = await upload_acorn_pdf(file=upload, current_user=_user())
+        assert resp.status_code == 400
+        assert b"10 MB" in resp.body
+
+    async def test_returns_400_on_parse_error(self):
+        from api.routers.acorn import upload_acorn_pdf
+        from api.integrations.acorn_pdf_parser import AcornPdfParseError
+        upload = _make_upload()
+        with patch("api.routers.acorn.parse_acorn_pdf", side_effect=AcornPdfParseError("bad pdf")):
+            resp = await upload_acorn_pdf(file=upload, current_user=_user())
+        assert resp.status_code == 400
+        assert b"bad pdf" in resp.body
+
+    async def test_returns_500_on_storage_error(self):
+        from api.routers.acorn import upload_acorn_pdf
+        from api.services.acorn_service import AcornServiceError
+        upload = _make_upload()
+        parsed = {"courses": [], "terms": []}
+        with patch("api.routers.acorn.parse_acorn_pdf", return_value=parsed):
+            with patch("api.routers.acorn.store_acorn_pdf_import", side_effect=AcornServiceError("db down")):
+                resp = await upload_acorn_pdf(file=upload, current_user=_user())
+        assert resp.status_code == 500
+        assert b"db down" in resp.body
+
+    async def test_success_returns_data(self):
+        from api.routers.acorn import upload_acorn_pdf
+        upload = _make_upload()
+        parsed = {"courses": [{"courseCode": "CSCA08H3"}], "terms": [], "importedAt": "2024-01-01"}
+        with patch("api.routers.acorn.parse_acorn_pdf", return_value=parsed):
+            with patch("api.routers.acorn.store_acorn_pdf_import", return_value=parsed):
+                resp = await upload_acorn_pdf(file=upload, current_user=_user())
+        assert resp.status_code == 200
+        import json
+        body = json.loads(resp.body)
+        assert body["ok"] is True
+        assert body["data"]["courses"][0]["courseCode"] == "CSCA08H3"

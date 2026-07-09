@@ -1,11 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import client from '../api/client'
-
-const IMPORT_CODE_KEY = 'uoft-agent-acorn-import-code'
-const ACORN_EXTENSION_URL =
-  'https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb'
 
 const UNEARNED_GRADES = new Set(["NCR", "NGA", "IPR", "LWD", "GWR", "SDF", "WD", "FL%", "NC%", "F"])
 const TERM_ORDER = {
@@ -13,26 +9,6 @@ const TERM_ORDER = {
   spring: 1,
   summer: 2,
   fall: 3,
-}
-
-function generateImportCode() {
-  const bytes = new Uint8Array(4)
-  window.crypto.getRandomValues(bytes)
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('').toUpperCase()
-}
-
-function ensureImportCode() {
-  const existing = window.localStorage.getItem(IMPORT_CODE_KEY)
-  if (existing) return existing
-  const next = generateImportCode()
-  window.localStorage.setItem(IMPORT_CODE_KEY, next)
-  return next
-}
-
-function resetImportCode() {
-  const next = generateImportCode()
-  window.localStorage.setItem(IMPORT_CODE_KEY, next)
-  return next
 }
 
 function formatTimestamp(value) {
@@ -267,6 +243,12 @@ function downloadCoursesCsv(rows) {
   window.URL.revokeObjectURL(url)
 }
 
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function SummaryCard({ label, value, hint }) {
   return (
     <div className="acorn-summary-card">
@@ -277,28 +259,63 @@ function SummaryCard({ label, value, hint }) {
   )
 }
 
-function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim, onRefreshCode }) {
-  const detected = Boolean(status?.exists)
-  const [copyState, setCopyState] = useState('idle')
+function AcornUpload({ onSuccess }) {
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef(null)
+  const [file, setFile] = useState(null)
+  const [dragActive, setDragActive] = useState(false)
+  const [uploadError, setUploadError] = useState('')
 
-  useEffect(() => {
-    if (copyState !== 'copied') return undefined
+  const uploadMutation = useMutation({
+    mutationFn: async (pdfFile) => {
+      const formData = new FormData()
+      formData.append('file', pdfFile)
+      const response = await client.post('/api/acorn/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return response.data.data
+    },
+    onSuccess: async () => {
+      setUploadError('')
+      setFile(null)
+      await queryClient.invalidateQueries({ queryKey: ['acorn'] })
+      onSuccess?.()
+    },
+    onError: (error) => {
+      setUploadError(error?.response?.data?.error || 'Failed to parse the uploaded PDF. Please make sure it is a Complete Academic History PDF from ACORN.')
+    },
+  })
 
-    const timer = window.setTimeout(() => {
-      setCopyState('idle')
-    }, 1800)
-
-    return () => window.clearTimeout(timer)
-  }, [copyState])
-
-  async function handleCopyCode() {
-    try {
-      await navigator.clipboard?.writeText(importCode)
-      setCopyState('copied')
-    } catch {
-      setCopyState('error')
+  function handleFile(selected) {
+    setUploadError('')
+    if (!selected) return
+    if (!selected.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('Please select a PDF file.')
+      return
     }
+    if (selected.size > 10 * 1024 * 1024) {
+      setUploadError('File exceeds the 10 MB limit.')
+      return
+    }
+    setFile(selected)
   }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragActive(false)
+    const dropped = e.dataTransfer?.files?.[0]
+    if (dropped) handleFile(dropped)
+  }
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault()
+    setDragActive(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault()
+    setDragActive(false)
+  }, [])
 
   return (
     <div className="page dashboard-page acorn-page">
@@ -307,17 +324,16 @@ function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim
           <div className="section-label">ACORN Import</div>
           <h1 className="acorn-page-title">Bring in your academic history</h1>
           <p className="acorn-page-copy">
-            Import your ACORN history once through the Chrome extension and keep it linked to your account for future
-            visits.
+            Upload your Complete Academic History PDF from ACORN to import your courses, grades, and GPA.
           </p>
         </div>
-        <div className={`acorn-status-card ${detected ? 'detected' : ''}`}>
-          <div className="acorn-status-label">Import status</div>
-          <div className="acorn-status-value">{detected ? 'Import detected' : 'Waiting for import'}</div>
+        <div className={`acorn-status-card ${file ? 'detected' : ''}`}>
+          <div className="acorn-status-label">Upload status</div>
+          <div className="acorn-status-value">{file ? 'Ready to upload' : 'No file selected'}</div>
           <div className="acorn-status-meta">
-            {detected
-              ? `${status.courseCount ?? 0} courses found · ${formatTimestamp(status.importedAt)}`
-              : 'Paste the code below into the extension, then import from ACORN.'}
+            {file
+              ? `${file.name} · ${formatFileSize(file.size)}`
+              : 'Select or drop your ACORN PDF below.'}
           </div>
         </div>
       </div>
@@ -327,63 +343,81 @@ function AcornOnboarding({ importCode, status, claimError, claimPending, onClaim
           <div className="acorn-panel-title">How it works</div>
           <ol className="acorn-steps">
             <li>
-              Install the{' '}
-              <a href={ACORN_EXTENSION_URL} target="_blank" rel="noreferrer">
-                UofT Agent Chrome extension
+              Log into{' '}
+              <a href="https://acorn.utoronto.ca" target="_blank" rel="noreferrer">
+                ACORN
                 <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" width="1em" height="1em" aria-hidden="true" style={{ marginLeft: 3, verticalAlign: '-0.15em' }}>
                   <path d="M11 8.5v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1h3M8.5 2H12v3.5M12 2 6.5 7.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </a>
-              .
+              {' '}and navigate to <strong>Academic History</strong>, then <strong>Complete Academic History</strong>.
             </li>
-            <li>Open your ACORN Academic History page in another tab.</li>
-            <li>Click on <strong>Complete Academic History</strong>.</li>
-            <li>Paste this import code into the extension popup.</li>
-            <li>Click import, then return here and confirm.</li>
+            <li>Click on <strong> Print Academic History</strong> and save the PDF.</li>
+            <li>Upload the PDF here using the drop zone.</li>
           </ol>
-          <div className="acorn-actions">
-            <a className="acorn-primary-btn" href={ACORN_EXTENSION_URL} target="_blank" rel="noreferrer">
-              Install extension
-            </a>
-            <button className="acorn-secondary-btn" type="button" onClick={onRefreshCode}>
-              Generate new code
-            </button>
-          </div>
         </section>
 
         <section className="acorn-code-card rise">
-          <div className="acorn-panel-title">Your import code</div>
-          <div className="acorn-code">{importCode}</div>
-          <div className="acorn-code-help">Paste this exact code into the extension before importing from ACORN.</div>
+          <div className="acorn-panel-title">Upload your PDF</div>
+          <div
+            className={`acorn-drop-zone ${dragActive ? 'drag-active' : ''} ${file ? 'has-file' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click() }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              className="acorn-file-input"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+            />
+            {file ? (
+              <div className="acorn-drop-zone-content">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <polyline points="9 15 12 12 15 15" className="acorn-upload-arrow" />
+                </svg>
+                <div className="acorn-drop-zone-name">{file.name}</div>
+                <div className="acorn-drop-zone-size">{formatFileSize(file.size)}</div>
+              </div>
+            ) : (
+              <div className="acorn-drop-zone-content">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <div className="acorn-drop-zone-label">Drop your PDF here or click to browse</div>
+                <div className="acorn-drop-zone-hint">PDF up to 10 MB</div>
+              </div>
+            )}
+          </div>
           <div className="acorn-code-actions">
+            {file ? (
+              <button
+                className="acorn-secondary-btn"
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setFile(null); setUploadError('') }}
+              >
+                Remove file
+              </button>
+            ) : null}
             <button
-              className="acorn-secondary-btn"
+              className="acorn-primary-btn"
               type="button"
-              onClick={handleCopyCode}
+              disabled={!file || uploadMutation.isPending}
+              onClick={() => { if (file) uploadMutation.mutate(file) }}
             >
-              {copyState === 'copied' ? 'Copied' : 'Copy code'}
-            </button>
-            <button className="acorn-primary-btn" type="button" onClick={onClaim} disabled={claimPending}>
-              {claimPending ? 'Checking import…' : "I've completed the import"}
+              {uploadMutation.isPending ? 'Uploading…' : 'Upload and import'}
             </button>
           </div>
-          {copyState === 'copied' ? (
-            <div className="acorn-inline-success">Code copied to clipboard.</div>
-          ) : null}
-          {copyState === 'error' ? (
-            <div className="acorn-inline-error">Could not copy automatically. Copy the code manually.</div>
-          ) : null}
-          {claimError ? <div className="acorn-inline-error">{claimError}</div> : null}
-          {!claimError && !detected ? (
-            <div className="acorn-inline-note">
-              No import has been found for this code yet. Complete the extension import, then try again.
-            </div>
-          ) : null}
-          {detected ? (
-            <div className="acorn-inline-success">
-              Import detected. You can confirm now to link it to your account.
-            </div>
-          ) : null}
+          {uploadError ? <div className="acorn-inline-error">{uploadError}</div> : null}
         </section>
       </div>
     </div>
@@ -675,13 +709,7 @@ function AcornLanding({ data, onReimport }) {
 
 export default function Acorn() {
   const queryClient = useQueryClient()
-  const [importCode, setImportCode] = useState(() => ensureImportCode())
-  const [reimportMode, setReimportMode] = useState(false)
-  const [claimError, setClaimError] = useState('')
-
-  useEffect(() => {
-    window.localStorage.setItem(IMPORT_CODE_KEY, importCode)
-  }, [importCode])
+  const [showUpload, setShowUpload] = useState(false)
 
   const acornQuery = useQuery({
     queryKey: ['acorn'],
@@ -690,46 +718,6 @@ export default function Acorn() {
       return response.data.data
     },
   })
-
-  const statusQuery = useQuery({
-    queryKey: ['acorn-status', importCode],
-    queryFn: async () => {
-      const response = await client.get('/api/acorn/status', {
-        params: { import_code: importCode },
-      })
-      return response.data
-    },
-    enabled: !acornQuery.data || reimportMode,
-    refetchInterval: 10000,
-  })
-
-  const claimMutation = useMutation({
-    mutationFn: async () => {
-      const response = await client.post('/api/acorn/claim', { import_code: importCode })
-      return response.data.data
-    },
-    onSuccess: async (next) => {
-      if (!next) {
-        setClaimError('No ACORN import was found for this code yet. Complete the extension import first.')
-        return
-      }
-      setClaimError('')
-      setReimportMode(false)
-      const nextCode = resetImportCode()
-      setImportCode(nextCode)
-      await queryClient.invalidateQueries({ queryKey: ['acorn'] })
-      await queryClient.invalidateQueries({ queryKey: ['acorn-status'] })
-    },
-    onError: (error) => {
-      setClaimError(error?.response?.data?.error || 'Could not link the imported ACORN data to your account.')
-    },
-  })
-
-  function handleReimport() {
-    setClaimError('')
-    setReimportMode(true)
-    setImportCode(resetImportCode())
-  }
 
   if (acornQuery.isLoading) {
     return (
@@ -750,21 +738,9 @@ export default function Acorn() {
     )
   }
 
-  if (acornQuery.data && !reimportMode) {
-    return <AcornLanding data={acornQuery.data} onReimport={handleReimport} />
+  if (acornQuery.data && !showUpload) {
+    return <AcornLanding data={acornQuery.data} onReimport={() => setShowUpload(true)} />
   }
 
-  return (
-    <AcornOnboarding
-      importCode={importCode}
-      status={statusQuery.data}
-      claimError={claimError}
-      claimPending={claimMutation.isPending}
-      onClaim={() => claimMutation.mutate()}
-      onRefreshCode={() => {
-        setClaimError('')
-        setImportCode(resetImportCode())
-      }}
-    />
-  )
+  return <AcornUpload onSuccess={() => setShowUpload(false)} />
 }

@@ -5,7 +5,7 @@ An AI academic assistant for University of Toronto students.
 ## Live URLs
 
 - Main app: `https://uoft-agent.com`
-- Chrome extension: `https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb`
+- Chrome extension (deprecated — replaced by PDF upload): `https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb`
 
 ## What It Does
 
@@ -15,20 +15,19 @@ An AI academic assistant for University of Toronto students.
 - Resolves course weights from Canvas assignment groups when available
 - Falls back to syllabus discovery and Anthropic-based weight extraction when Canvas weights are missing
 - Supports syllabi published as PDFs, DOCX files, or Canvas pages
-- Imports ACORN academic history through a user-triggered Chrome extension and a small backend API
-- The ACORN Chrome extension is published on the Chrome Web Store:
-  https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb
+- Imports ACORN academic history via PDF upload (students download their Complete Academic History PDF from ACORN and upload it directly)
+- The ACORN Chrome extension is deprecated; PDF upload is now the primary import method
 
 ## Architecture
 
-- `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import, published on the Chrome Web Store
+- `uoft-acorn-extension/` — Manifest V3 Chrome extension for ACORN import (deprecated — replaced by PDF upload)
 - `api/` — entire Python backend powering the deployed app at `https://uoft-agent.com`
   - `api/main.py` — FastAPI app with CORS, mounts all routers, health check at `GET /`
   - `api/dependencies.py` — JWT-based `get_current_user` dependency
   - `api/routers/auth.py` — email/password auth, Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
   - `api/routers/courses.py` — course, grade, scenario, weight routes + Quercus token CRUD
   - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`, persists exchanges by `conversation_id`, and exposes chat-history list/detail/delete routes
-  - `api/routers/acorn.py` — public ACORN routes
+  - `api/routers/acorn.py` — ACORN routes: PDF upload (`POST /upload`), legacy extension import, and data retrieval
   - `api/routers/graduation.py` — `GET /api/graduation/progress` and `DELETE /api/graduation/cache`
   - `api/routers/manual_courses.py` — CRUD for manually added courses and deadlines, plus syllabus upload endpoint
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers
@@ -44,6 +43,7 @@ An AI academic assistant for University of Toronto students.
   - `api/integrations/syllabus.py` — syllabus discovery, PDF parsing, and weight extraction
   - `api/integrations/syllabus_cache.py` — persistent Supabase cache for parsed syllabus weights
   - `api/integrations/acorn_store.py` — ACORN import payload validation and file storage
+  - `api/integrations/acorn_pdf_parser.py` — deterministic regex-based parser for ACORN Complete Academic History PDFs
   - `api/integrations/grades_cache.py` — Supabase-backed grade override and saved-grade persistence
   - `api/integrations/graduation_service.py` — graduation planning service: URL discovery, LLM-based requirements extraction, and course matching
 - `frontend/` — Vite + React frontend deployed at `https://uoft-agent.com`
@@ -142,8 +142,8 @@ Implemented:
 - Canvas page syllabus support for courses where the syllabus is published as a Quercus page instead of a file
 - Short-lived Quercus caching: assignment groups and submissions are cached for 5 minutes
 - Syllabus parsing cache: in-process cache for 1 hour plus persistent Supabase cache in `syllabus_weights_cache`
-- ACORN import flow from the published Chrome extension to Railway-hosted backend to React app
-- ACORN imports can now be claimed to the logged-in user account so returning users do not need to re-import on every visit
+- ACORN import via PDF upload: students download their Complete Academic History PDF from ACORN and upload it directly; deterministic regex-based parser extracts terms, courses, GPAs, and programs without LLM
+- Legacy Chrome extension import endpoints remain in the backend for backward compatibility but are no longer surfaced in the UI
 - The ACORN page shows either saved ACORN data or the onboarding / re-import flow
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
 - ACORN tab shows a summary table (Courses Imported, Total Credits, Cumulative GPA) and an Altair line chart of GPA over time with a Sessional / Cumulative toggle; chart uses adaptive Y-axis zoom and labelled data points
@@ -193,7 +193,7 @@ Implemented:
 
 - Courses with unresolved or only partially reliable syllabus-to-Canvas mappings intentionally show no weighted overview grade
 - What-if sliders are only enabled when the weighted component model is reliable
-- The ACORN backend still receives extension imports by import code first; the React app then claims the latest matching import to the logged-in user account
+- The ACORN backend still accepts legacy extension imports via import code for backward compatibility, but the frontend only uses PDF upload
 - Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
 - Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
 - Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
@@ -213,7 +213,8 @@ Coverage is at near 100% overall. Key test files:
 
 - `tests/test_agent.py` — `agent/agent.py` `run()` loop and `_extract_text()`
 - `tests/test_acorn_store.py` — `integrations/acorn_store.py` payload validation, file I/O
-- `tests/test_acorn_service.py` — `api/services/acorn_service.py` Supabase ACORN service
+- `tests/test_acorn_service.py` — `api/services/acorn_service.py` Supabase ACORN service, `store_acorn_pdf_import`, and upload router endpoint
+- `tests/test_acorn_pdf_parser.py` — `integrations/acorn_pdf_parser.py` deterministic PDF parser unit and integration tests
 - `tests/test_chat_router.py` — `api/routers/chat.py` all route handlers
 - `tests/test_encryption_and_syllabus_cache.py` — `integrations/encryption.py` and `integrations/syllabus_cache.py`
 - `tests/test_snapshot_and_history.py` — `api/services/grades_snapshot_service.py` and `api/services/chat_history_service.py`
