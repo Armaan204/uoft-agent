@@ -304,12 +304,9 @@ class TestAcornServiceContract:
 # ── chat service ──────────────────────────────────────────────────────────────
 
 class TestChatService:
-    def test_chat_route_calls_run_agent(self):
+    async def test_chat_route_calls_run_agent(self):
         """POST /api/chat ultimately calls run_agent with the right args."""
-        # Test by calling the route handler directly
         from api.routers.chat import chat
-        from unittest.mock import AsyncMock
-        import asyncio
 
         fake_answer = "Here are your grades."
         fake_tools = [{"name": "get_cached_grades", "input": {}}]
@@ -327,12 +324,9 @@ class TestChatService:
             current_user = {"user_id": "u1", "email": "x@x.com",
                             "name": "X", "google_id": "g1"}
 
-            result = asyncio.get_event_loop().run_until_complete(
-                chat(FakeRequest(), current_user)
-            )
+            result = await chat(FakeRequest(), current_user)
 
         data = result if isinstance(result, dict) else result.body
-        # Either JSONResponse or dict — check the answer is present
         if hasattr(result, "body"):  # pragma: no cover
             import json  # pragma: no cover
             data = json.loads(result.body)  # pragma: no cover
