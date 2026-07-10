@@ -15,14 +15,19 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from api.dependencies import get_current_user
 from api.limiter import limit
+from api.auth.user_store import UserStoreError
 from api.services.auth_service import (
+    ACCESS_TOKEN_EXPIRY_MINUTES,
+    REFRESH_TOKEN_EXPIRY_DAYS,
     AuthServiceError,
     build_google_oauth_url,
     create_access_token,
+    create_refresh_token,
     delete_user_account,
     exchange_google_code,
     get_or_create_backend_user,
     login_with_password,
+    refresh_access_token,
     reset_password,
     send_password_reset,
     signup_with_password,
@@ -58,9 +63,39 @@ def _redirect_uri(request: Request) -> str:
     return os.getenv("REDIRECT_URI") or str(request.url_for("auth_callback"))
 
 
-def _frontend_callback_url(token: str) -> str:
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
-    return f"{frontend_url}/auth/callback?{urlencode({'token': token})}"
+def _is_production() -> bool:
+    return os.getenv("ENVIRONMENT") == "production"
+
+
+def _set_auth_cookies(response, access_token: str, refresh_token_str: str) -> None:
+    secure = _is_production()
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRY_MINUTES * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token_str,
+        max_age=REFRESH_TOKEN_EXPIRY_DAYS * 86400,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        path="/auth/refresh",
+    )
+
+
+def _clear_auth_cookies(response) -> None:
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/auth/refresh")
+
+
+def _frontend_url() -> str:
+    return os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
 
 def _oauth_signing_secret() -> str:
@@ -112,7 +147,7 @@ def google_oauth_redirect(request: Request):
         max_age=_OAUTH_STATE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=os.getenv("ENVIRONMENT") == "production",
+        secure=_is_production(),
     )
     return response
 
@@ -127,13 +162,14 @@ def google_oauth_callback(request: Request, code: str, state: str | None = None)
         redirect_uri = _redirect_uri(request)
         google_userinfo = exchange_google_code(code, redirect_uri)
         user = get_or_create_backend_user(google_userinfo)
-        token = create_access_token(user)
+        access_token = create_access_token(user)
+        refresh_token_str = create_refresh_token(user)
     except AuthServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Authentication failed") from exc
-    frontend_redirect = _frontend_callback_url(token)
     logger.info("OAuth callback completed for user_id=%s", user.get("id"))
-    response = RedirectResponse(frontend_redirect, status_code=status.HTTP_302_FOUND)
+    response = RedirectResponse(f"{_frontend_url()}/", status_code=status.HTTP_302_FOUND)
     response.delete_cookie("oauth_state")
+    _set_auth_cookies(response, access_token, refresh_token_str)
     return response
 
 
@@ -152,10 +188,42 @@ async def password_signup(request: Request, payload: PasswordSignupRequest):
 async def password_login(request: Request, payload: PasswordLoginRequest):
     try:
         user = login_with_password(payload.email, payload.password)
-        token = create_access_token(user)
+        access_token = create_access_token(user)
+        refresh_token_str = create_refresh_token(user)
     except AuthServiceError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    return {"token": token, "user": user}
+    response = JSONResponse({"ok": True, "user": user})
+    _set_auth_cookies(response, access_token, refresh_token_str)
+    return response
+
+
+@router.post("/refresh")
+@limit("10/minute")
+async def refresh(request: Request):
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh token")
+    try:
+        new_access, user = refresh_access_token(token)
+    except (AuthServiceError, UserStoreError) as exc:
+        response = JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Refresh token expired"},
+        )
+        _clear_auth_cookies(response)
+        return response
+    response = JSONResponse({"ok": True})
+    secure = _is_production()
+    response.set_cookie(
+        key="access_token",
+        value=new_access,
+        max_age=ACCESS_TOKEN_EXPIRY_MINUTES * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        path="/",
+    )
+    return response
 
 
 @router.post("/password/forgot")
@@ -180,7 +248,9 @@ async def complete_password_reset(request: Request, payload: ResetPasswordReques
 
 @router.post("/logout")
 def logout():
-    return JSONResponse({"ok": True, "message": "Client should discard the token"})
+    response = JSONResponse({"ok": True, "message": "Logged out"})
+    _clear_auth_cookies(response)
+    return response
 
 
 @router.get("/me")
@@ -195,4 +265,6 @@ def delete_account(current_user: dict = Depends(get_current_user)):
     except AuthServiceError as exc:
         logger.exception("Account deletion failed user_id=%s", current_user.get("user_id"))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete account") from exc
-    return {"ok": True, "message": "Your account and all associated data have been deleted."}
+    response = JSONResponse({"ok": True, "message": "Your account and all associated data have been deleted."})
+    _clear_auth_cookies(response)
+    return response

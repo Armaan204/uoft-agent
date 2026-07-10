@@ -79,9 +79,16 @@ An AI academic assistant for University of Toronto students.
 - Grade overrides immediately update both the in-memory cache and Supabase snapshot so overridden grades are reflected on all subsequent cache hits
 - `api/services/course_service.py` subclasses `QuercusClient` as `UncachedQuercusClient` to bypass any caching decorators on the base client methods
 - JWT secret stored in `JWT_SECRET` env var; Google OAuth credentials reuse `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-- FastAPI Google OAuth now redirects back to the React frontend using `FRONTEND_URL`, and the frontend stores the returned JWT in localStorage
+- Auth uses HttpOnly cookies: short-lived access tokens (15 min) + long-lived refresh tokens (7 days); the frontend never touches JWTs directly
+- Access token cookie: `HttpOnly; SameSite=Lax; Secure` (Secure only in production), `Path=/`; refresh token cookie: same flags, `Path=/auth/refresh`
+- `POST /auth/refresh` rotates the access token using the refresh token cookie (rate-limited at 10/min); the frontend Axios interceptor automatically retries 401s via this endpoint
+- The 401 interceptor exempts `/auth/*` URLs from refresh retry **except** `/auth/me`, which is the bootstrap call that must trigger refresh for returning users with expired access tokens
+- `get_current_user` reads the `access_token` cookie first, falling back to `Authorization: Bearer` for Swagger UI
+- Google OAuth callback sets auth cookies and redirects to `FRONTEND_URL/`; password login sets auth cookies in the response — no tokens in URL params or JSON body; on bootstrap, `useAuth` detects user-switches via `sessionStorage` and clears stale React Query cache to prevent data leakage on shared devices
+- Production nginx proxies `/api/` and `/auth/` to the backend via `BACKEND_URL` env var (envsubst at container start), making everything same-origin
+- Local dev uses Vite's built-in proxy for the same effect
 - The React chat page now keeps the active in-progress conversation and unsent draft in browser `sessionStorage`, keyed per logged-in user and conversation ID, so refreshes within the tab keep the live thread without persisting it across browser restarts
-- Swagger auth uses HTTP Bearer so developers can paste JWTs directly while testing the FastAPI API
+- Swagger UI still supports `Authorization: Bearer` for developers pasting JWTs directly
 - Production frontend is served at `https://uoft-agent.com`; backend CORS allows `FRONTEND_URL` and optional `CORS_ORIGINS`
 - Graduation planning for UTSC programs uses a local PDF-first pipeline: (1) look up the program in the bundled `api/data/UTSC_Calendar_2025-2026.pdf` via a static TOC page index and heading-based text extraction, (2) pass the extracted text to the LLM for structured requirements extraction, (3) greedy matching of ACORN courses against requirements with no double-counting within the program. If the PDF lookup fails, falls back to web-based URL discovery (UTSC slug probing + Anthropic web_search + DuckDuckGo) and web page extraction.
 - The PDF TOC index (`_PDF_TOC` in `graduation_service.py`) maps department names to page ranges; `_program_to_toc_section` fuzzy-matches ACORN program names to TOC sections using keyword overlap with substring containment; `_find_program_text_in_section` locates the specific program heading within the section text, scoring by keyword overlap plus program type (specialist/major/minor) and co-op status
@@ -98,11 +105,11 @@ The app uses FastAPI auth routes with app-issued JWT sessions. Two auth provider
 - **Sign-in page** at `/signin` — unified page with Google OAuth button, email/password login/signup tabs, and forgot-password flow
 - Email/password signup hits `POST /auth/signup`; Supabase Auth sends a verification email via Resend SMTP (custom SMTP configured in Supabase to bypass the free-tier 3 emails/hour limit)
 - Verification emails redirect to `/signin?confirmed=true`, which shows a green confirmation banner
-- Email/password login hits `POST /auth/login`; FastAPI validates with Supabase Auth, checks email is confirmed, links/creates the app `users` row, and returns an app JWT
+- Email/password login hits `POST /auth/login`; FastAPI validates with Supabase Auth, checks email is confirmed, links/creates the app `users` row, and sets HttpOnly auth cookies
 - Password reset: `POST /auth/password/forgot` sends a Supabase reset email; `POST /auth/password/reset` applies the new password using the Supabase session tokens from the reset link
 - Password reset page at `/auth/reset-password` parses the Supabase `access_token` and `refresh_token` from the URL fragment
-- Google login starts at `GET /auth/google`; the callback signs an app JWT and redirects to `${FRONTEND_URL}/auth/callback?token=...`
-- React stores the app JWT in localStorage and uses it for protected API calls
+- Google login starts at `GET /auth/google`; the callback sets HttpOnly auth cookies and redirects to `${FRONTEND_URL}/`
+- Auth state is determined by calling `GET /auth/me` on app load (no client-side token storage); the Axios interceptor silently refreshes expired access tokens via `POST /auth/refresh`
 - After auth, React checks for a saved Quercus token; users without one are sent to `/onboarding`
 - **Cross-provider guardrails**: if a Google-only user tries to sign up with email/password, the signup is blocked with a message to use Google instead; if a Google-only user requests a password reset, the endpoint silently returns success without sending an email (anti-enumeration)
 - The Axios 401 interceptor excludes `/auth/*` endpoints so failed login attempts don't redirect away from the sign-in page
@@ -113,14 +120,14 @@ The app uses FastAPI auth routes with app-issued JWT sessions. Two auth provider
 The app underwent a comprehensive security hardening pass before public launch. Key measures:
 
 ### Authentication & Session Management
-- JWTs include `iss`, `aud`, `iat`, and `jti` claims; `iss` and `aud` are validated on decode with backward compatibility for pre-existing tokens that lack these claims
-- JWT expiry reduced from 7 days to 1 day
+- Short-lived access tokens (15 min) in HttpOnly/SameSite=Lax cookies eliminate XSS-based token theft; refresh tokens (7 days) in a separate HttpOnly cookie scoped to `Path=/auth/refresh`
+- JWTs include `iss`, `aud`, `iat`, `jti`, and `type` claims; `iss` and `aud` are validated on decode with backward compatibility for pre-existing tokens; `type` prevents token confusion (refresh used as access)
 - `python-jose` replaced with `PyJWT` (actively maintained)
 - Google OAuth uses a cryptographic `state` parameter stored in an HMAC-signed, HttpOnly cookie to prevent CSRF/login-fixation attacks
 - OAuth state signing requires `JWT_SECRET`; there is no dev-fallback — the app fails loudly if the secret is missing
-- Auth endpoints are rate-limited via slowapi: `/auth/login` at 5/min, `/auth/signup`, `/auth/password/forgot`, `/auth/password/reset` at 3/min each
+- Auth endpoints are rate-limited via slowapi: `/auth/login` at 5/min, `/auth/signup`, `/auth/password/forgot`, `/auth/password/reset` at 3/min each, `/auth/refresh` at 10/min
 - Chat endpoint has its own per-user rate limits: 10/min and 50/day
-- Logout clears the TanStack Query localStorage cache (`REACT_QUERY_OFFLINE_CACHE`) alongside the JWT to prevent data persistence on shared devices
+- Logout calls `POST /auth/logout` which clears auth cookies server-side, and also clears the TanStack Query localStorage cache (`REACT_QUERY_OFFLINE_CACHE`) to prevent data persistence on shared devices
 
 ### API Security
 - Quercus tokens are sent via `X-Quercus-Token` HTTP header — never in URL query params (which leak to server logs, browser history, and proxies)
@@ -143,7 +150,7 @@ The app underwent a comprehensive security hardening pass before public launch. 
 - Quercus tokens encrypted with Fernet before storage; the encryption key is a required env var
 
 ### Rate Limiting Architecture
-- The `api/limiter.py` module wraps slowapi's `Limiter` with a custom `limit()` decorator that: (1) extracts user identity from the JWT Bearer token for per-user rate limiting, falling back to IP, and (2) gracefully skips rate checking when no `Request` object is available (for unit tests that call handlers directly)
+- The `api/limiter.py` module wraps slowapi's `Limiter` with a custom `limit()` decorator that: (1) extracts user identity from the `access_token` cookie (or `Authorization: Bearer` header as fallback) for per-user rate limiting, falling back to IP, and (2) gracefully skips rate checking when no `Request` object is available (for unit tests that call handlers directly)
 - **Important**: auth routes must use the custom `limit()` function from `api.limiter`, not `limiter.limit()` directly, because the slowapi decorator breaks FastAPI's Pydantic model resolution when `from __future__ import annotations` is active (the wrapper's `__globals__` doesn't contain the route's type annotations). The `auth.py` router avoids `from __future__ import annotations` for this reason.
 
 ## Environment Variables
@@ -166,6 +173,7 @@ Common variables:
 - `REDIRECT_URI` for FastAPI Google OAuth callback, e.g. `http://localhost:8001/auth/callback`
 - `FRONTEND_URL` for the React app callback target, e.g. `http://localhost:5173`
 - `CORS_ORIGINS` optional comma-separated extra allowed frontend origins for FastAPI CORS
+- `BACKEND_URL` (frontend container only) for nginx reverse proxy, e.g. `https://uoft-agent-production.up.railway.app`
 
 ## Current Status
 
@@ -235,7 +243,7 @@ Implemented:
 - Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
 - Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
 - Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
-- The React frontend stores the JWT in localStorage; moving to HttpOnly cookies (Phase 4 improvement) would eliminate XSS-based token theft entirely but requires CSRF token middleware
+- Auth cookies require same-origin deployment (nginx proxy in production, Vite proxy in dev); the `BACKEND_URL` env var must be set on the frontend container for the nginx proxy to work
 - Backend chat history requires the Supabase schema in `docs/chat_history_schema.sql` to be applied before list/detail/delete routes and persistence-backed history are available
 
 ## Tests

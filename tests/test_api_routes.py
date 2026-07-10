@@ -80,9 +80,11 @@ class TestJWT:
         from fastapi.security import HTTPAuthorizationCredentials
         from api.dependencies import get_current_user
 
+        mock_request = MagicMock()
+        mock_request.cookies = {}
         bad_creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="garbage")
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(bad_creds)
+            get_current_user(mock_request, bad_creds)
         assert exc_info.value.status_code == 401
 
     def test_dependency_returns_user_dict_for_valid_token(self, valid_token):
@@ -90,11 +92,33 @@ class TestJWT:
         from fastapi.security import HTTPAuthorizationCredentials
         from api.dependencies import get_current_user
 
+        mock_request = MagicMock()
+        mock_request.cookies = {}
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=valid_token)
-        user = get_current_user(creds)
+        user = get_current_user(mock_request, creds)
         assert user["user_id"] == "user-abc-123"
         assert "email" in user
         assert "google_id" in user
+
+    def test_dependency_reads_token_from_cookie(self, valid_token):
+        """get_current_user reads the access_token cookie when no Bearer header."""
+        from api.dependencies import get_current_user
+
+        mock_request = MagicMock()
+        mock_request.cookies = {"access_token": valid_token}
+        user = get_current_user(mock_request, credentials=None)
+        assert user["user_id"] == "user-abc-123"
+
+    def test_dependency_raises_401_when_no_token_at_all(self):
+        """get_current_user raises 401 when no cookie and no Bearer."""
+        from fastapi import HTTPException
+        from api.dependencies import get_current_user
+
+        mock_request = MagicMock()
+        mock_request.cookies = {}
+        with pytest.raises(HTTPException) as exc_info:
+            get_current_user(mock_request, credentials=None)
+        assert exc_info.value.status_code == 401
 
     def test_dependency_raises_401_on_expired_token(self):
         """get_current_user raises HTTP 401 for expired token."""
@@ -104,6 +128,8 @@ class TestJWT:
         from api.dependencies import get_current_user
         import os
 
+        mock_request = MagicMock()
+        mock_request.cookies = {}
         secret = os.environ["JWT_SECRET"]
         payload = {
             "user_id": "u1", "email": "x@x.com", "name": "X", "google_id": "g1",
@@ -112,7 +138,50 @@ class TestJWT:
         expired = pyjwt.encode(payload, secret, algorithm="HS256")
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=expired)
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(creds)
+            get_current_user(mock_request, creds)
+        assert exc_info.value.status_code == 401
+
+    def test_dependency_rejects_refresh_token_as_access(self, test_user):
+        """get_current_user rejects a refresh token used in place of access token."""
+        from fastapi import HTTPException
+        from api.dependencies import get_current_user
+        from api.services.auth_service import create_refresh_token
+
+        mock_request = MagicMock()
+        mock_request.cookies = {"access_token": create_refresh_token(test_user)}
+        with pytest.raises(HTTPException) as exc_info:
+            get_current_user(mock_request, credentials=None)
+        assert exc_info.value.status_code == 401
+
+
+class TestRefreshEndpoint:
+    """Test the POST /auth/refresh route handler."""
+
+    async def test_refresh_catches_user_store_error(self, test_user):
+        """UserStoreError from Supabase returns 401, not 500."""
+        from api.routers.auth import refresh
+        from api.services.auth_service import create_refresh_token
+        from api.auth.user_store import UserStoreError
+
+        token = create_refresh_token(test_user)
+        mock_request = MagicMock()
+        mock_request.cookies = {"refresh_token": token}
+
+        with patch("api.routers.auth.refresh_access_token", side_effect=UserStoreError("db down")):
+            response = await refresh(mock_request)
+
+        assert response.status_code == 401
+
+    async def test_refresh_missing_cookie_returns_401(self):
+        """Missing refresh token cookie returns 401."""
+        from fastapi import HTTPException
+        from api.routers.auth import refresh
+
+        mock_request = MagicMock()
+        mock_request.cookies = {}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await refresh(mock_request)
         assert exc_info.value.status_code == 401
 
 

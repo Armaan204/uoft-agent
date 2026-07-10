@@ -280,11 +280,100 @@ class TestCreateAndDecodeAccessToken:
         payload = decode_access_token(token)
         assert payload["user_id"] == "u1"
         assert payload["email"] == "a@b.com"
+        assert payload["type"] == "access"
 
     def test_decode_raises_on_invalid_token(self):
         from api.services.auth_service import decode_access_token, AuthServiceError
         with pytest.raises(AuthServiceError):
             decode_access_token("not.a.valid.token")
+
+    def test_decode_rejects_refresh_token(self):
+        from api.services.auth_service import create_refresh_token, decode_access_token, AuthServiceError
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        refresh = create_refresh_token(user)
+        with pytest.raises(AuthServiceError, match="Refresh token cannot be used as access token"):
+            decode_access_token(refresh)
+
+
+class TestCreateAndDecodeRefreshToken:
+    def test_roundtrip(self):
+        from api.services.auth_service import create_refresh_token, decode_refresh_token
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        token = create_refresh_token(user)
+        payload = decode_refresh_token(token)
+        assert payload["user_id"] == "u1"
+        assert payload["type"] == "refresh"
+
+    def test_decode_raises_on_invalid_token(self):
+        from api.services.auth_service import decode_refresh_token, AuthServiceError
+        with pytest.raises(AuthServiceError):
+            decode_refresh_token("not.a.valid.token")
+
+    def test_decode_rejects_access_token(self):
+        from api.services.auth_service import create_access_token, decode_refresh_token, AuthServiceError
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        access = create_access_token(user)
+        with pytest.raises(AuthServiceError, match="Invalid refresh token type"):
+            decode_refresh_token(access)
+
+    def test_refresh_access_token_returns_new_access(self):
+        from api.services.auth_service import create_refresh_token, refresh_access_token, decode_access_token
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        refresh = create_refresh_token(user)
+        with patch("api.services.auth_service._load_user_by", return_value=user):
+            new_access, returned_user = refresh_access_token(refresh)
+        payload = decode_access_token(new_access)
+        assert payload["user_id"] == "u1"
+        assert payload["type"] == "access"
+        assert returned_user["id"] == "u1"
+
+    def test_refresh_access_token_raises_on_missing_user(self):
+        from api.services.auth_service import create_refresh_token, refresh_access_token, AuthServiceError
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        refresh = create_refresh_token(user)
+        with patch("api.services.auth_service._load_user_by", return_value=None):
+            with pytest.raises(AuthServiceError, match="User not found"):
+                refresh_access_token(refresh)
+
+    def test_refresh_access_token_propagates_user_store_error(self):
+        from api.services.auth_service import create_refresh_token, refresh_access_token
+        from api.auth.user_store import UserStoreError
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        refresh = create_refresh_token(user)
+        with patch("api.services.auth_service._load_user_by", side_effect=UserStoreError("db down")):
+            with pytest.raises(UserStoreError):
+                refresh_access_token(refresh)
+
+
+class TestLimiterUserKey:
+    def test_extracts_user_from_cookie(self):
+        from api.limiter import _user_key
+        from api.services.auth_service import create_access_token
+        user = {"id": "u1", "email": "a@b.com", "name": "Alice", "google_id": "g1"}
+        token = create_access_token(user)
+        request = MagicMock()
+        request.cookies = {"access_token": token}
+        request.headers = {}
+        assert _user_key(request) == "u1"
+
+    def test_falls_back_to_bearer(self):
+        from api.limiter import _user_key
+        from api.services.auth_service import create_access_token
+        user = {"id": "u2", "email": "b@b.com", "name": "Bob", "google_id": "g2"}
+        token = create_access_token(user)
+        request = MagicMock()
+        request.cookies = {}
+        request.headers = {"Authorization": f"Bearer {token}"}
+        assert _user_key(request) == "u2"
+
+    def test_falls_back_to_ip(self):
+        from api.limiter import _user_key
+        request = MagicMock()
+        request.cookies = {}
+        request.headers = {}
+        request.client = MagicMock()
+        request.client.host = "1.2.3.4"
+        assert _user_key(request) == "1.2.3.4"
 
 
 class TestExchangeGoogleCode:
@@ -421,6 +510,11 @@ class TestSaveGradeOverrideDbError:
 # ── api/dependencies.py — invalid token payload (line 30) ────────────────────
 
 class TestGetCurrentUser:
+    def _mock_request(self, cookies=None):
+        req = MagicMock()
+        req.cookies = cookies or {}
+        return req
+
     def test_raises_401_on_auth_service_error(self):
         from api.dependencies import get_current_user
         from api.services.auth_service import AuthServiceError
@@ -432,7 +526,7 @@ class TestGetCurrentUser:
 
         with patch("api.dependencies.decode_access_token", side_effect=AuthServiceError("bad")):
             with pytest.raises(HTTPException) as exc:
-                get_current_user(creds)
+                get_current_user(self._mock_request(), creds)
         assert exc.value.status_code == 401
 
     def test_raises_401_when_user_id_missing(self):
@@ -445,7 +539,7 @@ class TestGetCurrentUser:
 
         with patch("api.dependencies.decode_access_token", return_value={"google_id": "g1"}):
             with pytest.raises(HTTPException) as exc:
-                get_current_user(creds)
+                get_current_user(self._mock_request(), creds)
         assert exc.value.status_code == 401
         assert "Invalid token payload" in exc.value.detail
 
@@ -458,7 +552,7 @@ class TestGetCurrentUser:
         payload = {"user_id": "u1", "email": "a@b.com", "auth_user_id": "auth-1", "auth_provider": "password"}
 
         with patch("api.dependencies.decode_access_token", return_value=payload):
-            result = get_current_user(creds)
+            result = get_current_user(self._mock_request(), creds)
         assert result["user_id"] == "u1"
         assert result["google_id"] is None
         assert result["auth_user_id"] == "auth-1"
@@ -472,9 +566,31 @@ class TestGetCurrentUser:
         payload = {"user_id": "u1", "google_id": "g1", "email": "a@b.com", "name": "Alice"}
 
         with patch("api.dependencies.decode_access_token", return_value=payload):
-            result = get_current_user(creds)
+            result = get_current_user(self._mock_request(), creds)
         assert result["user_id"] == "u1"
         assert result["google_id"] == "g1"
+
+    def test_cookie_takes_precedence_over_bearer(self):
+        from api.dependencies import get_current_user
+        from api.services.auth_service import create_access_token
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        user = {"id": "cookie-user", "email": "c@b.com", "name": "C", "google_id": "gc"}
+        cookie_token = create_access_token(user)
+        creds = MagicMock(spec=HTTPAuthorizationCredentials)
+        creds.credentials = "will-not-be-used"
+
+        with patch("api.dependencies.decode_access_token", wraps=__import__("api.services.auth_service", fromlist=["decode_access_token"]).decode_access_token):
+            result = get_current_user(self._mock_request({"access_token": cookie_token}), creds)
+        assert result["user_id"] == "cookie-user"
+
+    def test_raises_401_when_no_token_at_all(self):
+        from api.dependencies import get_current_user
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            get_current_user(self._mock_request(), credentials=None)
+        assert exc.value.status_code == 401
 
 
 # ── api/services/grade_snapshot_cache.py — _is_fresh (line 19) ───────────────

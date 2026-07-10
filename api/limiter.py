@@ -22,9 +22,12 @@ from starlette.requests import Request
 
 
 def _user_key(request: Request) -> str:
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        token = auth[7:]
+    token = request.cookies.get("access_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if token:
         secret = os.getenv("JWT_SECRET", "")
         if secret:
             try:

@@ -31,7 +31,8 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 1
+ACCESS_TOKEN_EXPIRY_MINUTES = 15
+REFRESH_TOKEN_EXPIRY_DAYS = 7
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 
@@ -242,7 +243,7 @@ def reset_password(access_token: str, refresh_token: str, new_password: str) -> 
 def create_access_token(user: dict[str, Any]) -> str:
     secret = _required_env("JWT_SECRET")
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(days=JWT_EXPIRY_DAYS)
+    expires_at = now + timedelta(minutes=ACCESS_TOKEN_EXPIRY_MINUTES)
     payload = {
         "user_id": user.get("id"),
         "email": user.get("email"),
@@ -250,6 +251,23 @@ def create_access_token(user: dict[str, Any]) -> str:
         "google_id": user.get("google_id"),
         "auth_user_id": user.get("auth_user_id"),
         "auth_provider": user.get("auth_provider") or ("google" if user.get("google_id") else "password"),
+        "type": "access",
+        "exp": int(expires_at.timestamp()),
+        "iat": int(now.timestamp()),
+        "iss": "uoft-agent",
+        "aud": "uoft-agent",
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
+
+
+def create_refresh_token(user: dict[str, Any]) -> str:
+    secret = _required_env("JWT_SECRET")
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=REFRESH_TOKEN_EXPIRY_DAYS)
+    payload = {
+        "user_id": user.get("id"),
+        "type": "refresh",
         "exp": int(expires_at.timestamp()),
         "iat": int(now.timestamp()),
         "iss": "uoft-agent",
@@ -262,16 +280,15 @@ def create_access_token(user: dict[str, Any]) -> str:
 def decode_access_token(token: str) -> dict[str, Any]:
     secret = _required_env("JWT_SECRET")
     try:
-        return jwt.decode(
+        payload = jwt.decode(
             token, secret, algorithms=[JWT_ALGORITHM],
             audience="uoft-agent", issuer="uoft-agent",
         )
     except (jwt.exceptions.InvalidAudienceError,
             jwt.exceptions.InvalidIssuerError,
             jwt.exceptions.MissingRequiredClaimError):
-        # Gracefully accept pre-existing tokens that lack aud/iss claims
         try:
-            return jwt.decode(
+            payload = jwt.decode(
                 token, secret, algorithms=[JWT_ALGORITHM],
                 options={"verify_aud": False, "verify_iss": False},
             )
@@ -279,6 +296,35 @@ def decode_access_token(token: str) -> dict[str, Any]:
             raise AuthServiceError("Invalid or expired token") from exc
     except JWTError as exc:
         raise AuthServiceError("Invalid or expired token") from exc
+    if payload.get("type") == "refresh":
+        raise AuthServiceError("Refresh token cannot be used as access token")
+    return payload
+
+
+def decode_refresh_token(token: str) -> dict[str, Any]:
+    secret = _required_env("JWT_SECRET")
+    try:
+        payload = jwt.decode(
+            token, secret, algorithms=[JWT_ALGORITHM],
+            audience="uoft-agent", issuer="uoft-agent",
+        )
+    except JWTError as exc:
+        raise AuthServiceError("Invalid or expired refresh token") from exc
+    if payload.get("type") != "refresh":
+        raise AuthServiceError("Invalid refresh token type")
+    return payload
+
+
+def refresh_access_token(refresh_token_str: str) -> tuple[str, dict[str, Any]]:
+    """Validate a refresh token and return a fresh (access_token, user_dict)."""
+    payload = decode_refresh_token(refresh_token_str)
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise AuthServiceError("Invalid refresh token")
+    user = _load_user_by("id", user_id)
+    if not user:
+        raise AuthServiceError("User not found")
+    return create_access_token(user), user
 
 
 def delete_user_account(user_id: str) -> None:

@@ -9,7 +9,7 @@ export default defineConfig({
       '/auth': {
         target: 'http://localhost:8001',
         bypass(req) {
-          if (req.url.startsWith('/auth/reset-password') || req.url.startsWith('/auth/callback')) {
+          if (req.url.startsWith('/auth/reset-password')) {
             return req.url
           }
         },

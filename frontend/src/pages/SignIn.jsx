@@ -4,7 +4,7 @@ import { useTheme } from '../hooks/useTheme'
 import client from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 
-const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
+const googleAuthUrl = '/auth/google'
 const GITHUB_URL = 'https://github.com/Armaan204/uoft-agent'
 
 export default function SignIn() {
@@ -51,8 +51,8 @@ export default function SignIn() {
         return
       }
 
-      const { data } = await client.post('/auth/login', { email, password })
-      await completeLogin(data.token)
+      await client.post('/auth/login', { email, password })
+      await completeLogin()
     } catch (error) {
       const detail = error?.response?.data?.detail
       setAuthError(typeof detail === 'string' ? detail : 'Unable to complete sign in. Try again.')

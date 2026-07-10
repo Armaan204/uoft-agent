@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 
 import AppShell from './components/AppShell'
@@ -25,23 +25,6 @@ import SignIn from './pages/SignIn'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import ResetPassword from './pages/ResetPassword'
 import TermsOfUse from './pages/TermsOfUse'
-
-function AuthCallbackPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { completeLogin } = useAuth()
-
-  useEffect(() => {
-    const token = new URLSearchParams(location.search).get('token')
-    if (!token) {
-      navigate('/login', { replace: true })
-      return
-    }
-    completeLogin(token).catch(() => navigate('/login', { replace: true }))
-  }, [completeLogin, location.search, navigate])
-
-  return <div className="callback-screen">Completing sign in…</div>
-}
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, isReady } = useAuth()
@@ -84,7 +67,6 @@ export default function App() {
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/signin" element={isAuthenticated ? <Navigate to="/" replace /> : <SignIn />} />
-      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/auth/reset-password" element={<ResetPassword />} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfUse />} />

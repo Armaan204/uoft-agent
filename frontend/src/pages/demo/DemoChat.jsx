@@ -4,7 +4,7 @@ import { useDemoData } from '../../context/DemoDataContext'
 import Logo from '../../components/Logo'
 import MarkdownMessage from '../../components/MarkdownMessage'
 
-const googleAuthUrl = `${import.meta.env.VITE_API_URL || ''}/auth/google`
+const googleAuthUrl = '/auth/google'
 
 const WELCOME_TEXT = "Hi! I'm UofT Agent — your personal academic assistant. I can help you track grades, plan for exams, and monitor deadlines. Try one of the suggestions below to see how I work."
 

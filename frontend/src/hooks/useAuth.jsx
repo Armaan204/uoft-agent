@@ -2,14 +2,13 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
-import client, { TOKEN_KEY } from '../api/client'
+import client from '../api/client'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [token, setToken] = useState(() => window.localStorage.getItem(TOKEN_KEY))
   const [user, setUser] = useState(null)
   const [isReady, setIsReady] = useState(false)
 
@@ -17,30 +16,21 @@ export function AuthProvider({ children }) {
     let cancelled = false
 
     async function bootstrap() {
-      const savedToken = window.localStorage.getItem(TOKEN_KEY)
-      if (!savedToken) {
-        setUser(null)
-        setToken(null)
-        setIsReady(true)
-        return
-      }
-
       try {
         const { data } = await client.get('/auth/me')
         if (!cancelled) {
-          setToken(savedToken)
+          const prevUserId = sessionStorage.getItem('auth_user_id')
+          if (prevUserId && prevUserId !== data.user_id) {
+            queryClient.clear()
+            window.localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+          }
+          sessionStorage.setItem('auth_user_id', data.user_id)
           setUser(data)
         }
-      } catch (_error) {
-        if (!cancelled) {
-          window.localStorage.removeItem(TOKEN_KEY)
-          setToken(null)
-          setUser(null)
-        }
+      } catch {
+        if (!cancelled) setUser(null)
       } finally {
-        if (!cancelled) {
-          setIsReady(true)
-        }
+        if (!cancelled) setIsReady(true)
       }
     }
 
@@ -52,37 +42,33 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      token,
       user,
-      isAuthenticated: Boolean(token),
+      isAuthenticated: Boolean(user),
       isReady,
-      async completeLogin(nextToken) {
+      async completeLogin() {
         queryClient.clear()
-        window.localStorage.setItem(TOKEN_KEY, nextToken)
-        setToken(nextToken)
         const { data } = await client.get('/auth/me')
         setUser(data)
         navigate('/', { replace: true })
       },
-      logout() {
-        window.localStorage.removeItem(TOKEN_KEY)
+      async logout() {
+        try {
+          await client.post('/auth/logout')
+        } catch { /* best-effort */ }
         window.localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
         queryClient.clear()
-        setToken(null)
         setUser(null)
         navigate('/login', { replace: true })
       },
       async deleteAccount() {
         await client.delete('/auth/account')
-        window.localStorage.removeItem(TOKEN_KEY)
         window.localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
         queryClient.clear()
-        setToken(null)
         setUser(null)
         navigate('/login', { replace: true })
       },
     }),
-    [isReady, navigate, queryClient, token, user],
+    [isReady, navigate, queryClient, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

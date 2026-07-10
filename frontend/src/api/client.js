@@ -1,32 +1,37 @@
 import axios from 'axios'
 
-export const TOKEN_KEY = 'uoft-agent-token'
-const baseURL = import.meta.env.VITE_API_URL || ''
-
 const client = axios.create({
-  baseURL,
+  withCredentials: true,
 })
 
-client.interceptors.request.use((config) => {
-  const token = window.localStorage.getItem(TOKEN_KEY)
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+let refreshPromise = null
 
 client.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const requestUrl = error?.config?.url || ''
-    if (error?.response?.status === 401 && !requestUrl.startsWith('/auth/')) {
-      window.localStorage.removeItem(TOKEN_KEY)
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login')
+    const httpStatus = error?.response?.status
+
+    const isAuthEndpoint = requestUrl.startsWith('/auth/') && requestUrl !== '/auth/me'
+    if (httpStatus === 401 && !isAuthEndpoint && !error.config._retry) {
+      error.config._retry = true
+      if (!refreshPromise) {
+        refreshPromise = client.post('/auth/refresh').finally(() => {
+          refreshPromise = null
+        })
+      }
+      try {
+        await refreshPromise
+        return client(error.config)
+      } catch {
+        window.localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/signin') {
+          window.location.assign('/login')
+        }
+        return Promise.reject(error)
       }
     }
 
-    const httpStatus = error?.response?.status
     const detail = error?.response?.data?.detail
     const isQuercusExpired = httpStatus === 424 && detail === 'quercus_token_invalid'
     if (isQuercusExpired && window.location.pathname !== '/onboarding') {
