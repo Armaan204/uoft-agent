@@ -265,10 +265,11 @@ class TestDeleteGradeOverride:
 class TestBuildGoogleOauthUrl:
     def test_includes_client_id_and_redirect(self):
         from api.services.auth_service import build_google_oauth_url
-        url = build_google_oauth_url("http://localhost/callback")
+        url, state = build_google_oauth_url("http://localhost/callback")
         assert "accounts.google.com" in url
         assert "client_id" in url
         assert "redirect_uri" in url
+        assert isinstance(state, str) and len(state) > 0
 
 
 class TestCreateAndDecodeAccessToken:

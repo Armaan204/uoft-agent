@@ -61,104 +61,103 @@ class TestResolveToken:
 class TestChatHandler:
     async def test_chat_success_no_conversation(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="tok")
+        payload = ChatRequest(message="hello")
         with patch("api.routers.chat.run_agent", return_value=("agent answer", [])):
-            result = await chat(payload, _user())
+            result = await chat(payload, x_quercus_token="tok", current_user=_user())
         assert result["answer"] == "agent answer"
         assert result["conversation_id"] is None
 
     async def test_chat_with_conversation_id_loads_history(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="tok", conversation_id="conv-1")
+        payload = ChatRequest(message="hello", conversation_id="conv-1")
         with patch("api.routers.chat.get_conversation_messages", return_value=[{"role": "user", "text": "hi"}]), \
              patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch("api.routers.chat.save_exchange"):
-            result = await chat(payload, _user())
+            result = await chat(payload, x_quercus_token="tok", current_user=_user())
         assert result["conversation_id"] == "conv-1"
 
     async def test_chat_history_load_error_still_proceeds(self):
         from api.routers.chat import chat, ChatRequest
         from api.services.chat_history_service import ChatHistoryServiceError
-        payload = ChatRequest(message="hello", quercus_token="tok", conversation_id="conv-1")
+        payload = ChatRequest(message="hello", conversation_id="conv-1")
         with patch("api.routers.chat.get_conversation_messages", side_effect=ChatHistoryServiceError("err")), \
              patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch("api.routers.chat.save_exchange"):
-            result = await chat(payload, _user())
+            result = await chat(payload, x_quercus_token="tok", current_user=_user())
         assert "answer" in result
 
     async def test_chat_agent_exception_raises_500(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="tok")
+        payload = ChatRequest(message="hello")
         with patch("api.routers.chat.run_agent", side_effect=Exception("agent down")):
             with pytest.raises(HTTPException) as exc:
-                await chat(payload, _user())
+                await chat(payload, x_quercus_token="tok", current_user=_user())
         assert exc.value.status_code == 500
 
     async def test_chat_save_exchange_failure_is_swallowed(self):
         from api.routers.chat import chat, ChatRequest
         from api.services.chat_history_service import ChatHistoryServiceError
-        payload = ChatRequest(message="hello", quercus_token="tok", conversation_id="conv-1")
+        payload = ChatRequest(message="hello", conversation_id="conv-1")
         with patch("api.routers.chat.get_conversation_messages", return_value=[]), \
              patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch("api.routers.chat.save_exchange", side_effect=ChatHistoryServiceError("save fail")):
-            result = await chat(payload, _user())
+            result = await chat(payload, x_quercus_token="tok", current_user=_user())
         assert result["answer"] == "answer"
 
     async def test_chat_no_conversation_id_skips_save(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="tok")
+        payload = ChatRequest(message="hello")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])) as mock_agent, \
              patch("api.routers.chat.save_exchange") as mock_save, \
              patch("api.routers.chat.get_conversation_messages") as mock_history:
-            result = await chat(payload, _user())
+            result = await chat(payload, x_quercus_token="tok", current_user=_user())
         mock_history.assert_not_called()
         mock_save.assert_not_called()
         assert result["tool_calls"] == []
 
     async def test_chat_empty_conversation_id_treated_as_none(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="tok", conversation_id="   ")
+        payload = ChatRequest(message="hello", conversation_id="   ")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch("api.routers.chat.save_exchange") as mock_save:
-            result = await chat(payload, _user())
+            result = await chat(payload, x_quercus_token="tok", current_user=_user())
         mock_save.assert_not_called()
         assert result["conversation_id"] is None
 
     async def test_chat_per_minute_rate_limit_returns_429(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="tok")
+        payload = ChatRequest(message="hello")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])):
             for _ in range(10):
-                await chat(payload, _user())
+                await chat(payload, x_quercus_token="tok", current_user=_user())
             with pytest.raises(HTTPException) as exc:
-                await chat(payload, _user())
+                await chat(payload, x_quercus_token="tok", current_user=_user())
         assert exc.value.status_code == 429
         assert exc.value.detail == "rate_limit"
 
     async def test_chat_per_minute_rate_limit_keyed_by_quercus_token(self):
         from api.routers.chat import chat, ChatRequest
-        payload_a = ChatRequest(message="hello", quercus_token="token-a")
-        payload_b = ChatRequest(message="hello", quercus_token="token-b")
+        payload = ChatRequest(message="hello")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])):
             for _ in range(10):
-                await chat(payload_a, _user("user-1"))
-            result = await chat(payload_b, _user("user-2"))
+                await chat(payload, x_quercus_token="token-a", current_user=_user("user-1"))
+            result = await chat(payload, x_quercus_token="token-b", current_user=_user("user-2"))
         assert result["answer"] == "answer"
 
     async def test_chat_per_minute_rate_limit_shared_token_across_users(self):
         from api.routers.chat import chat, ChatRequest
-        payload = ChatRequest(message="hello", quercus_token="shared-tok")
+        payload = ChatRequest(message="hello")
         with patch("api.routers.chat.run_agent", return_value=("answer", [])):
             for _ in range(10):
-                await chat(payload, _user("user-1"))
+                await chat(payload, x_quercus_token="shared-tok", current_user=_user("user-1"))
             with pytest.raises(HTTPException) as exc:
-                await chat(payload, _user("user-2"))
+                await chat(payload, x_quercus_token="shared-tok", current_user=_user("user-2"))
         assert exc.value.status_code == 429
         assert exc.value.detail == "rate_limit"
 
     async def test_chat_daily_limit_returns_429(self):
         from api.routers.chat import chat, ChatRequest, _chat_limiter, _chat_rate_minute
-        payload = ChatRequest(message="hello", quercus_token="daily-tok")
+        payload = ChatRequest(message="hello")
         original_hit = _chat_limiter.hit
         def _hit_skip_minute(rate, *args, **kwargs):
             if rate is _chat_rate_minute:
@@ -167,15 +166,15 @@ class TestChatHandler:
         with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch.object(_chat_limiter, "hit", side_effect=_hit_skip_minute):
             for _ in range(50):
-                await chat(payload, _user())
+                await chat(payload, x_quercus_token="daily-tok", current_user=_user())
             with pytest.raises(HTTPException) as exc:
-                await chat(payload, _user())
+                await chat(payload, x_quercus_token="daily-tok", current_user=_user())
         assert exc.value.status_code == 429
         assert exc.value.detail == "daily_limit"
 
     async def test_chat_daily_limit_shared_token_across_users(self):
         from api.routers.chat import chat, ChatRequest, _chat_limiter, _chat_rate_minute
-        payload = ChatRequest(message="hello", quercus_token="daily-shared-tok")
+        payload = ChatRequest(message="hello")
         original_hit = _chat_limiter.hit
         def _hit_skip_minute(rate, *args, **kwargs):
             if rate is _chat_rate_minute:
@@ -184,16 +183,15 @@ class TestChatHandler:
         with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch.object(_chat_limiter, "hit", side_effect=_hit_skip_minute):
             for _ in range(50):
-                await chat(payload, _user("user-1"))
+                await chat(payload, x_quercus_token="daily-shared-tok", current_user=_user("user-1"))
             with pytest.raises(HTTPException) as exc:
-                await chat(payload, _user("user-2"))
+                await chat(payload, x_quercus_token="daily-shared-tok", current_user=_user("user-2"))
         assert exc.value.status_code == 429
         assert exc.value.detail == "daily_limit"
 
     async def test_chat_daily_limit_independent_tokens(self):
         from api.routers.chat import chat, ChatRequest, _chat_limiter, _chat_rate_minute
-        payload_a = ChatRequest(message="hello", quercus_token="daily-a")
-        payload_b = ChatRequest(message="hello", quercus_token="daily-b")
+        payload = ChatRequest(message="hello")
         original_hit = _chat_limiter.hit
         def _hit_skip_minute(rate, *args, **kwargs):
             if rate is _chat_rate_minute:
@@ -202,8 +200,8 @@ class TestChatHandler:
         with patch("api.routers.chat.run_agent", return_value=("answer", [])), \
              patch.object(_chat_limiter, "hit", side_effect=_hit_skip_minute):
             for _ in range(50):
-                await chat(payload_a, _user("user-1"))
-            result = await chat(payload_b, _user("user-2"))
+                await chat(payload, x_quercus_token="daily-a", current_user=_user("user-1"))
+            result = await chat(payload, x_quercus_token="daily-b", current_user=_user("user-2"))
         assert result["answer"] == "answer"
 
 

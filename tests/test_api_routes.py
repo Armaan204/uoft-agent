@@ -46,7 +46,7 @@ class TestJWT:
         assert decode_access_token(token)["name"] == test_user["name"]
 
     def test_expired_token_rejected(self):
-        from jose import jwt as jose_jwt
+        import jwt as pyjwt
         from api.services.auth_service import AuthServiceError, decode_access_token
         import os
         secret = os.environ["JWT_SECRET"]
@@ -54,18 +54,18 @@ class TestJWT:
             "user_id": "u1", "email": "x@x.com", "name": "X", "google_id": "g1",
             "exp": int((datetime.now(timezone.utc) - timedelta(seconds=10)).timestamp()),
         }
-        expired = jose_jwt.encode(payload, secret, algorithm="HS256")
+        expired = pyjwt.encode(payload, secret, algorithm="HS256")
         with pytest.raises(AuthServiceError):
             decode_access_token(expired)
 
     def test_invalid_signature_rejected(self):
-        from jose import jwt as jose_jwt
+        import jwt as pyjwt
         from api.services.auth_service import AuthServiceError, decode_access_token
         payload = {
             "user_id": "u1", "email": "x@x.com", "name": "X", "google_id": "g1",
             "exp": int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()),
         }
-        bad = jose_jwt.encode(payload, "wrong-secret-key", algorithm="HS256")
+        bad = pyjwt.encode(payload, "wrong-secret-key", algorithm="HS256")
         with pytest.raises(AuthServiceError):
             decode_access_token(bad)
 
@@ -98,7 +98,7 @@ class TestJWT:
 
     def test_dependency_raises_401_on_expired_token(self):
         """get_current_user raises HTTP 401 for expired token."""
-        from jose import jwt as jose_jwt
+        import jwt as pyjwt
         from fastapi import HTTPException
         from fastapi.security import HTTPAuthorizationCredentials
         from api.dependencies import get_current_user
@@ -109,7 +109,7 @@ class TestJWT:
             "user_id": "u1", "email": "x@x.com", "name": "X", "google_id": "g1",
             "exp": int((datetime.now(timezone.utc) - timedelta(seconds=10)).timestamp()),
         }
-        expired = jose_jwt.encode(payload, secret, algorithm="HS256")
+        expired = pyjwt.encode(payload, secret, algorithm="HS256")
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=expired)
         with pytest.raises(HTTPException) as exc_info:
             get_current_user(creds)
@@ -318,13 +318,12 @@ class TestChatService:
 
             class FakeRequest:
                 message = "What are my grades?"
-                quercus_token = None
                 conversation_id = "conv-test"
 
             current_user = {"user_id": "u1", "email": "x@x.com",
                             "name": "X", "google_id": "g1"}
 
-            result = await chat(FakeRequest(), current_user)
+            result = await chat(FakeRequest(), x_quercus_token=None, current_user=current_user)
 
         data = result if isinstance(result, dict) else result.body
         if hasattr(result, "body"):  # pragma: no cover

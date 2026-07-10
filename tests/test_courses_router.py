@@ -24,18 +24,17 @@ def _user(user_id="u-test"):
 # ── Quercus token CRUD ────────────────────────────────────────────────────────
 
 class TestReadQuercusToken:
-    def test_returns_token_when_found(self):
+    def test_returns_exists_true_when_found(self):
         from api.routers.courses import read_quercus_token
         with patch("api.routers.courses.get_quercus_token", return_value="tok-abc"):
             result = read_quercus_token(current_user=_user())
-        assert result == {"token": "tok-abc"}
+        assert result == {"exists": True}
 
-    def test_raises_404_when_token_missing(self):
+    def test_returns_exists_false_when_token_missing(self):
         from api.routers.courses import read_quercus_token
         with patch("api.routers.courses.get_quercus_token", return_value=None):
-            with pytest.raises(HTTPException) as exc:
-                read_quercus_token(current_user=_user())
-        assert exc.value.status_code == 404
+            result = read_quercus_token(current_user=_user())
+        assert result == {"exists": False}
 
     def test_raises_400_on_user_store_error(self):
         from api.routers.courses import read_quercus_token
@@ -90,7 +89,7 @@ class TestListCourses:
         fake_courses = [{"id": 1, "name": "Intro CS"}]
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.list_current_term_courses", return_value=fake_courses):
-            result = list_courses(quercus_token="tok", current_user=_user())
+            result = list_courses(x_quercus_token="tok", current_user=_user())
         assert result == {"courses": fake_courses}
 
     def test_raises_400_on_course_service_error(self):
@@ -99,7 +98,7 @@ class TestListCourses:
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.list_current_term_courses", side_effect=CourseServiceError("no tok")):
             with pytest.raises(HTTPException) as exc:
-                list_courses(quercus_token=None, current_user=_user())
+                list_courses(x_quercus_token=None, current_user=_user())
         assert exc.value.status_code == 400
 
 
@@ -123,7 +122,7 @@ class TestDashboardCourses:
                  patch("api.routers.courses.asyncio.create_task"):  # suppress background refresh
                 return await mod.dashboard_courses(
                     force_refresh=False,
-                    quercus_token="tok",
+                    x_quercus_token="tok",
                     current_user={"user_id": user_id, **{k: v for k, v in _user().items() if k != "user_id"}},
                 )
 
@@ -144,7 +143,7 @@ class TestDashboardCourses:
                  patch("api.routers.courses.save_snapshot"):
                 return await mod.dashboard_courses(
                     force_refresh=True,
-                    quercus_token="tok",
+                    x_quercus_token="tok",
                     current_user=_user(),
                 )
 
@@ -163,7 +162,7 @@ class TestDashboardCourses:
                        side_effect=QuercusAuthError("invalid token")):
                 return await mod.dashboard_courses(
                     force_refresh=True,
-                    quercus_token="tok",
+                    x_quercus_token="tok",
                     current_user=_user(),
                 )
 
@@ -187,7 +186,7 @@ class TestDashboardCourses:
                  patch("api.routers.courses.asyncio.create_task"):
                 return await mod.dashboard_courses(
                     force_refresh=False,
-                    quercus_token="tok",
+                    x_quercus_token="tok",
                     current_user={"user_id": "u-fresh", **{k: v for k, v in _user().items() if k != "user_id"}},
                 )
 
@@ -255,7 +254,7 @@ class TestCourseGrades:
                 return await mod.course_grades(
                     course_id=course_id,
                     force_refresh=False,
-                    quercus_token="tok",
+                    x_quercus_token="tok",
                     current_user={"user_id": user_id, **{k: v for k, v in _user().items() if k != "user_id"}},
                 )
 
@@ -275,7 +274,7 @@ class TestCourseGrades:
                 return await mod.course_grades(
                     course_id=3001,
                     force_refresh=False,
-                    quercus_token="tok",
+                    x_quercus_token="tok",
                     current_user=_user(),
                 )
 
@@ -293,7 +292,7 @@ class TestCourseScenarios:
              patch("api.routers.courses.get_course_scenarios", return_value=fake):
             result = course_scenarios(
                 course_id=1001,
-                quercus_token="tok",
+                x_quercus_token="tok",
                 current_user=_user(),
             )
         assert result == fake
@@ -305,7 +304,7 @@ class TestCourseScenarios:
              patch("api.routers.courses.get_course_scenarios",
                    side_effect=CourseServiceError("no weights")):
             with pytest.raises(HTTPException) as exc:
-                course_scenarios(course_id=1001, quercus_token="tok", current_user=_user())
+                course_scenarios(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert exc.value.status_code == 400
 
     def test_returns_impossible_scenario_payload(self):
@@ -313,7 +312,7 @@ class TestCourseScenarios:
         fake = {"course_id": 1001, "scenarios": {"A+": {"status": "impossible", "needed": 140.0}}}
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.get_course_scenarios", return_value=fake):
-            result = course_scenarios(course_id=1001, quercus_token="tok", current_user=_user())
+            result = course_scenarios(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert result["scenarios"]["A+"]["status"] == "impossible"
 
 
@@ -325,7 +324,7 @@ class TestCourseWeights:
         fake = {"course_id": 1001, "weights": {"Midterm": 40.0}}
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.get_course_weights", return_value=fake):
-            result = course_weights(course_id=1001, quercus_token="tok", current_user=_user())
+            result = course_weights(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert result == fake
 
     def test_returns_none_weights_gracefully(self):
@@ -333,7 +332,7 @@ class TestCourseWeights:
         fake = {"course_id": 1001, "weights_source": None, "weights": {}}
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.get_course_weights", return_value=fake):
-            result = course_weights(course_id=1001, quercus_token="tok", current_user=_user())
+            result = course_weights(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert result["weights"] == {}
 
 
@@ -353,7 +352,7 @@ class TestQuercusTokenRoundTrip:
              patch("api.routers.courses._evict_user_cache"):
             assert write_quercus_token(QuercusTokenBody(token="encrypted-roundtrip"), _user()) == {"status": "saved"}
             result = read_quercus_token(_user())
-        assert result == {"token": "encrypted-roundtrip"}
+        assert result == {"exists": True}
 
     def test_delete_when_no_token_exists_is_still_graceful(self):
         from api.routers.courses import remove_quercus_token
@@ -400,7 +399,7 @@ class TestWriteCourseGradeOverrides:
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.save_course_grade_overrides", return_value=fake_data), \
              patch("api.routers.courses.save_course_detail_snapshot"):
-            result = write_course_grade_overrides(course_id=1001, body=body, quercus_token="tok", current_user=_user())
+            result = write_course_grade_overrides(course_id=1001, body=body, x_quercus_token="tok", current_user=_user())
         assert result["course_id"] == 1001
 
     def test_raises_400_on_error(self):
@@ -411,7 +410,7 @@ class TestWriteCourseGradeOverrides:
              patch("api.routers.courses.save_course_grade_overrides",
                    side_effect=CourseServiceError("fail")):
             with pytest.raises(HTTPException) as exc:
-                write_course_grade_overrides(course_id=1001, body=body, quercus_token="tok", current_user=_user())
+                write_course_grade_overrides(course_id=1001, body=body, x_quercus_token="tok", current_user=_user())
         assert exc.value.status_code == 400
 
 
@@ -425,7 +424,7 @@ class TestRemoveCourseGradeOverride:
              patch("api.routers.courses.delete_course_grade_override", return_value=fake_data), \
              patch("api.routers.courses.save_course_detail_snapshot"):
             result = remove_course_grade_override(
-                course_id=1001, component_key="midterm", quercus_token="tok", current_user=_user()
+                course_id=1001, component_key="midterm", x_quercus_token="tok", current_user=_user()
             )
         assert result["course_id"] == 1001
 
@@ -437,7 +436,7 @@ class TestRemoveCourseGradeOverride:
                    side_effect=CourseServiceError("not found")):
             with pytest.raises(HTTPException) as exc:
                 remove_course_grade_override(
-                    course_id=1001, component_key="midterm", quercus_token="tok", current_user=_user()
+                    course_id=1001, component_key="midterm", x_quercus_token="tok", current_user=_user()
                 )
         assert exc.value.status_code == 400
 
@@ -450,7 +449,7 @@ class TestLatestCourseAnnouncement:
         fake = {"course_id": 1001, "title": "Midterm reminder", "body_html": "<p>...</p>"}
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.get_latest_course_announcement", return_value=fake):
-            result = latest_course_announcement(course_id=1001, quercus_token="tok", current_user=_user())
+            result = latest_course_announcement(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert result["course_id"] == 1001
 
     def test_raises_400_when_no_announcement(self):
@@ -460,7 +459,7 @@ class TestLatestCourseAnnouncement:
              patch("api.routers.courses.get_latest_course_announcement",
                    side_effect=CourseServiceError("no announcement")):
             with pytest.raises(HTTPException) as exc:
-                latest_course_announcement(course_id=1001, quercus_token="tok", current_user=_user())
+                latest_course_announcement(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert exc.value.status_code == 400
 
 
@@ -494,11 +493,11 @@ class TestResolveTokenAdditional:
 
 
 class TestTokenDebugValue:
-    def test_formats_missing_short_and_long_tokens(self):
+    def test_formats_missing_and_present_tokens(self):
         from api.routers.courses import _token_debug_value
         assert _token_debug_value(None) == "<missing>"
-        assert _token_debug_value("shorttok") == "shorttok"
-        assert _token_debug_value("abcdefghijklmnopqrstuvwxyz") == "abcdef...wxyz (len=26)"
+        assert _token_debug_value("shorttok") == "<present>"
+        assert _token_debug_value("abcdefghijklmnopqrstuvwxyz") == "<present>"
 
 
 class TestLiveFetchDashboardAdditional:
@@ -767,7 +766,7 @@ class TestWriteCourseGradeOverridesAdditional:
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.save_course_grade_overrides", return_value=fake_data), \
              patch("api.routers.courses.save_course_detail_snapshot", side_effect=GradesSnapshotServiceError("persist fail")):
-            result = write_course_grade_overrides(course_id=1001, body=body, quercus_token="tok", current_user=_user())
+            result = write_course_grade_overrides(course_id=1001, body=body, x_quercus_token="tok", current_user=_user())
         assert result["course_id"] == 1001
 
 
@@ -781,7 +780,7 @@ class TestRemoveCourseGradeOverrideAdditional:
              patch("api.routers.courses.delete_course_grade_override", return_value=fake_data), \
              patch("api.routers.courses.save_course_detail_snapshot", side_effect=GradesSnapshotServiceError("persist fail")):
             result = remove_course_grade_override(
-                course_id=1001, component_key="midterm", quercus_token="tok", current_user=_user()
+                course_id=1001, component_key="midterm", x_quercus_token="tok", current_user=_user()
             )
         assert result["course_id"] == 1001
 
@@ -793,5 +792,5 @@ class TestCourseWeightsErrors:
         with patch("api.routers.courses._resolve_token", return_value="tok"), \
              patch("api.routers.courses.get_course_weights", side_effect=CourseServiceError("no weights")):
             with pytest.raises(HTTPException) as exc:
-                course_weights(course_id=1001, quercus_token="tok", current_user=_user())
+                course_weights(course_id=1001, x_quercus_token="tok", current_user=_user())
         assert exc.value.status_code == 400

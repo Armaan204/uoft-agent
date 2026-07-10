@@ -558,7 +558,7 @@ class TestUploadAcornPdf:
         with patch("api.routers.acorn.parse_acorn_pdf", side_effect=AcornPdfParseError("bad pdf")):
             resp = await upload_acorn_pdf(file=upload, current_user=_user())
         assert resp.status_code == 400
-        assert b"bad pdf" in resp.body
+        assert b"Failed to parse" in resp.body
 
     async def test_returns_500_on_storage_error(self):
         from api.routers.acorn import upload_acorn_pdf
@@ -569,7 +569,7 @@ class TestUploadAcornPdf:
             with patch("api.routers.acorn.store_acorn_pdf_import", side_effect=AcornServiceError("db down")):
                 resp = await upload_acorn_pdf(file=upload, current_user=_user())
         assert resp.status_code == 500
-        assert b"db down" in resp.body
+        assert b"Failed to save" in resp.body
 
     async def test_success_returns_data(self):
         from api.routers.acorn import upload_acorn_pdf
