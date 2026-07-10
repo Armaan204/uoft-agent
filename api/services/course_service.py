@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from html import unescape
 from typing import Any
 
+import nh3
 from bs4 import BeautifulSoup
 from api.auth.user_store import UserStoreError, get_quercus_token
 from api.calculator.grades import GradeCalculator, UOFT_THRESHOLDS
@@ -759,23 +760,7 @@ def _announcement_text(html: str | None) -> str:
 
 
 def _sanitize_announcement_html(html: str | None) -> str:
-    soup = BeautifulSoup(html or "", "html.parser")
-
-    for tag in soup.find_all(["script", "style", "iframe", "object", "embed", "form", "input", "button"]):
-        tag.decompose()
-
-    for tag in soup.find_all(True):
-        attrs_to_remove = []
-        for attr_name, attr_value in list(tag.attrs.items()):
-            if attr_name.lower().startswith("on"):
-                attrs_to_remove.append(attr_name)
-                continue
-            if attr_name.lower() in {"href", "src"} and isinstance(attr_value, str) and attr_value.strip().lower().startswith("javascript:"):
-                attrs_to_remove.append(attr_name)
-        for attr_name in attrs_to_remove:
-            tag.attrs.pop(attr_name, None)
-
-    return str(soup)
+    return nh3.clean(html or "")
 
 
 def parse_syllabus_weights_uncached(

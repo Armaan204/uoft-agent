@@ -13,17 +13,8 @@ export function useQuercusStatus() {
     gcTime: QUERCUS_STATUS_GC_TIME_MS,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      try {
-        const response = await client.get('/api/courses/quercus-token')
-        return {
-          hasToken: Boolean(response.data?.token),
-        }
-      } catch (error) {
-        if (error?.response?.status === 404) {
-          return { hasToken: false }
-        }
-        throw error
-      }
+      const response = await client.get('/api/courses/quercus-token')
+      return { hasToken: Boolean(response.data?.exists) }
     },
   })
 }

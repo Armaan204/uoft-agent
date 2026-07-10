@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
+import uuid
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta, timezone
@@ -13,7 +15,8 @@ from typing import Any
 from urllib.parse import urlencode
 
 import requests
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from supabase import create_client
 
 from api.auth.user_store import (
@@ -28,7 +31,7 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 7
+JWT_EXPIRY_DAYS = 1
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 
@@ -90,7 +93,9 @@ def _supabase_user_confirmed(user: Any) -> bool:
     )
 
 
-def build_google_oauth_url(redirect_uri: str) -> str:
+def build_google_oauth_url(redirect_uri: str) -> tuple[str, str]:
+    """Return (oauth_url, state) with a cryptographic CSRF state token."""
+    state = secrets.token_urlsafe(32)
     params = {
         "client_id": _required_env("GOOGLE_CLIENT_ID"),
         "redirect_uri": redirect_uri,
@@ -98,8 +103,9 @@ def build_google_oauth_url(redirect_uri: str) -> str:
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "consent",
+        "state": state,
     }
-    return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    return f"{GOOGLE_AUTH_URL}?{urlencode(params)}", state
 
 
 def exchange_google_code(code: str, redirect_uri: str) -> dict[str, Any]:
@@ -235,7 +241,8 @@ def reset_password(access_token: str, refresh_token: str, new_password: str) -> 
 
 def create_access_token(user: dict[str, Any]) -> str:
     secret = _required_env("JWT_SECRET")
-    expires_at = datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=JWT_EXPIRY_DAYS)
     payload = {
         "user_id": user.get("id"),
         "email": user.get("email"),
@@ -244,6 +251,10 @@ def create_access_token(user: dict[str, Any]) -> str:
         "auth_user_id": user.get("auth_user_id"),
         "auth_provider": user.get("auth_provider") or ("google" if user.get("google_id") else "password"),
         "exp": int(expires_at.timestamp()),
+        "iat": int(now.timestamp()),
+        "iss": "uoft-agent",
+        "aud": "uoft-agent",
+        "jti": str(uuid.uuid4()),
     }
     return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
 
@@ -251,6 +262,48 @@ def create_access_token(user: dict[str, Any]) -> str:
 def decode_access_token(token: str) -> dict[str, Any]:
     secret = _required_env("JWT_SECRET")
     try:
-        return jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
+        return jwt.decode(
+            token, secret, algorithms=[JWT_ALGORITHM],
+            audience="uoft-agent", issuer="uoft-agent",
+        )
+    except (jwt.exceptions.InvalidAudienceError,
+            jwt.exceptions.InvalidIssuerError,
+            jwt.exceptions.MissingRequiredClaimError):
+        # Gracefully accept pre-existing tokens that lack aud/iss claims
+        try:
+            return jwt.decode(
+                token, secret, algorithms=[JWT_ALGORITHM],
+                options={"verify_aud": False, "verify_iss": False},
+            )
+        except JWTError as exc:
+            raise AuthServiceError("Invalid or expired token") from exc
     except JWTError as exc:
         raise AuthServiceError("Invalid or expired token") from exc
+
+
+def delete_user_account(user_id: str) -> None:
+    """Cascade-delete all data for one user across all Supabase tables."""
+    from api.auth.user_store import get_supabase_client
+    client = get_supabase_client()
+    tables_with_user_id = [
+        "chat_messages",
+        "chat_conversations",
+        "grades_snapshot",
+        "grade_overrides",
+        "grades_cache",
+        "acorn_imports",
+        "manual_deadlines",
+        "manual_courses",
+        "quercus_tokens",
+        "syllabus_weights_cache",
+        "program_requirements_cache",
+    ]
+    for table in tables_with_user_id:
+        try:
+            client.table(table).delete().eq("user_id", user_id).execute()
+        except Exception:
+            logger.warning("Failed to delete from %s for user_id=%s", table, user_id)
+    try:
+        client.table("users").delete().eq("id", user_id).execute()
+    except Exception as exc:
+        raise AuthServiceError("Failed to delete user account") from exc

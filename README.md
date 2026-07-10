@@ -14,7 +14,7 @@ AI academic assistant for University of Toronto students.
 
 **[uoft-agent.com](https://uoft-agent.com/)** — create an account or sign in with Google, then connect your Quercus token to get started.
 
-**[Chrome Extension](https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa?utm_source=item-share-cb)** — import your ACORN academic history in one click.
+**[Try the demo](https://uoft-agent.com/demo)** — explore the full UI with sample data, no account needed.
 
 ---
 
@@ -41,7 +41,7 @@ Stop juggling Quercus, ACORN, and a calculator at the same time. UofT Agent pull
 - Announcement detail loads in-app — no jumping to Quercus
 
 **🎓 ACORN Import**
-- Install the Chrome extension, open your ACORN page, click import — done
+- Download your Complete Academic History PDF from ACORN and upload it — done
 - Sessional and cumulative GPA over time with an interactive chart
 - Sortable course table with every grade you've ever gotten at UofT
 - Total earned credits (IPR and NGA excluded so the number actually makes sense)
@@ -61,7 +61,7 @@ Stop juggling Quercus, ACORN, and a calculator at the same time. UofT Agent pull
 2. Paste your Quercus personal access token (Settings → Profile → Approved Integrations)
 3. The app encrypts it and stores it in Supabase so you never have to paste it again
 4. Dashboard loads automatically — grades, deadlines, announcements
-5. Install the Chrome extension and import your ACORN history for GPA tracking + Degree Planner
+5. Download your Complete Academic History PDF from ACORN and upload it for GPA tracking + Degree Planner
 6. Chat with the AI about anything academic
 
 ---
@@ -93,6 +93,26 @@ Key FastAPI routes:
 | `POST` | `/api/chat` | Run AI agent, persist exchange |
 | `GET` | `/api/chat/history` | All past conversations |
 | `GET` | `/api/graduation/progress` | Degree planner analysis |
+
+---
+
+## 🔒 Security
+
+UofT Agent handles sensitive academic data — Quercus API tokens, transcripts, grades, and GPAs. The app underwent a comprehensive security hardening pass before public launch:
+
+- **Authentication hardening** — JWTs include `iss`, `aud`, `iat`, `jti` claims with validation; 1-day expiry; `python-jose` replaced with actively maintained `PyJWT`
+- **OAuth CSRF protection** — Google OAuth uses a cryptographic `state` parameter stored in an HMAC-signed HttpOnly cookie
+- **Rate limiting** — Auth endpoints rate-limited (5/min login, 3/min signup/reset); chat rate-limited per user (10/min, 50/day)
+- **Quercus token security** — Tokens sent via `X-Quercus-Token` header (never in URLs); encrypted with Fernet at rest; never returned in plaintext API responses
+- **XSS defense-in-depth** — DOMPurify on the frontend + `nh3` allowlist sanitizer on the backend for announcement HTML
+- **Security headers** — CSP, HSTS with preload, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
+- **Error sanitization** — All API error responses use generic messages; internal details logged server-side only
+- **Account deletion** — Full cascade delete across all 11 data tables via `DELETE /auth/account` and in-app UI
+- **CORS** — Restricted to explicit methods and headers; no wildcards with credentials
+- **Admin isolation** — Admin router only loads when `ENVIRONMENT == "development"` (explicit allowlist)
+- **Dependency hygiene** — All production dependencies pinned to exact versions
+
+See the [Privacy Policy](https://uoft-agent.com/privacy) and [Terms of Use](https://uoft-agent.com/terms) for data handling details.
 
 ---
 
@@ -142,7 +162,6 @@ python -m coverage report
 - Some courses show no weighted overview grade when the syllabus-to-assignment mapping is too ambiguous to trust
 - Quercus-posted grade changes can take a few minutes to appear due to short-lived caching
 - Degree Planner currently supports UTSC calendar pages only (UTM and St. George coming later)
-- The auth JWT lives in localStorage for now — fine for development, not the final hardened auth posture
 
 ---
 

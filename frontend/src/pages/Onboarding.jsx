@@ -105,7 +105,7 @@ export default function Onboarding() {
   const connectMutation = useMutation({
     mutationFn: async (quercusToken) => {
       await client.get('/api/courses', {
-        params: { quercus_token: quercusToken },
+        headers: { 'X-Quercus-Token': quercusToken },
       })
       await client.post('/api/courses/quercus-token', { token: quercusToken })
     },

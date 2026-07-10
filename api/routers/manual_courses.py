@@ -162,7 +162,7 @@ async def upload_syllabus(
         logger.exception("Syllabus parsing failed course_id=%s", course_id)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to extract weights: {exc}",
+            detail="Failed to extract weights from the uploaded file",
         ) from exc
 
     return {"weights": weights, "filename": file.filename}

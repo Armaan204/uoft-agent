@@ -1673,6 +1673,26 @@ html[data-theme="dark"] .token-tutorial-dont {
   cursor: default;
 }
 
+.profile-delete-item {
+  color: var(--error, #dc3545);
+}
+
+.profile-delete-confirm {
+  color: #fff;
+  background: var(--error, #dc3545);
+}
+
+.profile-delete-confirm:hover:not(:disabled) {
+  background: #a71d2a;
+}
+
+.profile-delete-error {
+  display: block;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  color: var(--error, #dc3545);
+}
+
 .semester-row {
   display: flex;
   align-items: baseline;

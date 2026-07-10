@@ -24,10 +24,10 @@ An AI academic assistant for University of Toronto students.
 - `api/` — entire Python backend powering the deployed app at `https://uoft-agent.com`
   - `api/main.py` — FastAPI app with CORS, mounts all routers, health check at `GET /`
   - `api/dependencies.py` — JWT-based `get_current_user` dependency
-  - `api/routers/auth.py` — email/password auth, Google OAuth flow, JWT issuance (7-day expiry), `/auth/me`, `/auth/logout`
+  - `api/routers/auth.py` — email/password auth, Google OAuth flow with CSRF state, JWT issuance (1-day expiry), rate-limited auth endpoints, `/auth/me`, `/auth/logout`, `DELETE /auth/account`
   - `api/routers/courses.py` — course, grade, scenario, weight routes + Quercus token CRUD
   - `api/routers/chat.py` — `POST /api/chat` runs agent via `run_in_executor`, persists exchanges by `conversation_id`, and exposes chat-history list/detail/delete routes
-  - `api/routers/acorn.py` — ACORN routes: PDF upload (`POST /upload`), legacy extension import, and data retrieval
+  - `api/routers/acorn.py` — ACORN routes: PDF upload (`POST /upload`), authenticated claim, and data retrieval
   - `api/routers/graduation.py` — `GET /api/graduation/progress` and `DELETE /api/graduation/cache`
   - `api/routers/manual_courses.py` — CRUD for manually added courses and deadlines, plus syllabus upload endpoint
   - `api/services/course_service.py` — uncached Quercus + calculator wrappers
@@ -42,6 +42,7 @@ An AI academic assistant for University of Toronto students.
   - `api/integrations/quercus.py` — Canvas / Quercus API client
   - `api/integrations/syllabus.py` — syllabus discovery, PDF parsing, and weight extraction
   - `api/integrations/syllabus_cache.py` — persistent Supabase cache for parsed syllabus weights
+  - `api/limiter.py` — slowapi rate limiter with JWT-based per-user key extraction; custom `limit()` wrapper for test compatibility
   - `api/integrations/acorn_store.py` — ACORN import payload validation and file storage
   - `api/integrations/acorn_pdf_parser.py` — deterministic regex-based parser for ACORN Complete Academic History PDFs
   - `api/integrations/grades_cache.py` — Supabase-backed grade override and saved-grade persistence
@@ -70,7 +71,7 @@ An AI academic assistant for University of Toronto students.
 - Parsed syllabus weights are cached both in-process and persistently in Supabase to avoid repeated Anthropic parsing for the same course source
 - Chat uses a cached aggregate grade snapshot tool for multi-course questions; the cache is keyed per user and can be explicitly refreshed
 - UofT GPA mapping is deterministic in code (`A+` and `A` both map to `4.0`) rather than inferred by the LLM
-- FastAPI course routes accept `?quercus_token=...` directly from the client; fall back to the Supabase-stored token if omitted
+- Quercus tokens are sent via the `X-Quercus-Token` HTTP header (never in URL query params); routes fall back to the Supabase-stored token if the header is omitted
 - Dashboard and course grade data use a 3-tier cache: (1) per-user in-memory Python dict (instant, lost on restart), (2) Supabase `grades_snapshot` JSONB snapshot (fast, survives restarts), (3) live Quercus fetch (slow, only on first load or force refresh). Each tier fires a background refresh to keep the next load fast.
 - On every authenticated app load, `App.jsx` fires a background `GET /api/courses/dashboard` and staggered per-course `GET /api/courses/{id}/grades` requests to keep the Supabase snapshot current, so incognito and new-device loads hit Layer 2 instead of Layer 3
 - The frontend uses `PersistQueryClientProvider` with a localStorage persister (24h `gcTime` and `maxAge`) so TanStack Query cache survives tab refreshes and browser restarts
@@ -106,6 +107,44 @@ The app uses FastAPI auth routes with app-issued JWT sessions. Two auth provider
 - **Cross-provider guardrails**: if a Google-only user tries to sign up with email/password, the signup is blocked with a message to use Google instead; if a Google-only user requests a password reset, the endpoint silently returns success without sending an email (anti-enumeration)
 - The Axios 401 interceptor excludes `/auth/*` endpoints so failed login attempts don't redirect away from the sign-in page
 - Password validation requires 8–128 characters with at least one letter and one number
+
+## Security
+
+The app underwent a comprehensive security hardening pass before public launch. Key measures:
+
+### Authentication & Session Management
+- JWTs include `iss`, `aud`, `iat`, and `jti` claims; `iss` and `aud` are validated on decode with backward compatibility for pre-existing tokens that lack these claims
+- JWT expiry reduced from 7 days to 1 day
+- `python-jose` replaced with `PyJWT` (actively maintained)
+- Google OAuth uses a cryptographic `state` parameter stored in an HMAC-signed, HttpOnly cookie to prevent CSRF/login-fixation attacks
+- OAuth state signing requires `JWT_SECRET`; there is no dev-fallback — the app fails loudly if the secret is missing
+- Auth endpoints are rate-limited via slowapi: `/auth/login` at 5/min, `/auth/signup`, `/auth/password/forgot`, `/auth/password/reset` at 3/min each
+- Chat endpoint has its own per-user rate limits: 10/min and 50/day
+- Logout clears the TanStack Query localStorage cache (`REACT_QUERY_OFFLINE_CACHE`) alongside the JWT to prevent data persistence on shared devices
+
+### API Security
+- Quercus tokens are sent via `X-Quercus-Token` HTTP header — never in URL query params (which leak to server logs, browser history, and proxies)
+- `GET /api/courses/quercus-token` returns only `{"exists": true/false}` — the plaintext token is never exposed in API responses
+- Legacy unauthenticated ACORN endpoints (`POST /api/acorn/import`, `GET /api/acorn/latest`, `GET /api/acorn/status`) removed entirely; only the authenticated PDF upload and claim flows remain
+- Admin router guarded with `ENVIRONMENT == "development"` (explicit allowlist, not `!= "production"`)
+- CORS restricted to explicit methods (`GET`, `POST`, `PUT`, `DELETE`, `OPTIONS`) and headers (`Authorization`, `Content-Type`, `X-Quercus-Token`, `sentry-trace`, `baggage`)
+- Error responses sanitized: all `str(exc)` in course and chat routers replaced with generic messages + server-side `logger.exception()` to prevent internal detail leakage
+- All dependencies pinned to exact versions in `requirements.txt`
+
+### Frontend Security
+- Announcement HTML sanitized with DOMPurify on the frontend (defense-in-depth) and `nh3` allowlist sanitizer on the backend
+- nginx serves security headers: `Content-Security-Policy`, `Strict-Transport-Security` (HSTS with preload), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
+- CSP blocks all external scripts, inline scripts (except whitelisted hashes), and object embeds
+- Secrets are never logged: JWT values, Quercus tokens, and OAuth URLs are excluded from log output
+
+### Data Privacy
+- `DELETE /auth/account` cascades through all 11 Supabase tables (chat_messages, chat_conversations, grades_snapshot, grade_overrides, grades_cache, acorn_imports, manual_deadlines, manual_courses, quercus_tokens, syllabus_weights_cache, program_requirements_cache, users)
+- "Delete my account" button in the profile menu with confirmation step and error surfacing
+- Quercus tokens encrypted with Fernet before storage; the encryption key is a required env var
+
+### Rate Limiting Architecture
+- The `api/limiter.py` module wraps slowapi's `Limiter` with a custom `limit()` decorator that: (1) extracts user identity from the JWT Bearer token for per-user rate limiting, falling back to IP, and (2) gracefully skips rate checking when no `Request` object is available (for unit tests that call handlers directly)
+- **Important**: auth routes must use the custom `limit()` function from `api.limiter`, not `limiter.limit()` directly, because the slowapi decorator breaks FastAPI's Pydantic model resolution when `from __future__ import annotations` is active (the wrapper's `__globals__` doesn't contain the route's type annotations). The `auth.py` router avoids `from __future__ import annotations` for this reason.
 
 ## Environment Variables
 
@@ -143,7 +182,7 @@ Implemented:
 - Short-lived Quercus caching: assignment groups and submissions are cached for 5 minutes
 - Syllabus parsing cache: in-process cache for 1 hour plus persistent Supabase cache in `syllabus_weights_cache`
 - ACORN import via PDF upload: students download their Complete Academic History PDF from ACORN and upload it directly; deterministic regex-based parser extracts terms, courses, GPAs, and programs without LLM
-- Legacy Chrome extension import endpoints remain in the backend for backward compatibility but are no longer surfaced in the UI
+- Legacy unauthenticated Chrome extension import endpoints removed; only authenticated PDF upload and claim flows remain
 - The ACORN page shows either saved ACORN data or the onboarding / re-import flow
 - Public privacy pages under `docs/` and extension privacy docs under `uoft-acorn-extension/`
 - ACORN tab shows a summary table (Courses Imported, Total Credits, Cumulative GPA) and an Altair line chart of GPA over time with a Sessional / Cumulative toggle; chart uses adaptive Y-axis zoom and labelled data points
@@ -193,11 +232,10 @@ Implemented:
 
 - Courses with unresolved or only partially reliable syllabus-to-Canvas mappings intentionally show no weighted overview grade
 - What-if sliders are only enabled when the weighted component model is reliable
-- The ACORN backend still accepts legacy extension imports via import code for backward compatibility, but the frontend only uses PDF upload
 - Quercus token persistence requires a valid `ENCRYPTION_KEY` and Supabase tables compatible with the app's `users` and `quercus_tokens` queries
 - Persistent syllabus caching requires a `syllabus_weights_cache` table in Supabase
 - Quercus grade changes can take up to about 5 minutes to appear because submissions and assignment groups are cached for 300 seconds
-- The React frontend currently stores the FastAPI JWT in localStorage; this is expedient for development but not the final hardened auth posture
+- The React frontend stores the JWT in localStorage; moving to HttpOnly cookies (Phase 4 improvement) would eliminate XSS-based token theft entirely but requires CSRF token middleware
 - Backend chat history requires the Supabase schema in `docs/chat_history_schema.sql` to be applied before list/detail/delete routes and persistence-backed history are available
 
 ## Tests

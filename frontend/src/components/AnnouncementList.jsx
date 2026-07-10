@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import DOMPurify from 'dompurify'
 
 import client from '../api/client'
 import { displayCourseCode } from '../utils/courseCode'
@@ -75,7 +76,7 @@ function AnnouncementModal({ announcement, onClose }) {
 
           {!isLoading && !error ? (
             data?.body_html ? (
-              <div className="announcement-modal-content" dangerouslySetInnerHTML={{ __html: data.body_html }} />
+              <div className="announcement-modal-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data.body_html) }} />
             ) : (
               <div className="empty-card">{data?.body_text || 'No announcement body was available.'}</div>
             )

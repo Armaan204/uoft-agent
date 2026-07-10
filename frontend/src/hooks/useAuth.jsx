@@ -66,6 +66,16 @@ export function AuthProvider({ children }) {
       },
       logout() {
         window.localStorage.removeItem(TOKEN_KEY)
+        window.localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+        queryClient.clear()
+        setToken(null)
+        setUser(null)
+        navigate('/login', { replace: true })
+      },
+      async deleteAccount() {
+        await client.delete('/auth/account')
+        window.localStorage.removeItem(TOKEN_KEY)
+        window.localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
         queryClient.clear()
         setToken(null)
         setUser(null)

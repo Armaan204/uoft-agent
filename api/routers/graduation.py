@@ -54,7 +54,8 @@ async def graduation_progress(
     try:
         acorn_data = await asyncio.to_thread(get_academic_history, user_id)
     except AcornServiceError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        logger.exception("ACORN data load failed user_id=%s", user_id)
+        raise HTTPException(status_code=400, detail="Failed to load ACORN data")
 
     programs = acorn_data.get("programs") or []
     if not programs:
@@ -71,7 +72,7 @@ async def graduation_progress(
             requirements = await asyncio.to_thread(get_program_requirements, name, force_refresh)
         except Exception as exc:
             logger.exception("graduation requirements error user=%s program=%s", user_id, name)
-            return {"error": f"Requirements extraction error: {exc}", "program_name": name}
+            return {"error": "Requirements extraction failed", "program_name": name}
         if requirements is None:
             return {"error": f"Could not find calendar requirements for: {name}", "program_name": name}
 
@@ -89,7 +90,7 @@ async def graduation_progress(
             )
         except Exception as exc:
             logger.exception("graduation progress error user=%s program=%s", user_id, name)
-            return {"error": f"Progress computation error: {exc}", "program_name": name}
+            return {"error": "Progress computation failed", "program_name": name}
         return progress
 
     results = await asyncio.gather(*[fetch_one(p) for p in programs])
@@ -113,7 +114,8 @@ async def clear_graduation_cache(
     try:
         acorn_data = await asyncio.to_thread(get_academic_history, user_id)
     except AcornServiceError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        logger.exception("ACORN data load failed for cache clear user_id=%s", user_id)
+        raise HTTPException(status_code=400, detail="Failed to load ACORN data")
 
     programs = acorn_data.get("programs") or []
     if not programs:

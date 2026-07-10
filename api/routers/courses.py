@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user
@@ -112,11 +112,7 @@ def _update_canvas_id_groups(user_id: str, courses: list[dict]) -> None:
 
 
 def _token_debug_value(token: str | None) -> str:
-    if not token:
-        return "<missing>"
-    if len(token) <= 10:
-        return token
-    return f"{token[:6]}...{token[-4:]} (len={len(token)})"
+    return "<present>" if token else "<missing>"
 
 
 def _resolve_token(
@@ -138,7 +134,7 @@ def _resolve_token(
             "Failed to load saved Quercus token user_id=%s",
             current_user.get("user_id"),
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load saved Quercus token") from exc
     if not saved:
         logger.warning(
             "No saved Quercus token found user_id=%s",
@@ -147,7 +143,7 @@ def _resolve_token(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No Quercus token provided and no saved token found. "
-                   "Pass ?quercus_token=... or save one via POST /api/quercus-token.",
+                   "Send the X-Quercus-Token header or save one via POST /api/quercus-token.",
         )
     logger.info(
         "Resolved dashboard token from saved Supabase token user_id=%s token=%s",
@@ -179,21 +175,11 @@ def read_quercus_token(current_user: dict = Depends(get_current_user)):
     try:
         token = get_quercus_token(current_user["user_id"])
     except UserStoreError as exc:
-        logger.exception(
-            "Failed to read saved Quercus token user_id=%s error=%s",
-            current_user.get("user_id"),
-            exc,
-        )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to read saved Quercus token user_id=%s", current_user.get("user_id"))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to check token status") from exc
     if token is None:
-        logger.info("No saved Quercus token for user_id=%s", current_user.get("user_id"))
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved Quercus token")
-    logger.info(
-        "Read saved Quercus token user_id=%s token=%s",
-        current_user.get("user_id"),
-        _token_debug_value(token),
-    )
-    return {"token": token}
+        return {"exists": False}
+    return {"exists": True}
 
 
 @router.post("/quercus-token", dependencies=[Depends(get_current_user)])
@@ -204,7 +190,8 @@ def write_quercus_token(
     try:
         save_quercus_token(current_user["user_id"], body.token)
     except UserStoreError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to save Quercus token user_id=%s", current_user.get("user_id"))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to save Quercus token") from exc
     _evict_user_cache(current_user["user_id"])
     return {"status": "saved"}
 
@@ -214,7 +201,8 @@ def remove_quercus_token(current_user: dict = Depends(get_current_user)):
     try:
         delete_quercus_token(current_user["user_id"])
     except UserStoreError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to delete Quercus token user_id=%s", current_user.get("user_id"))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to delete Quercus token") from exc
     _evict_user_cache(current_user["user_id"])
     return {"status": "deleted"}
 
@@ -321,14 +309,15 @@ def _get_manual_dashboard_cards(user_id: str) -> list[dict]:
 
 @router.get("")
 def list_courses(
-    quercus_token: str | None = Query(default=None, description="Quercus personal access token"),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     try:
         return {"courses": list_current_term_courses(token)}
     except (CourseServiceError, QuercusError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to list courses")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load courses") from exc
 
 
 async def _live_fetch_dashboard(token: str, user_id: str | None = None) -> tuple[list, list]:
@@ -370,10 +359,10 @@ async def _background_refresh_dashboard(token: str, user_id: str) -> None:
 @router.get("/dashboard")
 async def dashboard_courses(
     force_refresh: bool = Query(default=False),
-    quercus_token: str | None = Query(default=None, description="Quercus personal access token"),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token_optional(quercus_token, current_user)
+    token = _resolve_token_optional(x_quercus_token, current_user)
     user_id = current_user["user_id"]
 
     manual_cards = await asyncio.to_thread(_get_manual_dashboard_cards, user_id)
@@ -472,12 +461,11 @@ async def dashboard_courses(
         raise HTTPException(status_code=424, detail="quercus_token_invalid") from exc
     except (CourseServiceError, QuercusError) as exc:
         logger.exception(
-            "Dashboard load failed user_id=%s token=%s error=%s",
+            "Dashboard load failed user_id=%s token=%s",
             user_id,
             _token_debug_value(token),
-            exc,
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load dashboard data") from exc
     except Exception as exc:
         logger.exception(
             "Unexpected dashboard load failure user_id=%s token=%s error=%s",
@@ -614,7 +602,7 @@ def _build_manual_course_grades(user_id: str, course_id: int) -> dict:
 async def course_grades(
     course_id: int,
     force_refresh: bool = Query(default=False),
-    quercus_token: str | None = Query(default=None),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user["user_id"]
@@ -623,9 +611,10 @@ async def course_grades(
         try:
             return _build_manual_course_grades(user_id, course_id)
         except ManualCourseServiceError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            logger.exception("Failed to load manual course grades course_id=%s", course_id)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load course grades") from exc
 
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     cache_key = f"{user_id}:{course_id}"
     _siblings = _canvas_id_groups.get(cache_key)
     _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
@@ -677,14 +666,15 @@ async def course_grades(
             pass
         raise HTTPException(status_code=424, detail="quercus_token_invalid") from exc
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to load course grades course_id=%s", course_id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load course grades") from exc
 
 
 @router.post("/{course_id}/grade-overrides")
 def write_course_grade_overrides(
     course_id: int,
     body: GradeOverridesBody,
-    quercus_token: str | None = Query(default=None),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user["user_id"]
@@ -702,7 +692,7 @@ def write_course_grade_overrides(
         _dashboard_cache.pop(user_id, None)
         return data
 
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     cache_key = f"{user_id}:{course_id}"
     _siblings = _canvas_id_groups.get(cache_key)
     _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
@@ -723,14 +713,15 @@ def write_course_grade_overrides(
             logger.warning("Failed to persist grade override snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
         return data
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to save grade overrides course_id=%s", course_id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to save grade overrides") from exc
 
 
 @router.delete("/{course_id}/grade-overrides/{component_key}")
 def remove_course_grade_override(
     course_id: int,
     component_key: str,
-    quercus_token: str | None = Query(default=None),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user["user_id"]
@@ -744,7 +735,7 @@ def remove_course_grade_override(
         _dashboard_cache.pop(user_id, None)
         return data
 
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     cache_key = f"{user_id}:{course_id}"
     _siblings = _canvas_id_groups.get(cache_key)
     _additional_ids = [cid for cid in _siblings if cid != course_id] if _siblings else None
@@ -759,43 +750,47 @@ def remove_course_grade_override(
             logger.warning("Failed to persist delete-override snapshot user_id=%s course_id=%s error=%s", user_id, course_id, exc)
         return data
     except (CourseServiceError, QuercusError, GradesCacheError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to delete grade override course_id=%s", course_id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to delete grade override") from exc
 
 
 @router.get("/{course_id}/announcements/latest")
 def latest_course_announcement(
     course_id: int,
-    quercus_token: str | None = Query(default=None),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     try:
         return get_latest_course_announcement(token, course_id)
     except (CourseServiceError, QuercusError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to load announcement course_id=%s", course_id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load announcement") from exc
 
 
 @router.get("/{course_id}/scenarios")
 def course_scenarios(
     course_id: int,
-    quercus_token: str | None = Query(default=None),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     try:
         return get_course_scenarios(token, course_id)
     except (CourseServiceError, QuercusError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to load scenarios course_id=%s", course_id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load grade scenarios") from exc
 
 
 @router.get("/{course_id}/weights")
 def course_weights(
     course_id: int,
-    quercus_token: str | None = Query(default=None),
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
     current_user: dict = Depends(get_current_user),
 ):
-    token = _resolve_token(quercus_token, current_user)
+    token = _resolve_token(x_quercus_token, current_user)
     try:
         return get_course_weights(token, course_id)
     except (CourseServiceError, QuercusError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to load weights course_id=%s", course_id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load course weights") from exc

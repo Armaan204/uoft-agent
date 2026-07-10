@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, validator
 
 from limits import parse as parse_rate
@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 class ChatRequest(BaseModel):
     message: str
-    quercus_token: str | None = None
     conversation_id: str | None = None
 
     @validator("message")
@@ -58,8 +57,12 @@ def _resolve_token_optional(quercus_token: str | None, current_user: dict) -> st
 
 
 @router.post("")
-async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
-    quercus_token = _resolve_token_optional(payload.quercus_token, current_user)
+async def chat(
+    payload: ChatRequest,
+    x_quercus_token: str | None = Header(default=None, alias="X-Quercus-Token"),
+    current_user: dict = Depends(get_current_user),
+):
+    quercus_token = _resolve_token_optional(x_quercus_token, current_user)
     rate_key = quercus_token or current_user["user_id"]
     if not _chat_limiter.hit(_chat_rate_daily, rate_key):
         raise HTTPException(status_code=429, detail="daily_limit")
@@ -89,7 +92,8 @@ async def chat(payload: ChatRequest, current_user: dict = Depends(get_current_us
             ),
         )
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        logger.exception("Agent execution failed user_id=%s", current_user.get("user_id"))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred processing your message") from exc
 
     if conversation_id:
         try:
@@ -116,7 +120,8 @@ def history(current_user: dict = Depends(get_current_user)):
     try:
         return {"conversations": list_conversations(current_user["user_id"])}
     except ChatHistoryServiceError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        logger.exception("Failed to list chat history user_id=%s", current_user.get("user_id"))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to load chat history") from exc
 
 
 @router.get("/history/{conversation_id}")
@@ -124,9 +129,9 @@ def history_detail(conversation_id: str, current_user: dict = Depends(get_curren
     try:
         return get_conversation(current_user["user_id"], conversation_id)
     except ChatHistoryServiceError as exc:
-        detail = str(exc)
-        status_code = status.HTTP_404_NOT_FOUND if detail == "Chat conversation not found" else status.HTTP_400_BAD_REQUEST
-        raise HTTPException(status_code=status_code, detail=detail) from exc
+        is_not_found = "not found" in str(exc).lower()
+        sc = status.HTTP_404_NOT_FOUND if is_not_found else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=sc, detail="Chat conversation not found" if is_not_found else "Failed to load conversation") from exc
 
 
 @router.delete("/history/{conversation_id}")
@@ -134,7 +139,7 @@ def history_delete(conversation_id: str, current_user: dict = Depends(get_curren
     try:
         delete_conversation(current_user["user_id"], conversation_id)
     except ChatHistoryServiceError as exc:
-        detail = str(exc)
-        status_code = status.HTTP_404_NOT_FOUND if detail == "Chat conversation not found" else status.HTTP_400_BAD_REQUEST
-        raise HTTPException(status_code=status_code, detail=detail) from exc
+        is_not_found = "not found" in str(exc).lower()
+        sc = status.HTTP_404_NOT_FOUND if is_not_found else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=sc, detail="Chat conversation not found" if is_not_found else "Failed to delete conversation") from exc
     return {"status": "deleted"}

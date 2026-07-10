@@ -12,7 +12,7 @@ export default function PrivacyPolicy() {
       </header>
 
       <h1 className="legal-h1">Privacy Policy</h1>
-      <p className="legal-updated">Last updated: May 22, 2026</p>
+      <p className="legal-updated">Last updated: July 10, 2026</p>
 
       <section className="legal-section">
         <h2 className="legal-h2">1. What We Collect</h2>
@@ -116,26 +116,18 @@ export default function PrivacyPolicy() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">5. Chrome Extension Data Transmission</h2>
+        <h2 className="legal-h2">5. ACORN Data Import</h2>
         <p className="legal-p">
-          The UofT Agent Chrome extension transmits your ACORN academic history to UofT Agent
-          servers over HTTPS when you click Import Academic History. This data leaves your device
-          and is stored in our database. The data transmitted includes course codes, titles,
-          credits, marks, grades, and term information.
+          The primary method for importing your ACORN academic history is PDF upload. You download
+          your Complete Academic History PDF from ACORN and upload it directly within the app. The
+          PDF is parsed on the server using a deterministic regex-based parser — no AI or third-party
+          services are involved in the parsing. The data extracted includes course codes, titles,
+          credits, marks, grades, GPA, and term information.
         </p>
         <p className="legal-p">
-          The extension does not collect passwords, does not automate login, and only operates on{' '}
-          <code style={{ fontFamily: 'DM Mono, monospace', fontSize: 13 }}>acorn.utoronto.ca</code>.
-          Imports are always manually triggered. Do not use the extension on shared or public
-          devices. For further details, see the extension listing on the{' '}
-          <a
-            href="https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="legal-a"
-          >
-            Chrome Web Store
-          </a>.
+          A Chrome extension for ACORN import was previously available but is now deprecated. The
+          legacy extension import endpoints have been removed from the backend. All ACORN data
+          import now requires authentication.
         </p>
       </section>
 
@@ -153,11 +145,17 @@ export default function PrivacyPolicy() {
       <section className="legal-section">
         <h2 className="legal-h2">7. Data Deletion</h2>
         <p className="legal-p">
-          To request deletion of your account and all associated data, email{' '}
+          You can delete your account and all associated data directly from the app using the
+          "Delete my account" button in your profile menu. Deletion is immediate and cascades
+          through all data tables including chat history, grade snapshots, grade overrides, ACORN
+          imports, manual courses, deadlines, cached data, and your encrypted Quercus token.
+        </p>
+        <p className="legal-p">
+          Alternatively, you can email{' '}
           <a href="mailto:uoftagent@gmail.com" className="legal-a">
             uoftagent@gmail.com
           </a>{' '}
-          with the subject line <strong>"Data Deletion Request"</strong>. Requests will be
+          with the subject line <strong>"Data Deletion Request"</strong>. Email requests will be
           processed within 30 days.
         </p>
       </section>
@@ -165,10 +163,15 @@ export default function PrivacyPolicy() {
       <section className="legal-section">
         <h2 className="legal-h2">8. Security</h2>
         <ul className="legal-ul">
-          <li className="legal-li">Quercus tokens are encrypted with Fernet symmetric encryption before storage.</li>
-          <li className="legal-li">All data in transit is protected with HTTPS.</li>
+          <li className="legal-li">Quercus tokens are encrypted with Fernet symmetric encryption before storage and are never returned in plaintext API responses.</li>
+          <li className="legal-li">Quercus tokens are transmitted via HTTP headers, not URL query parameters, to prevent exposure in server logs and browser history.</li>
+          <li className="legal-li">All data in transit is protected with HTTPS. Security headers including Content Security Policy, HSTS, and X-Frame-Options are enforced.</li>
           <li className="legal-li">Email/password authentication is handled by Supabase Auth; raw passwords are not stored in UofT Agent tables.</li>
-          <li className="legal-li">Session management uses signed JWT tokens with expiry.</li>
+          <li className="legal-li">Google OAuth uses CSRF protection via cryptographically signed state tokens.</li>
+          <li className="legal-li">Session management uses signed JWT tokens with 1-day expiry and hardened claims (issuer, audience, issued-at, unique ID).</li>
+          <li className="legal-li">Authentication endpoints are rate-limited to prevent brute-force and credential-stuffing attacks.</li>
+          <li className="legal-li">HTML content from Quercus is sanitized on both the server and client to prevent cross-site scripting (XSS).</li>
+          <li className="legal-li">API error messages are sanitized to prevent internal implementation details from being exposed to clients.</li>
         </ul>
         <p className="legal-p">
           No security measure is infallible. We make reasonable efforts to protect your data but

@@ -14,7 +14,8 @@ from __future__ import annotations
 import os
 from functools import wraps
 
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -27,11 +28,14 @@ def _user_key(request: Request) -> str:
         secret = os.getenv("JWT_SECRET", "")
         if secret:
             try:
-                payload = jwt.decode(token, secret, algorithms=["HS256"])
+                payload = jwt.decode(
+                    token, secret, algorithms=["HS256"],
+                    audience="uoft-agent", issuer="uoft-agent",
+                )
                 user_id = payload.get("user_id")
                 if user_id is not None:
                     return str(user_id)
-            except JWTError:
+            except PyJWTError:
                 pass
     return get_remote_address(request)
 

@@ -7,12 +7,13 @@ pypdf==6.1.1            # PDF syllabus parsing
 python-dotenv==1.1.1    # load .env in development
 supabase==2.15.3        # Supabase Postgres client
 cryptography==45.0.4    # Fernet token encryption
-fastapi
-uvicorn[standard]
-sentry-sdk[fastapi]
-python-jose[cryptography]
-python-multipart
+fastapi==0.103.2
+uvicorn[standard]==0.23.2
+sentry-sdk[fastapi]==2.60.0
+PyJWT[crypto]==2.12.1   # JWT encoding/decoding (replaces python-jose)
+python-multipart==0.0.26
 slowapi==0.1.9
+nh3==0.3.6              # HTML sanitization (allowlist-based)
 
 # CI / test dependencies
 pytest-asyncio          # async test support (asyncio_mode = auto in pytest.ini)

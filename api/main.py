@@ -32,7 +32,7 @@ app = FastAPI(title="UofT Agent API", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-if os.getenv("ENVIRONMENT") != "production":
+if os.getenv("ENVIRONMENT") == "development":
     from api.routers.admin import router as admin_router
     app.include_router(admin_router, prefix="/admin")
 
@@ -59,8 +59,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Quercus-Token", "sentry-trace", "baggage"],
 )
 
 app.include_router(auth_router, prefix="/auth")

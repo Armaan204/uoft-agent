@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useTheme } from '../hooks/useTheme'
 
-export default function ProfileMenu({ displayName, initials, onLogout, dropUp = false, showThemeToggle = false }) {
+export default function ProfileMenu({ displayName, initials, onLogout, onDeleteAccount, dropUp = false, showThemeToggle = false }) {
   const [open, setOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
   const menuRef = useRef(null)
   const { isDark, toggleTheme } = useTheme()
 
@@ -11,12 +13,14 @@ export default function ProfileMenu({ displayName, initials, onLogout, dropUp = 
     function handlePointer(event) {
       if (!menuRef.current?.contains(event.target)) {
         setOpen(false)
+        setConfirmDelete(false)
       }
     }
 
     function handleEscape(event) {
       if (event.key === 'Escape') {
         setOpen(false)
+        setConfirmDelete(false)
       }
     }
 
@@ -60,6 +64,36 @@ export default function ProfileMenu({ displayName, initials, onLogout, dropUp = 
           <button className="profile-dropdown-item" type="button" onClick={onLogout}>
             Log out
           </button>
+          {onDeleteAccount && (
+            confirmDelete ? (
+              <button
+                className="profile-dropdown-item profile-delete-confirm"
+                type="button"
+                onClick={async () => {
+                  setDeleteError(null)
+                  try {
+                    await onDeleteAccount()
+                    setConfirmDelete(false)
+                    setOpen(false)
+                  } catch (_err) {
+                    setDeleteError('Failed to delete account. Please try again.')
+                    setConfirmDelete(false)
+                  }
+                }}
+              >
+                Confirm deletion
+              </button>
+            ) : (
+              <button
+                className="profile-dropdown-item profile-delete-item"
+                type="button"
+                onClick={() => { setDeleteError(null); setConfirmDelete(true) }}
+              >
+                Delete account
+              </button>
+            )
+          )}
+          {deleteError && <span className="profile-delete-error">{deleteError}</span>}
         </div>
       )}
     </div>

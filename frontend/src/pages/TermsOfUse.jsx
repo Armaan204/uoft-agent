@@ -12,7 +12,7 @@ export default function TermsOfUse() {
       </header>
 
       <h1 className="legal-h1">Terms of Use</h1>
-      <p className="legal-updated">Last updated: May 22, 2026</p>
+      <p className="legal-updated">Last updated: July 10, 2026</p>
 
       <section className="legal-section">
         <h2 className="legal-h2">1. Agreement to Terms</h2>
@@ -76,7 +76,17 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">5. Quercus Token Authorization and Revocation</h2>
+        <h2 className="legal-h2">5. Account Deletion</h2>
+        <p className="legal-p">
+          You may delete your account at any time from the profile menu within the app. Account
+          deletion is immediate and permanently removes all associated data including chat history,
+          grade data, ACORN imports, manual courses, cached data, and your encrypted Quercus token.
+          This action cannot be undone.
+        </p>
+      </section>
+
+      <section className="legal-section">
+        <h2 className="legal-h2">6. Quercus Token Authorization and Revocation</h2>
         <p className="legal-p">
           By providing your Quercus personal access token, you authorize UofT Agent to access your
           Canvas course and grade data on your behalf. You are responsible for the confidentiality
@@ -94,7 +104,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">6. UofT Acceptable Use</h2>
+        <h2 className="legal-h2">7. UofT Acceptable Use</h2>
         <p className="legal-p">
           By providing your Quercus personal access token, you confirm that your use complies with
           the University of Toronto's acceptable use policies. UofT Agent is not responsible for any
@@ -103,7 +113,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">7. AI-Generated Content</h2>
+        <h2 className="legal-h2">8. AI-Generated Content</h2>
         <p className="legal-p">
           UofT Agent uses Claude, an AI assistant developed by Anthropic, to generate responses to
           your questions. AI-generated responses may contain errors, hallucinations, or information
@@ -117,7 +127,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">8. Beta / Active Development</h2>
+        <h2 className="legal-h2">9. Beta / Active Development</h2>
         <p className="legal-p">
           UofT Agent is under active development. Features may be added, changed, or removed at any
           time without notice. The service is provided in its current state and does not carry any
@@ -126,7 +136,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">9. Modifications and Interruptions</h2>
+        <h2 className="legal-h2">10. Modifications and Interruptions</h2>
         <p className="legal-p">
           We reserve the right to modify, suspend, or discontinue the service at any time and for
           any reason without notice. We are not liable for any loss, damage, or inconvenience caused
@@ -135,7 +145,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">10. Disclaimer of Warranties</h2>
+        <h2 className="legal-h2">11. Disclaimer of Warranties</h2>
         <p className="legal-caps">
           The service is provided "as is" and "as available" without warranties of any kind, express
           or implied, including but not limited to warranties of merchantability, fitness for a
@@ -147,7 +157,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">11. Limitation of Liability</h2>
+        <h2 className="legal-h2">12. Limitation of Liability</h2>
         <p className="legal-p">
           To the maximum extent permitted by applicable law in the Province of Ontario, our
           liability to you for any cause whatsoever, and regardless of the form of the action, shall
@@ -158,7 +168,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">12. Indemnification</h2>
+        <h2 className="legal-h2">13. Indemnification</h2>
         <p className="legal-p">
           You agree to defend, indemnify, and hold harmless UofT Agent and its developer from any
           claims, liabilities, damages, losses, and expenses (including reasonable legal fees)
@@ -168,7 +178,7 @@ export default function TermsOfUse() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">13. Governing Law</h2>
+        <h2 className="legal-h2">14. Governing Law</h2>
         <p className="legal-p">
           These Terms of Use are governed by and construed in accordance with the laws of the
           Province of Ontario and the federal laws of Canada applicable therein, without regard to

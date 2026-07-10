@@ -12,7 +12,7 @@ export default function Disclaimers() {
       </header>
 
       <h1 className="legal-h1">Disclaimers</h1>
-      <p className="legal-updated">Last updated: May 22, 2026</p>
+      <p className="legal-updated">Last updated: July 10, 2026</p>
 
       <section className="legal-section">
         <h2 className="legal-h2">Non-Affiliation with the University of Toronto</h2>
@@ -104,26 +104,16 @@ export default function Disclaimers() {
       </section>
 
       <section className="legal-section">
-        <h2 className="legal-h2">Chrome Extension</h2>
+        <h2 className="legal-h2">ACORN Import</h2>
         <p className="legal-p">
-          The UofT Agent Chrome extension transmits your ACORN academic history to UofT Agent
-          servers over HTTPS. This data leaves your device and is stored in our database. Do not
-          use the extension on shared or public devices.
+          ACORN academic history is imported via PDF upload. You download your Complete Academic
+          History PDF from ACORN and upload it within the app. The PDF is parsed on the server
+          using a deterministic parser. The extracted data (course codes, grades, credits, GPA, and
+          term information) is stored in our database and associated with your account.
         </p>
         <p className="legal-p">
-          The extension runs only on{' '}
-          <code style={{ fontFamily: 'DM Mono, monospace', fontSize: 13 }}>acorn.utoronto.ca</code>{' '}
-          and only after you manually click the import button. It does not collect passwords, does
-          not automate login, and does not run on any other websites. For further details, see the{' '}
-          <a
-            href="https://chromewebstore.google.com/detail/akchfgkjeenfkmcommdpnimgkbnclgfa"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="legal-a"
-          >
-            extension listing
-          </a>{' '}
-          on the Chrome Web Store.
+          A Chrome extension for ACORN import was previously available but is now deprecated. The
+          unauthenticated legacy import endpoints have been removed from the backend.
         </p>
       </section>
 

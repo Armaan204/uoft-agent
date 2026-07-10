@@ -11,7 +11,7 @@ import { getInitials } from '../utils/initials'
 import client from '../api/client'
 
 export default function AppShell() {
-  const { user, logout } = useAuth()
+  const { user, logout, deleteAccount } = useAuth()
   const displayName = user?.name || user?.email || 'You'
   const initials = getInitials(displayName)
   const navigate = useNavigate()
@@ -42,7 +42,7 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <header className="mobile-topbar">
-        <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} showThemeToggle />
+        <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} onDeleteAccount={deleteAccount} showThemeToggle />
         <div className="mobile-topbar-brand">
           <Logo />
         </div>
@@ -107,7 +107,7 @@ export default function AppShell() {
             Give Feedback
           </a>
           <ThemeToggle className="sidebar-theme-toggle" labeled />
-          <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} dropUp />
+          <ProfileMenu displayName={displayName} initials={initials} onLogout={logout} onDeleteAccount={deleteAccount} dropUp />
         </div>
       </aside>
 
