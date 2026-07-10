@@ -140,6 +140,19 @@ async def upload_syllabus(
             detail="File size must be under 10 MB",
         )
 
+    is_pdf = content[:5].startswith(b"%PDF-")
+    is_docx = content[:4] == b"PK\x03\x04"
+    if filename.endswith(".pdf") and not is_pdf:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File does not appear to be a valid PDF",
+        )
+    if filename.endswith(".docx") and not is_docx:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File does not appear to be a valid DOCX",
+        )
+
     try:
         if filename.endswith(".pdf"):
             from api.integrations.syllabus import extract_weights_from_bytes

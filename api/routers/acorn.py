@@ -67,6 +67,9 @@ async def upload_acorn_pdf(
     if len(content) > 10 * 1024 * 1024:
         return JSONResponse(status_code=400, content={"ok": False, "error": "File exceeds 10 MB limit"})
 
+    if not content[:5].startswith(b"%PDF-"):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "File does not appear to be a valid PDF"})
+
     try:
         parsed = parse_acorn_pdf(content)
     except AcornPdfParseError as exc:

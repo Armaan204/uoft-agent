@@ -418,3 +418,39 @@ class TestChatService:
         with patch("api.services.chat_history_service.get_supabase_client", return_value=mock_sb):
             result = get_conversation_messages("u1", "conv-1")
         assert isinstance(result, list)
+
+
+# ── Syllabus upload magic-byte validation ────────────────────────────────────
+
+
+def _mock_upload(filename="syllabus.pdf", content=b"%PDF-fake"):
+    upload = MagicMock()
+    upload.filename = filename
+
+    async def _read():
+        return content
+
+    upload.read = _read
+    return upload
+
+
+class TestSyllabusUploadMagicBytes:
+    async def test_rejects_pdf_with_wrong_magic_bytes(self):
+        from fastapi import HTTPException
+        from api.routers.manual_courses import upload_syllabus
+        upload = _mock_upload(filename="syllabus.pdf", content=b"PK\x03\x04zipfile")
+        user = {"user_id": "u-test"}
+        with patch("api.routers.manual_courses.get_manual_course", return_value={"id": -1}):
+            with pytest.raises(HTTPException) as exc_info:
+                await upload_syllabus(course_id=-1, file=upload, current_user=user)
+            assert "valid PDF" in exc_info.value.detail
+
+    async def test_rejects_docx_with_wrong_magic_bytes(self):
+        from fastapi import HTTPException
+        from api.routers.manual_courses import upload_syllabus
+        upload = _mock_upload(filename="syllabus.docx", content=b"%PDF-not-a-docx")
+        user = {"user_id": "u-test"}
+        with patch("api.routers.manual_courses.get_manual_course", return_value={"id": -1}):
+            with pytest.raises(HTTPException) as exc_info:
+                await upload_syllabus(course_id=-1, file=upload, current_user=user)
+            assert "valid DOCX" in exc_info.value.detail

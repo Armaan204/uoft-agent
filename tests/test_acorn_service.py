@@ -546,10 +546,17 @@ class TestUploadAcornPdf:
 
     async def test_rejects_oversized_file(self):
         from api.routers.acorn import upload_acorn_pdf
-        upload = _make_upload(content=b"x" * (10 * 1024 * 1024 + 1))
+        upload = _make_upload(content=b"%PDF-" + b"x" * (10 * 1024 * 1024))
         resp = await upload_acorn_pdf(file=upload, current_user=_user())
         assert resp.status_code == 400
         assert b"10 MB" in resp.body
+
+    async def test_rejects_non_pdf_magic_bytes(self):
+        from api.routers.acorn import upload_acorn_pdf
+        upload = _make_upload(filename="history.pdf", content=b"PK\x03\x04not-a-pdf")
+        resp = await upload_acorn_pdf(file=upload, current_user=_user())
+        assert resp.status_code == 400
+        assert b"valid PDF" in resp.body
 
     async def test_returns_400_on_parse_error(self):
         from api.routers.acorn import upload_acorn_pdf
