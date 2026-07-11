@@ -29,7 +29,7 @@ export default function PrivacyPolicy() {
           </li>
           <li className="legal-li">
             <strong>ACORN academic history</strong> — course codes, titles, credits, marks, grades,
-            and term information imported via the UofT Agent Chrome extension.
+            and term information imported via PDF upload within the app.
           </li>
           <li className="legal-li">
             <strong>Chat messages and conversation history</strong> — your messages to the AI
@@ -44,8 +44,9 @@ export default function PrivacyPolicy() {
             usage limits, retained on a rolling 30-day basis.
           </li>
           <li className="legal-li">
-            <strong>Session tokens</strong> — JWT tokens stored in your browser for authentication.
-            These tokens expire and are used solely to maintain your active session.
+            <strong>Session tokens</strong> — short-lived access tokens (15 minutes) and longer-lived
+            refresh tokens (7 days) stored in HttpOnly browser cookies for authentication.
+            These tokens are not accessible to JavaScript and are used solely to maintain your active session.
           </li>
         </ul>
       </section>
@@ -168,9 +169,10 @@ export default function PrivacyPolicy() {
           <li className="legal-li">All data in transit is protected with HTTPS. Security headers including Content Security Policy, HSTS, and X-Frame-Options are enforced.</li>
           <li className="legal-li">Email/password authentication is handled by Supabase Auth; raw passwords are not stored in UofT Agent tables.</li>
           <li className="legal-li">Google OAuth uses CSRF protection via cryptographically signed state tokens.</li>
-          <li className="legal-li">Session management uses signed JWT tokens with 1-day expiry and hardened claims (issuer, audience, issued-at, unique ID).</li>
+          <li className="legal-li">Session management uses signed JWT tokens delivered in HttpOnly cookies with short-lived access tokens (15 minutes) and separate refresh tokens (7 days), plus hardened claims (issuer, audience, issued-at, unique ID, token type).</li>
           <li className="legal-li">Authentication endpoints are rate-limited to prevent brute-force and credential-stuffing attacks.</li>
           <li className="legal-li">HTML content from Quercus is sanitized on both the server and client to prevent cross-site scripting (XSS).</li>
+          <li className="legal-li">Uploaded files are validated by magic-byte header checks (PDF and DOCX) before processing to prevent file type spoofing.</li>
           <li className="legal-li">API error messages are sanitized to prevent internal implementation details from being exposed to clients.</li>
         </ul>
         <p className="legal-p">

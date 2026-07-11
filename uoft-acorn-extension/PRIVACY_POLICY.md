@@ -1,6 +1,8 @@
 # UofT Agent Connector Privacy Policy
 
-Last updated: 2026-04-07
+Last updated: 2026-07-10
+
+> **Deprecated:** The UofT Agent Connector Chrome extension has been deprecated. ACORN data import is now handled via PDF upload within the main app. The legacy extension import endpoints have been removed from the backend. For the current privacy policy, see [uoft-agent.com/privacy](https://uoft-agent.com/privacy).
 
 ## Summary
 

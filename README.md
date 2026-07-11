@@ -100,11 +100,12 @@ Key FastAPI routes:
 
 UofT Agent handles sensitive academic data — Quercus API tokens, transcripts, grades, and GPAs. The app underwent a comprehensive security hardening pass before public launch:
 
-- **Authentication hardening** — JWTs include `iss`, `aud`, `iat`, `jti` claims with validation; 1-day expiry; `python-jose` replaced with actively maintained `PyJWT`
+- **Authentication hardening** — short-lived access tokens (15 min) and long-lived refresh tokens (7 days) delivered via HttpOnly cookies; JWTs include `iss`, `aud`, `iat`, `jti`, `type` claims with validation; `python-jose` replaced with actively maintained `PyJWT`
 - **OAuth CSRF protection** — Google OAuth uses a cryptographic `state` parameter stored in an HMAC-signed HttpOnly cookie
 - **Rate limiting** — Auth endpoints rate-limited (5/min login, 3/min signup/reset); chat rate-limited per user (10/min, 50/day)
 - **Quercus token security** — Tokens sent via `X-Quercus-Token` header (never in URLs); encrypted with Fernet at rest; never returned in plaintext API responses
 - **XSS defense-in-depth** — DOMPurify on the frontend + `nh3` allowlist sanitizer on the backend for announcement HTML
+- **Upload validation** — PDF uploads verified by `%PDF-` magic-byte header; DOCX uploads verified by `PK\x03\x04` (ZIP) header
 - **Security headers** — CSP, HSTS with preload, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
 - **Error sanitization** — All API error responses use generic messages; internal details logged server-side only
 - **Account deletion** — Full cascade delete across all 11 data tables via `DELETE /auth/account` and in-app UI
