@@ -1,7 +1,7 @@
 server {
   listen 80;
 
-  add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.sentry.io; img-src 'self' data: https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" always;
+  add_header Content-Security-Policy "default-src 'none'; script-src 'self' 'sha256-Fm0CRABo1MVh6dc5KbjLdEH6ubnWmgsUe01aDqF0TeA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.sentry.io; img-src 'self' data: https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-Frame-Options "DENY" always;
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
