@@ -133,7 +133,6 @@ The app underwent a comprehensive security hardening pass before public launch. 
 - Quercus tokens are sent via `X-Quercus-Token` HTTP header — never in URL query params (which leak to server logs, browser history, and proxies)
 - `GET /api/courses/quercus-token` returns only `{"exists": true/false}` — the plaintext token is never exposed in API responses
 - Legacy unauthenticated ACORN endpoints (`POST /api/acorn/import`, `GET /api/acorn/latest`, `GET /api/acorn/status`) removed entirely; only the authenticated PDF upload and claim flows remain
-- Admin router guarded with `ENVIRONMENT == "development"` (explicit allowlist, not `!= "production"`)
 - CORS restricted to explicit methods (`GET`, `POST`, `PUT`, `DELETE`, `OPTIONS`) and headers (`Authorization`, `Content-Type`, `X-Quercus-Token`, `sentry-trace`, `baggage`)
 - Error responses sanitized: all `str(exc)` in course and chat routers replaced with generic messages + server-side `logger.exception()` to prevent internal detail leakage
 - All dependencies pinned to exact versions in `requirements.txt`

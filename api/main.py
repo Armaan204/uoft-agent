@@ -32,10 +32,6 @@ app = FastAPI(title="UofT Agent API", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-if os.getenv("ENVIRONMENT") == "development":
-    from api.routers.admin import router as admin_router
-    app.include_router(admin_router, prefix="/admin")
-
 
 def _allowed_origins() -> list[str]:
     origins = {
